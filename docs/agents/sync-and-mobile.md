@@ -81,6 +81,20 @@ Built on `ts-stack` (synthetic data in tests; parity on the demo set and a local
 - Gates: `pnpm arch:check` (layers, imports, knip, catalogs PL / EN, story coverage, TRANSITIONAL
   markers must name a live scope), test tiers (default + exhaustive), parity staleness guard.
 
+Mobile companion M1 (2026-11-12, `apps/mobile`, synthetic demo vaults only): tabs Today / Activity /
+Investments (placeholder until M2) / Net worth, shown per enabled module (a budget-only profile gets three);
+Today = on track to keep (domain `budget/analytics/projection.ts`), pace, KPIs, the significance-ranked
+"Worth a look" (domain `core/attention`, shared with the desktop Overview later), next 7 days, where it went,
+the month-closed state with the planned deposit; Activity = day list, offline search with the year-on-year
+payee summary, payment sheet (categorize, one-way payee rule), categorize deck, cash expense; Spending vs
+usual; Net worth with the NBP-labelled conversion (rates fetched by the phone into its device-local cache),
+accounts, loans, property and car; profile sheet with the switch between the paired vaults and Hide amounts
+(bananas) kept in the device store. Store entries for the phone: `@cashu/store/budget/companion`,
+`@cashu/store/overview/companion`, `/overview/{accounts,bananas,cash}`, `/core/profile`, `/budget/freshness`.
+Writes go straight into the local vault (TRANSITIONAL(S43)); pairing and the sync engine on the phone are
+S44; Hermes on iOS has no `Intl.NumberFormat.formatToParts` / `Intl.PluralRules`, so `@cashu/i18n` carries
+hand-written fallbacks (tests force both paths).
+
 Not built yet (planned): budget analytics, loans / assets math, strategy, rules, alerts, investments
 views / write services / daily run, research services, the store-backed desktop renderer, the TS MCP
 server and CLI, worker and notifications (also with the app closed), connectors host, workspace

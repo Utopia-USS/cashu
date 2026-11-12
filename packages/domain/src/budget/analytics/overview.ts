@@ -8,7 +8,7 @@
 import type { IsoDate } from "../../dates.js";
 import { D, type Decimal, ZERO } from "../../decimal.js";
 import type { RecurringCandidate } from "../categorize/index.js";
-import type { MonthlyCashflow } from "./cashflow.js";
+import { type MonthlyCashflow, wholeMonths } from "./cashflow.js";
 
 export interface MonthSummary {
   readonly label: string;
@@ -58,19 +58,37 @@ export interface MonthNorm {
 }
 
 /**
- * The monthly income / spending norm from complete months: the average of up to `n` months before
- * `today`'s month that have income or spending. The running month never counts (early in a month its
- * spending is a few days' worth and the salary may not be in). Null when no complete month has data.
+ * The months a norm averages: up to `n` whole, complete months before `today`'s month that have income
+ * or spending, oldest first. Whole: a month starting before `coverageStart` (`cashflowCoverageStart`)
+ * misses some account's rows (the first month of an Open Banking import begins mid-month) and never
+ * counts; null = every month is whole. The running month never counts either (early in a month its
+ * spending is a few days' worth and the salary may not be in). The one rule every "usual month" figure
+ * shares: `closedMonthNorm`, `usualToDate`, `usualPayDay`, `categoryNorm`.
+ */
+export function normMonths(
+  rows: readonly MonthlyCashflow[],
+  coverageStart: IsoDate | null,
+  today: IsoDate,
+  n = NORM_MONTHS,
+): MonthlyCashflow[] {
+  const current = today.slice(0, 7);
+  return wholeMonths(rows, coverageStart)
+    .filter((r) => r.label < current && !(r.income.isZero() && r.expense.isZero()))
+    .slice(-n);
+}
+
+/**
+ * The monthly income / spending norm: the average of the norm months (`normMonths`). `coverageStart`
+ * drops the months an import only partly covers; a caller that passes rows already cut to whole months
+ * (`wholeMonths`) leaves it null. Null when no norm month has data.
  */
 export function closedMonthNorm(
   rows: readonly MonthlyCashflow[] | null | undefined,
   today: IsoDate,
   n = NORM_MONTHS,
+  coverageStart: IsoDate | null = null,
 ): MonthNorm | null {
-  const current = today.slice(0, 7);
-  const closed = (rows ?? [])
-    .filter((r) => r.label < current && !(r.income.isZero() && r.expense.isZero()))
-    .slice(-n);
+  const closed = normMonths(rows ?? [], coverageStart, today, n);
   if (closed.length === 0) return null;
   const count = D(String(closed.length));
   let income = ZERO;

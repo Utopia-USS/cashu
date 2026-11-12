@@ -52,6 +52,8 @@ const table: TableDef = {
     { columns: ["counterparty_iban"] },
     { columns: ["category"] },
     { columns: ["transfer_group_id"], where: "transfer_group_id IS NOT NULL" },
+    // The uncategorized rows (the phone's triage and its count): a small slice of the table.
+    { columns: ["category_source", "booking_date"], where: "category_source = 'default'" },
   ],
 };
 

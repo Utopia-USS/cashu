@@ -1,5 +1,6 @@
 import type { Meta, Story } from "../charts/testing/csf.js";
-import { Seg, type SegProps } from "./Seg.js";
+import { Seg } from "./Seg.js";
+import type { SegProps } from "./Seg.types.js";
 
 const meta = {
   title: "Controls/Seg",
@@ -18,3 +19,7 @@ const meta = {
 export default meta;
 export const Default: Story<SegProps<string>> = {};
 export const Quiet: Story<SegProps<string>> = { args: { quiet: true } };
+export const Full: Story<SegProps<string>> = { args: { full: true } };
+export const Disabled: Story<SegProps<string>> = {
+  args: { disabled: true, title: "Read-only while syncing" },
+};

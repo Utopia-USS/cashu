@@ -1,5 +1,5 @@
 import type { Meta, Story } from "../charts/testing/csf.js";
-import { Pill, type PillProps } from "./Tag.js";
+import { Pill, type PillProps } from "./Pill.js";
 
 const meta = {
   title: "Surfaces/Pill",

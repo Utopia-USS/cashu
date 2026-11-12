@@ -81,6 +81,7 @@ export {
   detectRecurring,
   detectRecurringPayments,
   NOT_SUBSCRIPTION_CATEGORIES,
+  RECURRING_AMOUNT_TOLERANCE,
   type RecurringCandidate,
   type RecurringDates,
   type RecurringListOptions,

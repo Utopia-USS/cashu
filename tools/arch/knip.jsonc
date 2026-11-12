@@ -17,7 +17,11 @@
     },
     "packages/ui": {
       "entry": ["src/**/*.stories.tsx"],
-      "project": ["src/**/*.{ts,tsx}"]
+      "project": ["src/**/*.{ts,tsx}"],
+      // Knip does not resolve React Native platform suffixes, so a relative import that only has a
+      // `.native.tsx` file (the phone's display layer) reads as unresolved here. `tsc -p tsconfig.native.json`
+      // in `typecheck` resolves and checks every one of them; knip keeps the package-level checks.
+      "ignoreUnresolved": ["^\\.\\.?/.*\\.js$"]
     },
     "apps/*": {
       "project": ["src/**/*.{ts,tsx}"]

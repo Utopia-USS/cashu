@@ -1,0 +1,284 @@
+<!doctype html>
+<!--
+  cashU mobile companion - concept hub (v1, 2026-11-12).
+  The concept, the scope decisions and every screen of prototype.html embedded as a still.
+  Synthetic data only. Working material (journeys, inventory, review, screenshots) lives in
+  design/workspace/mobile/companion/.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cashU companion - concept</title>
+<style>
+:root {
+  color-scheme: dark;
+  --font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --bg: #0a0a0b; --card: #0e0e10; --top: #161619; --ring: rgba(255,255,255,.065); --ring2: rgba(255,255,255,.11);
+  --ink: #ededf0; --ink2: #a3a3ab; --ink3: #6e6e77; --ink4: #4a4a52;
+  --acc: #8ea4ff; --acc-bg: rgba(142,164,255,.13); --pos: #4cc38a; --pos-bg: rgba(76,195,138,.12);
+  --warn: #e5a54a; --warn-bg: rgba(229,165,74,.12); --neg: #ef6f6c; --neg-bg: rgba(239,111,108,.12);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/22px var(--font); -webkit-font-smoothing: antialiased; }
+a { color: var(--acc); text-decoration: none; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 56px 32px 120px; }
+header h1 { font: 700 44px/50px var(--font); letter-spacing: -.035em; margin: 0; }
+header .lede { font-size: 21px; line-height: 31px; color: var(--ink2); max-width: 820px; margin: 16px 0 0; letter-spacing: -.01em; }
+header .lede b { color: var(--ink); font-weight: 600; }
+.meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; align-items: center; font-size: 13px; color: var(--ink3); }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 12px; background: var(--ink); color: var(--bg); font-weight: 600; font-size: 14px; }
+.btn.sec { background: #17171a; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ring2); font-weight: 500; }
+h2 { font: 700 26px/32px var(--font); letter-spacing: -.025em; margin: 72px 0 6px; }
+h2 + .sub { color: var(--ink3); margin: 0 0 22px; max-width: 760px; }
+.n { color: var(--ink4); font-weight: 600; margin-right: 10px; }
+.tile { border-radius: 24px; padding: 20px 22px; background: linear-gradient(180deg, var(--top), var(--card) 58%); box-shadow: inset 0 0 0 1px var(--ring), inset 0 1px 0 rgba(255,255,255,.05), 0 14px 34px -18px rgba(0,0,0,.85); }
+.grid { display: grid; gap: 14px; }
+.g3 { grid-template-columns: repeat(3, 1fr); } .g2 { grid-template-columns: repeat(2, 1fr); } .g5 { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 900px) { .g3, .g5 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 620px) { .g3, .g2, .g5 { grid-template-columns: 1fr; } .wrap { padding: 32px 16px 80px; } header h1 { font-size: 34px; } }
+.tile h3 { font: 650 16px/22px var(--font); margin: 0; letter-spacing: -.01em; }
+.tile p { margin: 8px 0 0; color: var(--ink2); font-size: 14px; line-height: 21px; }
+.tile .k { font-size: 12.5px; color: var(--ink3); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 500; color: var(--ink2); background: rgba(127,127,127,.1); white-space: nowrap; }
+.tag.acc { color: var(--acc); background: var(--acc-bg); } .tag.pos { color: var(--pos); background: var(--pos-bg); } .tag.warn { color: var(--warn); background: var(--warn-bg); } .tag.neg { color: var(--neg); background: var(--neg-bg); }
+.rule .big { font: 700 34px/1 var(--font); color: var(--ink4); letter-spacing: -.03em; }
+.rule h3 { margin-top: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-weight: 500; color: var(--ink3); font-size: 12.5px; padding: 0 12px 10px 0; }
+td { padding: 11px 12px 11px 0; border-top: 1px solid var(--ring); vertical-align: top; color: var(--ink2); }
+td:first-child { color: var(--ink); font-weight: 550; white-space: nowrap; }
+td .q { color: var(--ink); }
+.scope .col h3 { display: flex; align-items: center; gap: 10px; }
+.scope ul { list-style: none; margin: 14px 0 0; padding: 0; }
+.scope li { padding: 10px 0; border-top: 1px solid var(--ring); font-size: 14px; line-height: 20px; }
+.scope li:first-child { border-top: 0; }
+.scope li b { font-weight: 600; color: var(--ink); display: block; }
+.scope li span { color: var(--ink3); font-size: 13px; }
+/* nav diagram */
+.navd { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-radius: 20px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--ring); margin-top: 6px; }
+.navd > div { padding: 18px; border-left: 1px solid var(--ring); }
+.navd > div:first-child { border-left: 0; }
+.navd h4 { margin: 0; font: 650 17px/22px var(--font); display: flex; align-items: center; gap: 8px; }
+.navd .q { color: var(--acc); font-size: 13.5px; margin-top: 6px; font-style: italic; }
+.navd ul { margin: 12px 0 0; padding: 0 0 0 16px; color: var(--ink2); font-size: 13.5px; line-height: 20px; }
+@media (max-width: 900px) { .navd { grid-template-columns: 1fr 1fr; } .navd > div:nth-child(3) { border-left: 0; } .navd > div:nth-child(n+3) { border-top: 1px solid var(--ring); } }
+.chrome { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+@media (max-width: 900px) { .chrome { grid-template-columns: 1fr; } }
+/* gallery */
+.group-t { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 40px 0 16px; }
+.group-t h3 { font: 650 18px/24px var(--font); margin: 0; letter-spacing: -.01em; }
+.group-t span { color: var(--ink3); font-size: 13.5px; }
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 26px 18px; }
+.shot .ph { width: 236px; height: 511px; border-radius: 34px; overflow: hidden; position: relative; box-shadow: 0 0 0 6px #1b1b1e, 0 0 0 7px #34343a, 0 24px 50px -20px rgba(0,0,0,.8); margin: 7px auto 0; background: #0a0a0b; }
+.shot iframe { width: 390px; height: 844px; border: 0; transform: scale(.6051); transform-origin: 0 0; pointer-events: none; }
+.shot a.ov { position: absolute; inset: 0; }
+.shot .cap { margin: 16px 4px 0; font-size: 13.5px; line-height: 19px; }
+.shot .cap b { display: block; font-weight: 600; color: var(--ink); margin-bottom: 3px; }
+.shot .cap .q { color: var(--acc); }
+.shot .cap .no { color: var(--ink3); display: block; margin-top: 5px; font-size: 12.5px; }
+.callout { margin-top: 14px; padding: 16px 18px; border-radius: 18px; background: var(--acc-bg); color: var(--ink2); font-size: 14px; line-height: 21px; }
+.callout b { color: var(--ink); }
+ol.qs { margin: 0; padding-left: 20px; color: var(--ink2); }
+ol.qs li { margin: 0 0 12px; padding-left: 4px; }
+ol.qs li b { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="designed-by" style="position:fixed;left:12px;bottom:12px;z-index:9999;pointer-events:none;font:600 10px/1 system-ui,-apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#8e8e94;background:rgba(22,22,25,.9);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:4px 10px;">designed by <span style="color:#8ea4ff;">jakob</span></div>
+<div class="wrap">
+
+<header>
+  <div class="meta" style="margin:0 0 14px"><span class="tag acc">concept v1.3</span><span>12 Nov 2026 · mobile companion · synthetic data</span></div>
+  <h1>cashU in your pocket</h1>
+  <p class="lede">The phone is a <b>calm mirror of what your Mac fetched</b>: glance at the month, find a payment, sort the small stuff, decide small things. Everything that builds or changes the setup - imports, bank logins, approvals, rules, strategy - <b>stays on the Mac</b>.</p>
+  <div class="meta"><a class="btn" href="prototype.html">Open the clickable prototype</a><a class="btn sec" href="prototype.html?as=partner">…as the household partner</a><span>keys: 1-4 tabs · H hide amounts · T light / dark · P owner / partner</span></div>
+</header>
+
+<!-- ============================================================== -->
+<h2><span class="n">1</span>Who pulls the phone out, and why</h2>
+<p class="sub">Not "the desktop, smaller". Three people in real moments, each with a question that has a 5-second answer.</p>
+<div class="grid g3">
+  <div class="tile"><div class="k"><span class="tag acc">owner</span></div><h3>Anna, who set it all up</h3><p>Opens the Mac 2-3 times a week for real work: review, approvals, imports. On the phone she wants reassurance and triage - is the month fine, did anything fire, clear the small stuff on the tram. She will not redo desktop work on a 6-inch screen.</p></div>
+  <div class="tile"><div class="k"><span class="tag">partner</span></div><h3>Piotr, in the household profile</h3><p>His phone is paired only to the shared <b style="color:var(--ink)">Home</b> profile (joint account, flat, mortgage) - never to Anna's own. Never opens the Mac. Doesn't know what a fetch leader or a categorization rule is. Wants: can we afford this, what did we pay last time, what goes out this week.</p></div>
+  <div class="tile"><div class="k"><span class="tag warn">context</span></div><h3>Anna, away from the desk</h3><p>Markets fell at 11:00 and she is in a corridor. Or someone at dinner grabs the phone to see the "net worth in bananas". Same owner, but the answer must take seconds and the screen must be safe to show.</p></div>
+</div>
+<div class="tile" style="margin-top:14px">
+<table>
+  <tr><th>Moment</th><th>The question</th><th>The answer on the phone</th><th>Time</th></tr>
+  <tr><td>Before a bigger buy</td><td class="q">"Can we afford this this month?"</td><td>Today: one number, <i>on track to keep</i> by the end of the month, and a pace bar against your usual month</td><td>5 s</td></tr>
+  <tr><td>Morning glance</td><td class="q">"Is everything normal?"</td><td>Today: "Needs you" - usually empty - and the next 7 days of charges</td><td>5 s</td></tr>
+  <tr><td>"How much was the insurance?"</td><td class="q">"What did we pay X last time?"</td><td>Activity search over all history, offline, with a year-on-year summary</td><td>15 s</td></tr>
+  <tr><td>Tram, queue</td><td class="q">"Let me clear the small stuff"</td><td>Sort payments: one card each, the suggestion is one tap</td><td>30 s</td></tr>
+  <tr><td>Installment tomorrow</td><td class="q">"Is there money on that account?"</td><td>Next 7 days: the bill, the account it comes from, "covered"</td><td>5 s</td></tr>
+  <tr><td>Paid cash at a market</td><td class="q">"Don't lose this"</td><td>+ on Activity: amount, category, done</td><td>10 s</td></tr>
+  <tr><td>Your alert fired</td><td class="q">"Do I need to do anything?"</td><td>The alert, your thesis, your own strategy line, and a 4-way decision note</td><td>30 s</td></tr>
+  <tr><td>Sunday on the couch</td><td class="q">"How did the week go?"</td><td>Investments opens with the weekly review as a big button on top - a deck of swipe cards made for reading on the phone</td><td>5 min</td></tr>
+  <tr><td>1st of the month</td><td class="q">"What can go to investing?"</td><td>Today turns into "November closed" with the plan from your strategy</td><td>1 min</td></tr>
+  <tr><td>Numbers look old</td><td class="q">"Why is this not updated?"</td><td>The cause in plain words and which device - never a sync button</td><td>5 s</td></tr>
+</table>
+<p style="font-size:13px;color:var(--ink3);margin:12px 0 0">Not served on purpose: "did my card payment just go through" and "move money" (the bank's app), "buy / sell" (the broker; cashU never places orders).</p>
+</div>
+
+<!-- ============================================================== -->
+<h2><span class="n">2</span>Five rules the whole app follows</h2>
+<p class="sub">Every screen and every "no" below comes from these.</p>
+<div class="grid g5">
+  <div class="tile rule"><div class="big">5 s</div><h3>One number per tab</h3><p>On track to keep. Portfolio value. Net worth. The first card answers the tab's question; everything else is below it. The same number sits in the home-screen widget.</p></div>
+  <div class="tile rule"><div class="big">06:40</div><h3>Say how fresh it is</h3><p>Bank data comes from the Mac once a day, and every tab names the time and the device. Prices the phone fetches live itself. Stale data gets a cause, never a "sync now" that would hammer the bank.</p></div>
+  <div class="tile rule"><div class="big">1</div><h3>Small, safe writes only</h3><p>Your own decision, one record, merges without anyone resolving a conflict: a category, a cash expense, a decision note, an acknowledgement, a monthly plan.</p></div>
+  <div class="tile rule"><div class="big">Mac</div><h3>The Mac is the workshop</h3><p>Imports, bank logins, approvals, rules, strategy and theses happen there. The phone keeps a short "waiting for you on the Mac" list instead.</p></div>
+  <div class="tile rule"><div class="big">🍌</div><h3>Calm and safe to show</h3><p>No feed, no streaks, digests instead of pings. Hide amounts turns money into bananas; notifications never carry amounts; the app switcher is blurred. One profile at a time, never added up.</p></div>
+</div>
+
+<!-- ============================================================== -->
+<h2><span class="n">3</span>What comes along, what stays home</h2>
+<p class="sub">Every desktop feature, sorted by the value it has in a pocket - not by how hard it is to port.</p>
+<div class="grid g3 scope">
+  <div class="tile col"><h3><span class="tag pos">on the phone</span>Full value</h3><ul>
+    <li><b>This month</b><span>on track to keep, pace, bills still due, where it went, month close, widget</span></li>
+    <li><b>Activity and search</b><span>all history on the phone, offline; the bank apps cap and split it</span></li>
+    <li><b>Categorize one payment</b><span>accept the suggestion, pick one, "always for this payee"</span></li>
+    <li><b>Cash expense</b><span>the one source of truth the phone owns</span></li>
+    <li><b>Alerts and decisions</b><span>see, acknowledge, note a decision; decisions append, no conflicts</span></li>
+    <li><b>Weekly review deck</b><span>already cards with keep / come back; the phone is its natural home</span></li>
+    <li><b>Plan the month's contribution</b><span>one tap on the closed month, from your strategy</span></li>
+    <li><b>Pairing this phone, switching profiles</b><span>scan, six digits, done</span></li>
+  </ul></div>
+  <div class="tile col"><h3><span class="tag acc">read only</span>Look, don't edit</h3><ul>
+    <li><b>Net worth</b><span>per currency, labelled conversion, bananas; deliberately not the first tab</span></li>
+    <li><b>Accounts, loans, property, car</b><span>balances, next installment, values - edited a few times a year</span></li>
+    <li><b>Portfolio and positions</b><span>value at live prices the phone fetches itself, allocation vs targets</span></li>
+    <li><b>Thesis and strategy</b><span>long texts; edited on two devices they would split into copies</span></li>
+    <li><b>Research notes</b><span>a good reader with sources, for the commute</span></li>
+    <li><b>Things waiting on the Mac</b><span>proposals to approve, a bank connection to renew - as a count, never a push</span></li>
+  </ul></div>
+  <div class="tile col"><h3><span class="tag">Mac only</span>Stays on the desk</h3><ul>
+    <li><b>Imports and connectors</b><span>run on the fetch leader by design; a file hand-over is a later idea</span></li>
+    <li><b>Bank login / Open Banking consent</b><span>SCA happens in the bank's browser on the Mac</span></li>
+    <li><b>Approving agent proposals</b><span>needs the diff and the agent's reasoning; no thumb-approvals</span></li>
+    <li><b>Rules, alerts, categories editing</b><span>change hundreds of rows; need backtests and the whole picture</span></li>
+    <li><b>Strategy, theses, revaluing assets, loan terms</b><span>rare, deliberate, often with the agent</span></li>
+    <li><b>Agent workspace, MCP, research runs</b><span>the agent lives with the host on the Mac</span></li>
+    <li><b>Profile creation, recovery words, other devices, settings</b><span>a vault is born on the Mac; security stays there</span></li>
+    <li><b>"Sync now"</b><span>the phone isn't the leader; banks throttle (429)</span></li>
+  </ul></div>
+</div>
+
+<!-- ============================================================== -->
+<h2><span class="n">4</span>Navigation</h2>
+<p class="sub">Four tabs, one per question. The household partner gets three: Investments exists only with the investments module - no empty tabs, no "turn this on" upsell.</p>
+<div class="navd">
+  <div><h4>Today</h4><div class="q">"Where does the month stand?"</div><ul><li>On track to keep + pace</li><li>Needs you (usually empty)</li><li>Next 7 days of charges</li><li>Where it went → Spending</li><li>1st of the month: "closed" state</li></ul></div>
+  <div><h4>Activity</h4><div class="q">"Find it, sort it."</div><ul><li>Search over all history</li><li>Filters: to categorize, cash, bank</li><li>Sort payments (cards)</li><li>Payment sheet</li><li>+ cash expense</li></ul></div>
+  <div><h4>Investments <span class="tag">module</span></h4><div class="q">"How hit am I, what did I promise myself?"</div><ul><li>Weekly review: the big button on top</li><li>Top tabs: <b style="color:var(--ink)">Portfolio</b> (value at live prices, allocation, positions), <b style="color:var(--ink)">Signals</b> (fired, close to your levels, rules, research, decisions), <b style="color:var(--ink)">Strategy</b> (read only + what watches it)</li></ul></div>
+  <div><h4>Net worth</h4><div class="q">"The slow numbers."</div><ul><li>Net worth per currency</li><li>Accounts with balances</li><li>Loans → mortgage</li><li>Property and car</li></ul></div>
+</div>
+<div class="chrome">
+  <div class="tile"><h3>Header on every tab</h3><p><b style="color:var(--ink)">Profile pill</b> (left) opens <i>Profiles and this phone</i>: switch profile, things waiting on the Mac, notifications, Face ID, hide amounts. <b style="color:var(--ink)">Eye</b> (right) hides amounts in one tap. Under the title: the freshness line.</p></div>
+  <div class="tile"><h3>Sheet, push or full screen</h3><p><b style="color:var(--ink)">Sheet</b> for a decision on one thing (a payment, an alert, cash). <b style="color:var(--ink)">Push</b> to read deeper (spending, position, loan, note). <b style="color:var(--ink)">Full screen</b> for flows with progress (sort payments, weekly review, pairing).</p></div>
+  <div class="tile"><h3>Considered and dropped</h3><p><b style="color:var(--ink)">A "Today" feed</b>: no stable home for anything, ranking becomes its own product, invites engagement design. <b style="color:var(--ink)">The desktop bento, stacked</b>: shows everything, puts net worth first - the wrong priority for a 5-second glance.</p></div>
+</div>
+
+<!-- ============================================================== -->
+<h2><span class="n">4b</span>Worth a look: only what is significant</h2>
+<p class="sub">One shared model for the phone's Today and the desktop Overview (<a href="../../desktop/overview/attention.html">desktop proposal</a>). A row earns its place by its weight at the owner's own scale, not by existing. At most 3 rows, one per subject; on a quiet day there is no tile at all.</p>
+<div class="tile">
+<table>
+  <tr><th>Tier</th><th>What</th><th>Gets a row when</th><th>Magnitude shown</th></tr>
+  <tr><td>1 · money at risk</td><td>A bill in the next 7 days its account cannot cover; a large sum without a category</td><td>balance &lt; bill; uncategorized this month &ge; 10% of spending so far</td><td>the shortfall; % of spending</td></tr>
+  <tr><td>2 · your positions</td><td>An action alert fired; research that weakens or breaks a thesis; a big move of a held position. Alert + news on the same instrument merge into one row</td><td>severity "action" in the strategy, or weight &ge; 3% of the portfolio</td><td>% of the portfolio</td></tr>
+  <tr><td>3 · data you rely on</td><td>Bank data older than 36 h, a bank permission ending</td><td>shown as the banner on top, never as a row</td><td>age, days left</td></tr>
+  <tr><td>4 · unusual charges</td><td>A payee charging more than usual, a new recurring payee</td><td>the yearly effect &ge; 1% of a usual month</td><td>+PLN a year / this bill</td></tr>
+  <tr><td>never a row</td><td>A few small payments without a category, review due, suggestions waiting on the Mac</td><td>one quiet line under "Where it went"; Investments; the profile sheet</td><td>count + sum</td></tr>
+</table></div>
+
+<!-- ============================================================== -->
+<h2><span class="n">5</span>Screens</h2>
+<p class="sub">Every phone below is the live prototype. Click one to open it there.</p>
+<div id="gallery"></div>
+
+<!-- ============================================================== -->
+<h2><span class="n">6</span>Notifications</h2>
+<p class="sub">A push carries no data - at most a content-free wake-up; the phone writes the text from its own copy. Notifications only count things: never amounts, payees or names, on the lock screen or anywhere else.</p>
+<div class="tile">
+<table>
+  <tr><th>When</th><th>What</th><th>How often</th></tr>
+  <tr><td>When the phone next syncs</td><td>An alert you marked "tell my phone" (off by default, per alert). A device joined or left the profile (always). Until a push service exists, this is "at the next background sync", not minutes.</td><td>alerts grouped, at most 3 a day</td></tr>
+  <tr><td>Once, then quiet</td><td>Bank data older than 36 h ("Anna's MacBook has not fetched since Tuesday"). A bank connection ends in 7 days.</td><td>again only when it gets worse</td></tr>
+  <tr><td>Evening digest</td><td>Bills due tomorrow, payments to categorize.</td><td>off by default; 19:00, skipped when empty</td></tr>
+  <tr><td>Weekly</td><td>The week in one line, next week's charges, review due, a count of things waiting on the Mac.</td><td>Sunday</td></tr>
+  <tr><td>Monthly</td><td>Month closed: what you kept and what the plan says.</td><td>1st</td></tr>
+  <tr><td>Never</td><td>Single payments, daily portfolio or net-worth moves, market news, agent proposals, streaks, anything mixing two profiles.</td><td>-</td></tr>
+</table>
+<p style="font-size:13px;color:var(--ink3);margin:12px 0 0">The partner gets the evening and weekly digests only. Stale data reaches him as a calm line in the app, never as a push - he can't fix it; the owner can.</p>
+</div>
+
+<!-- ============================================================== -->
+<h2><span class="n">7</span>Decisions for you</h2>
+<p class="sub">Where the concept needs the owner's call before it turns into code.</p>
+<div class="tile"><ol class="qs">
+  <li><b>Weekly review and alert decisions on the phone.</b> The concept puts them here: decisions and review closures only append, and the deck is already swipe cards. Nothing is preselected and Save stays disabled until you choose; a review with flagged cards stays open. Approving agent <i>proposals</i> stays on the Mac. OK?</li>
+  <li><b>"Always for this payee" from the phone.</b> It creates your own categorization rule (older payments are updated on the Mac). Acceptable as a phone action, or should rules wait for the Mac?</li>
+  <li><b>Statement hand-over.</b> Share a bank CSV from mail to cashU on the phone, and the Mac imports it at the next fetch. Build it in v1, or is "import on the Mac" enough?</li>
+  <li><b>The household partner.</b> The concept pairs Piotr's phone only to the shared Home profile, with no agent or setup vocabulary. Which profile owns the flat and the mortgage is a modelling choice: here Home does, Anna's profile holds her car and investments. Right split?</li>
+  <li><b>"On track to keep" as the headline.</b> It projects the month from your usual spending (income - spent - bills still due - the usual rest). Honest for "can we afford this", but it is a projection, not a balance. Keep it as the number on Today and in the widget?</li>
+</ol></div>
+<div class="callout" style="background:rgba(76,195,138,.1)"><b>Decided 12 Nov:</b> the phone fetches public prices over the internet itself (device-local cache, never synced; the price provider sees the ticker list, as with the Mac). Alerts and rules still run once a day on the Mac. Investments gets top tabs Portfolio / Signals / Strategy, and the weekly review is the big button on top.</div>
+<div class="callout"><b>What exists today in apps/mobile:</b> Money (net worth + history), Cashflow and Spending on the demo vault, no edits or pairing. They map to <b>Net worth</b> and <b>Spending</b> here; the new work is the Today screen, Activity with local writes (category, cash), pairing, the alert / review flows and local notifications.</div>
+
+</div>
+<script>
+const G = [
+  ['The daily glance', 'Today answers "where does the month stand" before you scroll.', [
+    ['today', 'Today', '"Can we afford this? Is everything normal?"', 'On track to keep = income - spent - bills still due - the usual rest of the month. Worth a look shows only significant things; 4 small uncategorized payments are one quiet line.'],
+    ['bigsum', 'A large sum uncategorized', 'When it does matter.', 'PLN 2,496 = 31% of spending: tier 1, first row.'],
+    ['today&as=partner', 'Piotr, Home profile', 'Same question, three tabs, the joint account.', 'No alerts, no review, no agent words.'],
+    ['widget', 'Home-screen widget', 'The 5-second answer without opening the app.', 'Follows Hide amounts.'],
+    ['stale', 'Data 3 days old', '"Why is this old?"', 'No sync button: the cause and the device; every Mac-made time says Monday.'],
+    ['today&incognito=1', 'Hidden amounts', 'Safe to show at dinner.', 'Only money changes: bananas. Names, dates and % stay.'],
+    ['today&theme=light', 'Light', 'Follows the system.', ''],
+  ]],
+  ['Find and sort', 'The phone holds all history; search is offline and instant.', [
+    ['activity', 'Activity', '"What happened lately?"', 'No editing of rules or categories as such.'],
+    ['activity&as=partner', 'Activity, Home', 'The joint account only.', 'No cash wallet: it belongs to Anna.'],
+    ['search', 'Search', '"How much did we pay Warta last time?"', 'Answer first (last amount, change vs last year), list second.'],
+    ['triage', 'Categorize', '"Let me clear the small stuff."', 'One card, one tap; all categories one tap away; skip is fine.'],
+    ['tx', 'Payment sheet', '"What is this, and what category?"', 'No delete, no split, no editing the amount.'],
+    ['cash', 'Cash expense', '"Don\'t lose this."', 'Amount, category, done.'],
+  ]],
+  ['The month', 'Spending in depth, and the 1st of the month.', [
+    ['spending', 'Spending', '"Where did it go - and what is unusual?"', 'One currency at a time; other currencies named, never summed.'],
+    ['close', 'Month closed', '"What can go to investing?"', 'A plan is a note to yourself; cashU never moves money.'],
+  ]],
+  ['Investments', 'Only with the investments module. One tab, three top tabs.', [
+    ['portfolio', 'Investments: Portfolio', '"How hit am I?" - and the review, first thing.', 'Live prices from the phone. No trading, no daily P/L pushes.'],
+    ['signals', 'Investments: Signals', '"What changed since my last review?"', 'Alerts and rules are set up on the Mac.'],
+    ['alert', 'Alert and decision', '"Do I need to do anything?"', 'Your thesis and your own strategy line - never advice. Nothing preselected.'],
+    ['position', 'Position', '"Why do I hold it?"', 'Thesis is read only here: long texts are edited on the Mac.'],
+    ['review', 'Weekly review', '"How did the week go?"', 'Keep or come back; flagged cards wait on the Mac with full notes.'],
+    ['review&step=4', 'Review: a decision', 'Decide inline.', 'A decision never writes a trade.'],
+    ['note', 'Research note', 'Reading on the commute.', 'Running research stays with the agent on the Mac.'],
+    ['strategy', 'Investments: Strategy', '"What did I promise myself?"', 'Read only; changes come as proposals approved on the Mac.'],
+  ]],
+  ['Net worth', 'The slow numbers, one tab away - not the front page.', [
+    ['networth', 'Net worth, Anna', '"Where do I stand overall?"', 'Converted total labelled with the NBP table date, each currency beside it.'],
+    ['networth&as=partner', 'Net worth, Home', 'Flat, mortgage, joint savings.', 'Never added to Anna\'s profile.'],
+    ['loan', 'Mortgage (Home)', '"How much is left, when is the next one?"', 'Loan terms are edited on the Mac.'],
+  ]],
+  ['Trust and setup', 'A vault is born on the Mac; the phone joins it.', [
+    ['pair', 'First run', '"What is this app?"', 'No profile creation on the phone.'],
+    ['pair&step=2', 'Pairing', 'Six digits, typed on the Mac.', ''],
+    ['pair&step=3', 'First sync', 'Usable before it finishes.', ''],
+    ['profile', 'Profiles and this phone', 'Switch, see what waits on the Mac.', 'Revoking other devices and moving the fetching device stay on the Mac.'],
+    ['notifs', 'Notifications', 'Calm by default.', 'The "never sent" list is part of the screen.'],
+    ['lock', 'Lock screen', 'What a notification looks like.', 'Counts only: no amounts, no payees, ever.'],
+  ]],
+];
+document.getElementById('gallery').innerHTML = G.map(([t, s, items]) => `
+  <div class="group-t"><h3>${t}</h3><span>${s}</span></div>
+  <div class="shots">${items.map(([q, name, ask, no]) => `<div class="shot"><div class="ph"><iframe loading="lazy" src="prototype.html?screen=${q}&bare&still&v=4" title="${name}"></iframe><a class="ov" href="prototype.html?screen=${q}" aria-label="Open ${name}"></a></div>
+    <div class="cap"><b>${name}</b><span class="q">${ask}</span>${no ? `<span class="no">${no}</span>` : ''}</div></div>`).join('')}</div>`).join('');
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import { catalog } from "@cashu/i18n";
 
 export const S = catalog({
   currency: { pl: "Waluta", en: "Currency" },
+  account: { pl: "Konto", en: "Account" },
   noCurrencies: { pl: "Brak walut", en: "No currencies" },
   period: { pl: "Okres", en: "Period" },
   all: { pl: "Cała historia", en: "All history" },

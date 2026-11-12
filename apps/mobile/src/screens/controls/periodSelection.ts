@@ -1,9 +1,6 @@
-import type { CashflowViewProps, PeriodChoice } from "../money-contracts";
+import type { PeriodChoice, PeriodSelection } from "../money-contracts";
 
-export type PeriodPickerProps = Pick<
-  CashflowViewProps,
-  "period" | "periodBounds" | "onPeriodChange"
-> & { readonly testID?: string };
+export type PeriodPickerProps = PeriodSelection & { readonly testID?: string };
 type Bounds = PeriodPickerProps["periodBounds"];
 type Kind = PeriodChoice["kind"];
 

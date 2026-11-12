@@ -1,6 +1,14 @@
 import { D } from "@cashu/domain";
-import { describe, expect, it } from "vitest";
-import { formatBananaValue, formatCalendarDate, formatDecimalValue } from "./valueFormat.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  fillNumberTemplate,
+  formatBananaValue,
+  formatCalendarDate,
+  formatCalendarDay,
+  formatClockTime,
+  formatDecimalValue,
+  setNumberPartsForTests,
+} from "./valueFormat.js";
 
 describe("exact value formatting", () => {
   it.each(["pl-PL", "en-US", "en-GB", "ar-EG", "en-IN", "en-US-u-nu-arab", "en-US-u-nu-fullwide"])(
@@ -62,6 +70,10 @@ describe("calendar dates", () => {
   it("rejects impossible dates instead of normalizing them into the next month", () => {
     expect(() => formatCalendarDate("2026-02-29", "en-US")).toThrow();
   });
+  it("splits a list date into the day and the short weekday of its ISO day", () => {
+    expect(formatCalendarDay("2026-11-12", "en-US")).toEqual({ day: "12", weekday: "Thu" });
+    expect(formatCalendarDay("2026-11-12", "pl-PL")).toEqual({ day: "12", weekday: "czw." });
+  });
 });
 
 describe("banana values", () => {
@@ -75,5 +87,70 @@ describe("banana values", () => {
 
   it("drops the sign of a rounded zero", () => {
     expect(formatBananaValue(-0.001, "en-US", { signed: true })).toEqual({ text: "🍌 0", sign: 0 });
+  });
+});
+
+describe("formatClockTime", () => {
+  const at = new Date(Date.UTC(2026, 10, 9, 7, 30));
+  it("formats the time, optionally after the short weekday", () => {
+    expect(formatClockTime(at, "pl-PL", { timeZone: "UTC" })).toBe("07:30");
+    expect(formatClockTime(at, "pl-PL", { weekday: true, timeZone: "UTC" })).toBe("pon. 07:30");
+    expect(formatClockTime(at, "en-GB", { timeZone: "UTC" })).toBe("07:30");
+    expect(formatClockTime(at, "en-US", { weekday: true, timeZone: "UTC" })).toBe("Mon 07:30 AM");
+  });
+});
+
+describe("number formatting without Intl.NumberFormat.formatToParts (Hermes on iOS)", () => {
+  beforeEach(() => setNumberPartsForTests(false));
+  afterEach(() => setNumberPartsForTests(null));
+
+  it.each(["pl-PL", "en-US", "en-GB", "de-DE", "ar-EG", "en-IN"])(
+    "matches Intl for currency, percent and decimal values in %s",
+    (locale) => {
+      for (const currency of ["PLN", "USD", "EUR", "JPY"]) {
+        const expected = new Intl.NumberFormat(locale, { style: "currency", currency });
+        for (const value of [0, 1, -1, 0.125, -0.125, 1000, 1234, 12345.5, 1234567.125]) {
+          expect(formatDecimalValue(D(String(value)), locale, { currency }).text).toBe(
+            expected.format(value),
+          );
+        }
+      }
+      const percent = new Intl.NumberFormat(locale, {
+        style: "percent",
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
+      expect(formatDecimalValue(D("0.1234"), locale, { percent: true }).text).toBe(
+        percent.format(0.1234),
+      );
+      const plain = new Intl.NumberFormat(locale, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      expect(formatDecimalValue(D("-9876543.21"), locale).text).toBe(plain.format(-9876543.21));
+      const signed = new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: "PLN",
+        signDisplay: "exceptZero",
+      });
+      expect(formatDecimalValue(D("42"), locale, { currency: "PLN", signed: true }).text).toBe(
+        signed.format(42),
+      );
+    },
+  );
+
+  it("groups a very long integer by hand", () => {
+    expect(formatDecimalValue(D("12345678901234567890"), "en-US", { currency: "USD" }).text).toBe(
+      new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+        BigInt("12345678901234567890"),
+      ),
+    );
+  });
+
+  it("fills a one-digit template by position", () => {
+    expect(fillNumberTemplate("-PLN 1.00", "1,234", "56", 2)).toBe("-PLN 1,234.56");
+    expect(fillNumberTemplate("1,00 z\u0142", "12 345", "05", 2)).toBe("12 345,05 z\u0142");
+    expect(fillNumberTemplate("0.0%", "12", "3", 1)).toBe("12.3%");
+    expect(fillNumberTemplate("PLN 1", "999", "", 0)).toBe("PLN 999");
   });
 });

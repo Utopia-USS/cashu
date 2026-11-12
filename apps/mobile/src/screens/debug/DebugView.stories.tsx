@@ -3,16 +3,9 @@
 import { DebugView, type DebugViewProps } from "./DebugView";
 
 const base: DebugViewProps = {
-  vault: "de000000000000000000000000000041",
+  vault: "ca000000000000000000000000000a11",
   openMs: "12",
-  load: {
-    firstLaunch: true,
-    events: 2648,
-    applyMs: "1450",
-    rebuildMs: "980",
-    rebuildMatches: true,
-    viewHash: "9855108c69c7dca78612ef4b784dc3f884a868d138790f7df9569d92529c5d9d",
-  },
+  load: { firstLaunch: true, events: 1312, applyMs: "730", rebuild: null },
   tables: [
     { table: "accounts", rows: 4 },
     { table: "transactions", rows: 2340 },
@@ -52,7 +45,16 @@ export const Reopened = { args: { ...base, load: null } };
 export const Failures = {
   args: {
     ...base,
-    load: { ...(base.load as NonNullable<DebugViewProps["load"]>), rebuildMatches: false },
+    load: {
+      firstLaunch: false,
+      events: 1312,
+      applyMs: null,
+      rebuild: {
+        ms: "980",
+        matches: false,
+        viewHash: "9855108c69c7dca78612ef4b784dc3f884a868d138790f7df9569d92529c5d9d",
+      },
+    },
     needsUpgrade: true,
   },
 };

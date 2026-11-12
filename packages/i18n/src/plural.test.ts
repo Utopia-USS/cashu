@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enCount, enForm, plCount, plForm } from "./plural.js";
+import { enCount, enForm, plCount, plForm, setPluralRulesForTests } from "./plural.js";
 
 /** The last-digit rule the app used before Intl.PluralRules (the reference for whole numbers). */
 function digitRule(n: number): "one" | "few" | "many" {
@@ -35,5 +35,29 @@ describe("plurals through Intl.PluralRules", () => {
     expect(plCount(5, "reguła", "reguły", "reguł")).toBe("5 reguł");
     expect(plCount(22, "reguła", "reguły", "reguł")).toBe("22 reguły");
     expect(enCount(1, "rule", "rules")).toBe("1 rule");
+  });
+});
+
+describe("plurals without Intl.PluralRules (Hermes on iOS)", () => {
+  it("agrees with Intl.PluralRules for every whole number and for fractions", () => {
+    const pl = new Intl.PluralRules("pl");
+    const en = new Intl.PluralRules("en");
+    try {
+      setPluralRulesForTests(false);
+      for (let n = 0; n <= 300; n += 1) {
+        const expected = pl.select(n);
+        expect(plForm(n, "one", "few", "many")).toBe(
+          expected === "one" ? "one" : expected === "few" ? "few" : "many",
+        );
+        expect(enForm(n, "one", "other")).toBe(en.select(n));
+        expect(enForm(-n, "one", "other")).toBe(en.select(-n));
+      }
+      expect(plForm(2.5, "one", "few", "many")).toBe("few");
+      expect(enForm(1.5, "one", "other")).toBe("other");
+      expect(plCount(22, "reguła", "reguły", "reguł")).toBe("22 reguły");
+      expect(enCount(1, "rule", "rules")).toBe("1 rule");
+    } finally {
+      setPluralRulesForTests(null);
+    }
   });
 });

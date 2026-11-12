@@ -15,12 +15,13 @@ import {
   vaultSalt,
 } from "@cashu/store";
 import { DeviceStore, setCurrentVault } from "@cashu/store/device";
+import { SqlPriceCache } from "@cashu/store/investments/local";
 import { createSyncClient, type VaultHandle } from "@cashu/store-react/local";
 import Database from "better-sqlite3";
 import { createMoneyQueries, type MoneyQueryContext } from "../../services/moneyQueries";
 import type { Services } from "../../services/services";
 
-const MONEY_VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa261";
+export const MONEY_VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa261";
 export const MONEY_VAULT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbb262";
 const DEVICE = "ccccccccccccccccccccccccccccc263";
 export const MONEY_OWN_A = "PL10114000000000000000001234";
@@ -87,12 +88,27 @@ export function moneyStore(context: MoneyQueryContext = { prices: null }) {
     },
     { lingerMs: 0 },
   );
+  const stores = new Map([
+    [MONEY_VAULT_A, a.store],
+    [MONEY_VAULT_B, b.store],
+  ]);
   const services: Services = {
     client,
     moneyQueries: createMoneyQueries(context),
     store: a.store,
+    storeOf: (vault) => {
+      const store = stores.get(vault);
+      if (store === undefined) throw new Error(`no synthetic store for ${vault}`);
+      return store;
+    },
+    profiles: [
+      { vault: MONEY_VAULT_A, slug: "synthetic-money", name: "Synthetic A", modules: ["budget"] },
+      { vault: MONEY_VAULT_B, slug: "synthetic-money", name: "Synthetic B", modules: ["budget"] },
+    ],
+    // Unused by money screens (their queries take `context`); an empty in-memory cache.
+    prices: new SqlPriceCache(betterSqlite3Driver(new Database(":memory:"))),
     openMs: 0,
-    firstLoad: null,
+    firstLoad: [],
     // Unused by money screens. These tests never claim a crypto self-test ran.
     cryptoSelfTest: Promise.resolve({ checks: [], ok: false, nativeAead: "not_run" }),
   };

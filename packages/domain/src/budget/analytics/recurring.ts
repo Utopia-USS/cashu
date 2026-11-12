@@ -5,17 +5,21 @@
  */
 
 import { type CoreRegistry, notSubscriptionCategories } from "../../core/index.js";
-import { addDays, type IsoDate } from "../../dates.js";
+import { addDays, daysBetween, type IsoDate } from "../../dates.js";
+import { type Decimal, ONE, ZERO } from "../../decimal.js";
 import {
   detectRecurringPayments,
   type EngineContext,
   NOT_SUBSCRIPTION_CATEGORIES,
+  RECURRING_AMOUNT_TOLERANCE,
   type RecurringCandidate,
   type RecurringListOptions,
   type RecurringRow,
+  txnMerchantKey,
 } from "../categorize/index.js";
-import type { BudgetBook } from "./book.js";
+import type { BudgetBook, BudgetTxn } from "./book.js";
 import { referenceDate } from "./cashflow.js";
+import { nextChargeDate } from "./upcoming.js";
 
 /** `analytics.not_subscription_categories`: budget's own plus every module's (loans: `loans`). */
 export function subscriptionExclusions(registry: CoreRegistry): Set<string> {
@@ -68,4 +72,90 @@ export function activeRecurring(
   if (ref === null) return [...candidates];
   const cutoff = addDays(ref, -withinDays);
   return candidates.filter((c) => c.lastDate >= cutoff);
+}
+
+/** How many days off its expected date a charge at a new price may land and still continue a series. */
+export const SERIES_DATE_SLACK_DAYS = 3;
+
+/** One recurring candidate with its own charges. */
+export interface RecurringSeries {
+  readonly candidate: RecurringCandidate;
+  /** `<merchant key>:<currency>:<typical amount>`: one per candidate, opaque to callers. */
+  readonly key: string;
+  /** The series' charges, oldest first (book order on equal dates). */
+  readonly rows: readonly BudgetTxn[];
+}
+
+const groupKey = (payee: string, currency: string): string => JSON.stringify([payee, currency]);
+
+/** True when `amount` (positive) is within `tolerance` of `typical` either way, as one amount cluster. */
+function inBand(amount: Decimal, typical: Decimal, tolerance: Decimal): boolean {
+  const factor = ONE.add(tolerance);
+  return amount.mul(factor).gte(typical) && amount.lte(typical.mul(factor));
+}
+
+/**
+ * Each candidate's own charges among the book's outflows (non-internal, same merchant key and
+ * currency). A charge belongs to the candidate whose typical amount is nearest within the detector's
+ * amount tolerance (`RECURRING_AMOUNT_TOLERANCE`, one amount cluster). A charge outside every band
+ * still continues a series when it lands on the series' expected next date (`nextChargeDate`, within
+ * `SERIES_DATE_SLACK_DAYS`) after its last charge: a price rise. Anything else (a one-off purchase at a
+ * merchant that also bills a subscription) belongs to no series. Candidates keep their order.
+ */
+export function recurringSeries(
+  candidates: readonly RecurringCandidate[],
+  book: BudgetBook,
+  tolerance: Decimal = RECURRING_AMOUNT_TOLERANCE,
+): RecurringSeries[] {
+  const wanted = new Set(candidates.map((c) => groupKey(c.counterparty, c.currency)));
+  const byPayee = new Map<string, BudgetTxn[]>();
+  for (const t of book.transactions) {
+    if (!t.amount.lt(ZERO) || t.isInternalTransfer) continue;
+    const key = groupKey(txnMerchantKey(t), t.currency);
+    if (!wanted.has(key)) continue;
+    const seen = byPayee.get(key);
+    if (seen === undefined) byPayee.set(key, [t]);
+    else seen.push(t);
+  }
+  const members = new Map<RecurringCandidate, BudgetTxn[]>(candidates.map((c) => [c, []]));
+  for (const [key, rows] of byPayee) {
+    const own = candidates.filter((c) => groupKey(c.counterparty, c.currency) === key);
+    const byDate = [...rows].sort((a, b) =>
+      a.bookingDate < b.bookingDate ? -1 : a.bookingDate > b.bookingDate ? 1 : 0,
+    );
+    const loose: BudgetTxn[] = [];
+    for (const t of byDate) {
+      const amount = t.amount.copyAbs();
+      let best: RecurringCandidate | null = null;
+      for (const c of own) {
+        if (!inBand(amount, c.typicalAmount, tolerance)) continue;
+        if (
+          best === null ||
+          amount.sub(c.typicalAmount).copyAbs().lt(amount.sub(best.typicalAmount).copyAbs())
+        )
+          best = c;
+      }
+      if (best === null) loose.push(t);
+      else members.get(best)?.push(t);
+    }
+    for (const c of own) {
+      const series = members.get(c) as BudgetTxn[];
+      let last = series.at(-1)?.bookingDate ?? c.lastDate;
+      for (let i = 0; i < loose.length; i++) {
+        const t = loose[i] as BudgetTxn;
+        if (t.bookingDate <= last) continue;
+        const off = Math.abs(daysBetween(nextChargeDate(last, c.medianGapDays), t.bookingDate));
+        if (off > SERIES_DATE_SLACK_DAYS) continue;
+        series.push(t);
+        last = t.bookingDate;
+        loose.splice(i, 1);
+        i--;
+      }
+    }
+  }
+  return candidates.map((c) => ({
+    candidate: c,
+    key: `${c.counterparty}:${c.currency}:${c.typicalAmount.toString()}`,
+    rows: members.get(c) as BudgetTxn[],
+  }));
 }

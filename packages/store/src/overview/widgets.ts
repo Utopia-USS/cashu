@@ -1,7 +1,8 @@
 // Read-only S55b Overview facts from one vault. Display and navigation stay in the screen layer.
-import { assets, budget, core, D, type Decimal, type IsoDate } from "@cashu/domain";
-import { budgetBook } from "../budget/read-models.js";
-import { defineQuery, type Read } from "../query.js";
+import { assets, core, D, type Decimal, type IsoDate } from "@cashu/domain";
+import type { Read } from "../query.js";
+
+export { type CashWalletView, cashWallet, overviewCashWallet } from "./cash.js";
 
 export interface OverviewAccount {
   readonly gid: string;
@@ -40,69 +41,6 @@ export function overviewAccounts(read: Read, book: core.NetWorthBook): OverviewA
     };
   });
 }
-
-interface CashWalletRow {
-  readonly gid: string;
-  readonly date: IsoDate;
-  readonly amount: Decimal;
-  readonly title: string | null;
-  readonly category: string | null;
-  readonly kind: "withdrawal" | "expense";
-}
-
-export interface CashWalletView {
-  readonly exists: boolean;
-  readonly currency: string;
-  readonly balance: Decimal;
-  readonly withdrawals: Decimal;
-  readonly expenses: Decimal;
-  readonly transactions: readonly CashWalletRow[];
-}
-
-/** The cash drawer's own native rows; actions address their opaque gids. */
-export function cashWallet(read: Read, currency?: string | null): CashWalletView {
-  const book = budgetBook(read);
-  const selected = currency || book.baseCurrency;
-  const account = book.accounts.find(
-    (row) =>
-      row.type === budget.CASH_ACCOUNT_TYPE && row.currency === selected && row.removedAt === null,
-  );
-  const rows = book.transactions
-    .filter((row) => row.account === account?.id)
-    .map(
-      (row): CashWalletRow => ({
-        gid: row.key,
-        date: row.bookingDate,
-        amount: row.amount,
-        title: row.reference || row.description || row.counterpartyName,
-        category: row.category,
-        kind: row.amount.gt(D("0")) ? "withdrawal" : "expense",
-      }),
-    )
-    .toReversed()
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  let balance = D("0");
-  let withdrawals = D("0");
-  let expenses = D("0");
-  for (const row of rows) {
-    balance = balance.add(row.amount);
-    if (row.amount.gt(D("0"))) withdrawals = withdrawals.add(row.amount);
-    else if (row.amount.lt(D("0"))) expenses = expenses.sub(row.amount);
-  }
-  return {
-    exists: account !== undefined,
-    currency: selected,
-    balance,
-    withdrawals,
-    expenses,
-    transactions: rows,
-  };
-}
-
-export const overviewCashWallet = defineQuery({
-  id: "core.overviewCashWallet",
-  run: (read, args: { readonly currency?: string | null }) => cashWallet(read, args.currency),
-});
 
 export interface OverviewAsset extends OverviewAccount {
   readonly kind: "manual" | "vehicle";

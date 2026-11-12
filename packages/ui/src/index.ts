@@ -214,6 +214,7 @@ export { ModuleStart, type ModuleStartProps } from "./surfaces/ModuleStart.js";
 export { Notice, type NoticeProps } from "./surfaces/Notice.js";
 export { Page, type PageProps } from "./surfaces/Page.js";
 export { PageHead, type PageHeadProps } from "./surfaces/PageHead.js";
+export { Pill, type PillProps } from "./surfaces/Pill.js";
 export { SectionCard, type SectionCardProps } from "./surfaces/SectionCard.js";
 export {
   StatementFigure,
@@ -222,7 +223,7 @@ export {
   statementParts,
 } from "./surfaces/StatementFigure.js";
 export { SumStrip, type SumStripItem } from "./surfaces/SumStrip.js";
-export { Pill, type PillProps, Tag, type TagProps, type TagTone } from "./surfaces/Tag.js";
+export { Tag, type TagProps, type TagTone } from "./surfaces/Tag.js";
 export {
   tintInk,
   Widget,

@@ -1,15 +1,16 @@
-// Screen hook of the debug screen: reads the store live, rebuilds the demo vault from its log on
-// request, and logs the first frame with data once per launch (the S41 cold start measurement).
+// Screen hook of the debug screen: reads the store live, rebuilds the demo vault's view from its log
+// on request (and checks the rebuilt view equals the one it replaced), and logs the first frame with
+// data once per launch (the S41 cold start measurement).
 
 import { D } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
-import type { Store } from "@cashu/store/runtime";
+import { type Store, viewHash } from "@cashu/store/runtime";
 import { useQuery } from "@cashu/store-react";
 import { type ChartTip, type DonutSegment, useUiEnv } from "@cashu/ui/native";
 import { useRouter } from "expo-router";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import { bootStartedAt } from "../../boot";
-import { type DemoLoad, loadDemo } from "../../fixture/loadDemo";
+import type { CompanionBuild } from "../../fixture/companionDemo";
 import { appendBenchLog } from "../../platform/benchLog";
 import { useServices } from "../../services/ServicesProvider";
 import { S } from "./Debug.strings";
@@ -90,14 +91,22 @@ function spending(rows: readonly { name: string; outflow: number }[]): DonutSegm
   return out;
 }
 
-function summary(load: DemoLoad, firstLaunch: boolean): DebugLoad {
+function built(build: CompanionBuild): DebugLoad {
+  return { firstLaunch: true, events: build.events, applyMs: ms(build.ms), rebuild: null };
+}
+
+/** Rebuild the view from the held log and compare it with the view it replaced. */
+function rebuildFromLog(store: Store): DebugLoad {
+  const before = viewHash(store).hash;
+  const t0 = performance.now();
+  store.rebuild({ redecode: true, reindex: true });
+  const rebuildMs = performance.now() - t0;
+  const after = viewHash(store).hash;
   return {
-    firstLaunch,
-    events: load.events,
-    applyMs: ms(load.applyMs),
-    rebuildMs: ms(load.rebuildMs),
-    rebuildMatches: load.rebuildMatches,
-    viewHash: load.hashAfterRebuild,
+    firstLaunch: false,
+    events: store.read<{ n: number }>("SELECT COUNT(*) AS n FROM event_log")[0]?.n ?? 0,
+    applyMs: null,
+    rebuild: { ms: ms(rebuildMs), matches: before === after, viewHash: after },
   };
 }
 
@@ -111,9 +120,10 @@ export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
   const counts = useQuery(tableCounts, { tables: viewTables(store) });
   const balance = balanceChart(useQuery(firstAccountBalances), locale);
   const spendingByAccount = spending(useQuery(plnOutflowsByAccount));
-  const [rebuilt, setRebuilt] = useState<DemoLoad | null>(null);
+  const [rebuilt, setRebuilt] = useState<DebugLoad | null>(null);
   const [rebuilding, startRebuild] = useTransition();
-  const load = rebuilt ?? services.firstLoad;
+  const firstBuild = services.firstLoad.find((b) => b.vault === store.vault);
+  const load = rebuilt ?? (firstBuild === undefined ? null : built(firstBuild));
   useEffect(() => {
     if (firstDataLogged) return;
     firstDataLogged = true;
@@ -122,13 +132,13 @@ export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
       jsStartAt: bootStartedAt,
       firstDataAt: Date.now(),
       openMs: services.openMs,
-      firstLaunch: services.firstLoad !== null,
+      firstLaunch: services.firstLoad.length > 0,
     });
   }, [services]);
   return {
     vault: store.vault,
     openMs: ms(services.openMs),
-    load: load === null ? null : summary(load, rebuilt === null),
+    load,
     tables: counts.filter((c) => c.rows > 0),
     cursors: store.cursors().size,
     needsUpgrade: store.needsUpgrade(),
@@ -142,8 +152,7 @@ export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
     rebuilding,
     onRebuild: () =>
       startRebuild(() => {
-        store.reset();
-        setRebuilt(loadDemo(store, () => performance.now()));
+        setRebuilt(rebuildFromLog(store));
       }),
     onOpenBench: () => router.push("/bench"),
   };

@@ -1,10 +1,34 @@
-// Plurals through `Intl.PluralRules` (one cached instance per language; works on Hermes too): Polish has
-// one / few / many (+ other for fractions), English one / other.
+// Plurals through `Intl.PluralRules` (one cached instance per language) where the runtime has it.
+// Hermes on iOS ships no `Intl.PluralRules`, so the two languages' integer rules are also written out
+// by hand (CLDR: Polish one / few / many, English one / other); tests force that path.
 import type { Lang } from "./lang.js";
 
 const rules = new Map<Lang, Intl.PluralRules>();
 
+let intlPlurals: boolean | null = null;
+function hasIntlPlurals(): boolean {
+  if (intlPlurals === null) intlPlurals = typeof Intl.PluralRules === "function";
+  return intlPlurals;
+}
+/** Test hook: pretend `Intl.PluralRules` is missing (null restores detection). */
+export function setPluralRulesForTests(available: boolean | null): void {
+  intlPlurals = available;
+}
+
+/** CLDR integer categories for pl and en, used where `Intl.PluralRules` is missing. */
+function handCategory(l: Lang, n: number): Intl.LDMLPluralRule {
+  const i = Math.abs(n);
+  if (l === "en") return i === 1 && Number.isInteger(n) ? "one" : "other";
+  if (!Number.isInteger(n)) return "other";
+  if (i === 1) return "one";
+  const i10 = i % 10;
+  const i100 = i % 100;
+  if (i10 >= 2 && i10 <= 4 && (i100 < 12 || i100 > 14)) return "few";
+  return "many";
+}
+
 function category(l: Lang, n: number): Intl.LDMLPluralRule {
+  if (!hasIntlPlurals()) return handCategory(l, n);
   let r = rules.get(l);
   if (!r) {
     r = new Intl.PluralRules(l);

@@ -76,22 +76,112 @@ export function formatDecimalValue(
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
-  const grouped = integerFormat
-    .formatToParts(BigInt(integer))
-    .filter((p) => p.type === "integer" || p.type === "group")
-    .map((p) => p.value)
-    .join("");
+  const grouped = groupedInteger(integerFormat, integer);
   const format = numberFormat(locale, {
     ...base,
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
   // Only the sign of this tiny template matters; no amount is converted to a number.
-  const text = format
-    .formatToParts(sign === 0 && rounded.sign && !options.signed ? -0 : sign)
-    .map((p) => (p.type === "integer" ? grouped : p.type === "fraction" ? fraction : p.value))
-    .join("");
+  const template = sign === 0 && rounded.sign && !options.signed ? -0 : sign;
+  const text = hasNumberParts()
+    ? format
+        .formatToParts(template)
+        .map((p) => (p.type === "integer" ? grouped : p.type === "fraction" ? fraction : p.value))
+        .join("")
+    : fillNumberTemplate(
+        // A percent template needs the ratio of one percent to keep a single integer digit; Hermes
+        // also ignores `signDisplay: "exceptZero"`, so the plus sign is added by hand.
+        withPlus(
+          format.format(options.percent ? template / 100 : template),
+          options.signed && sign > 0,
+        ),
+        grouped,
+        fraction,
+        digits,
+      );
   return { text, sign };
+}
+
+// Hermes on iOS has no `Intl.NumberFormat.prototype.formatToParts` (DateTimeFormat has it), so the
+// phone builds the same strings from `format()` output: the grouped integer is the digit run of the
+// formatted integer (locale grouping rules included), and the template of a one-digit number is filled
+// by position. Tests force this path with `setNumberPartsForTests`.
+let numberParts: boolean | null = null;
+function hasNumberParts(): boolean {
+  if (numberParts === null) {
+    numberParts = typeof Intl.NumberFormat.prototype.formatToParts === "function";
+  }
+  return numberParts;
+}
+/** Test hook: pretend `formatToParts` is missing (null restores detection). */
+export function setNumberPartsForTests(available: boolean | null): void {
+  numberParts = available;
+}
+
+const SAFE_INTEGER_DIGITS = 15;
+
+/** The integer digits with the locale's group separators, from a currency or decimal format. */
+function groupedInteger(format: Intl.NumberFormat, integer: string): string {
+  if (hasNumberParts()) {
+    return format
+      .formatToParts(BigInt(integer))
+      .filter((p) => p.type === "integer" || p.type === "group")
+      .map((p) => p.value)
+      .join("");
+  }
+  if (integer.length > SAFE_INTEGER_DIGITS) {
+    // Hermes cannot format a BigInt: group by hand with the separator the locale puts after the
+    // first digit of a seven-digit sample (empty when the locale does not group).
+    const sample = digitRun(format.format(1234567));
+    const separator = sample.slice(1, sample.indexOf("234") < 0 ? 1 : sample.indexOf("234"));
+    return integer.replace(/\B(?=(\d{3})+(?!\d))/gu, separator);
+  }
+  return digitRun(format.format(Number(integer))) || integer;
+}
+
+/** Prefixes "+" when a signed positive template came back without one (Hermes). */
+function withPlus(template: string, wanted: boolean | undefined): string {
+  return wanted && !template.includes("+") ? `+${template}` : template;
+}
+
+/** The slice from the first to the last digit of a formatted number (integer digits and group marks). */
+function digitRun(formatted: string): string {
+  const first = formatted.search(/\p{Nd}/u);
+  const last = formatted.search(/\p{Nd}(?!.*\p{Nd})/su);
+  return first < 0 ? "" : formatted.slice(first, last + 1);
+}
+
+/**
+ * Fills the one-digit template (`"-PLN 1.00"`, `"1,00 zł"`, `"0.0%"`) with the real integer and
+ * fraction: the first digit is the integer slot, the `digits` digits after the decimal separator are
+ * the fraction slot; everything else (sign, currency, separators) stays as the locale wrote it.
+ */
+export function fillNumberTemplate(
+  template: string,
+  grouped: string,
+  fraction: string,
+  digits: number,
+): string {
+  const integerAt = template.search(/\p{Nd}/u);
+  if (integerAt < 0) return template;
+  const afterInteger = integerAt + 1;
+  if (digits === 0) return template.slice(0, integerAt) + grouped + template.slice(afterInteger);
+  const rest = template.slice(afterInteger);
+  const fractionAt = rest.search(/\p{Nd}/u);
+  if (fractionAt < 0) return template.slice(0, integerAt) + grouped + rest;
+  const separator = rest.slice(0, fractionAt);
+  const tail = rest.slice(fractionAt + digits);
+  return template.slice(0, integerAt) + grouped + separator + fraction + tail;
+}
+
+/** The UTC noon of an ISO calendar date, so formatting in UTC keeps its day in every device timezone. */
+function calendarNoon(value: string): Date {
+  const { year, month, day } = parseDate(value);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(12, 0, 0, 0);
+  return date;
 }
 
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
@@ -101,10 +191,7 @@ export function formatCalendarDate(
   locale: string,
   style: "short" | "medium" | "long" = "medium",
 ): string {
-  const { year, month, day } = parseDate(value);
-  const date = new Date(0);
-  date.setUTCFullYear(year, month - 1, day);
-  date.setUTCHours(12, 0, 0, 0);
+  const date = calendarNoon(value);
   const key = JSON.stringify([locale, style]);
   let format = dateFormats.get(key);
   if (!format) {
@@ -112,6 +199,53 @@ export function formatCalendarDate(
     dateFormats.set(key, format);
   }
   return format.format(date);
+}
+
+const dayFormats = new Map<string, readonly [Intl.DateTimeFormat, Intl.DateTimeFormat]>();
+/** The day of the month and the short weekday of an ISO calendar date (the date column of a list:
+ * "12" over "Thu"), on its ISO day in every device timezone. */
+export function formatCalendarDay(
+  value: string,
+  locale: string,
+): { readonly day: string; readonly weekday: string } {
+  let formats = dayFormats.get(locale);
+  if (!formats) {
+    formats = [
+      new Intl.DateTimeFormat(locale, { day: "numeric", timeZone: "UTC" }),
+      new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }),
+    ];
+    dayFormats.set(locale, formats);
+  }
+  const date = calendarNoon(value);
+  return { day: formats[0].format(date), weekday: formats[1].format(date) };
+}
+
+const clockFormats = new Map<string, Intl.DateTimeFormat>();
+function clockFormat(locale: string, timeZone: string | undefined, weekday: boolean) {
+  const key = JSON.stringify([locale, timeZone ?? null, weekday]);
+  let format = clockFormats.get(key);
+  if (!format) {
+    const zone = timeZone === undefined ? {} : { timeZone };
+    format = new Intl.DateTimeFormat(
+      locale,
+      weekday ? { weekday: "short", ...zone } : { hour: "2-digit", minute: "2-digit", ...zone },
+    );
+    clockFormats.set(key, format);
+  }
+  return format;
+}
+
+/** The wall-clock time of an instant ("06:40", "06:40 AM"), with the short weekday in front when asked
+ * ("Mon 07:30", "pon. 07:30"); in the device timezone unless `timeZone` names one. */
+export function formatClockTime(
+  at: Date,
+  locale: string,
+  options: { readonly weekday?: boolean; readonly timeZone?: string } = {},
+): string {
+  const time = clockFormat(locale, options.timeZone, false).format(at);
+  return options.weekday
+    ? `${clockFormat(locale, options.timeZone, true).format(at)} ${time}`
+    : time;
 }
 
 /** The unit of the privacy mode's banana scale (`@cashu/domain` core/bananas.ts). */

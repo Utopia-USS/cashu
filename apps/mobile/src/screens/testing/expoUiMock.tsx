@@ -1,5 +1,6 @@
 // Shared Jest boundary for the platform-native binding only. Production controls and their
-// selection callbacks stay real in screen and control tests.
+// selection callbacks stay real in screen and control tests. packages/ui keeps its own copy
+// (packages/ui/src/testing/expoUiMock.native.tsx: a package may not import an app); change both.
 import { Children, isValidElement, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -65,4 +66,22 @@ function Button({
   );
 }
 
-export default { Host, Column, Row, Picker, Button };
+function Switch({
+  value,
+  onValueChange,
+  disabled,
+}: {
+  value: boolean;
+  onValueChange?: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled: disabled === true }}
+      onPress={() => onValueChange?.(!value)}
+    />
+  );
+}
+
+export default { Host, Column, Row, Picker, Button, Switch };

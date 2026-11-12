@@ -9,7 +9,7 @@
 // built once per process over that cache (`overviewQueries`); their ids stay stable. Heavy work stays
 // here (one book per run, in the store process), never in render. The net-worth read models themselves
 // live in `./networth.ts` (`@cashu/store/overview/networth`, what the phone imports).
-import { budget, core, D, type Decimal, type IsoDate, loans } from "@cashu/domain";
+import { budget, core, D, type Decimal, type IsoDate } from "@cashu/domain";
 import type { market } from "@cashu/domain/investments";
 import * as perf from "@cashu/domain/investments/performance";
 import { budgetCliCushionEnv, budgetCliSettings } from "../budget/cli-queries.js";
@@ -19,26 +19,36 @@ import { performanceInputs } from "../investments/performance/inputs.js";
 import { plannedDeposits } from "../investments/queries/planned.js";
 import { monthPlan } from "../investments/services/planned.js";
 import { readOverview } from "../investments/views/overview.js";
-import { mcpLoanRows } from "../loans/mcp-queries.js";
 import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
-import { bananaScaleView } from "./bananas.js";
+import {
+  accountsQuery,
+  assetsQuery,
+  loansQuery,
+  type OverviewAccount,
+  type OverviewAsset,
+  type OverviewLoan,
+} from "./accounts.js";
+import { bananaScaleQuery } from "./bananas.js";
 import {
   modulesOf,
   type NetWorthQueries,
   netWorthQueries,
   type OverviewSources,
   registryOf,
-  vaultNetWorthBook,
   vaultPaymentPatterns,
 } from "./networth.js";
-import {
+
+export { profileIdentity } from "../core/profile.js";
+export {
+  accountsQuery,
+  assetsQuery,
+  loansQuery,
   type OverviewAccount,
   type OverviewAsset,
-  overviewAccounts,
-  overviewAssets,
-} from "./widgets.js";
-
-export { bananaScaleView } from "./bananas.js";
+  type OverviewLoan,
+  overviewLoans,
+} from "./accounts.js";
+export { bananaScaleQuery, bananaScaleView } from "./bananas.js";
 export {
   HERO_CASHFLOW_MONTHS,
   type HeroView,
@@ -256,43 +266,6 @@ export function investmentWidgets(
   };
 }
 
-export interface OverviewLoan {
-  readonly gid: string;
-  readonly name: string;
-  readonly currency: string;
-  readonly outstanding: loans.LoanSummaryView["outstanding"];
-  readonly monthlyPayment: loans.LoanSummaryView["monthlyPayment"];
-  readonly annualRate: loans.LoanSummaryView["annualRate"];
-  readonly payoffDate: IsoDate;
-  readonly nextPrincipal: loans.LoanSummaryView["outstanding"] | null;
-}
-
-export function overviewLoans(read: Read, today: IsoDate): OverviewLoan[] {
-  const base = profileOf(read)?.baseCurrency ?? "PLN";
-  return mcpLoanRows(read).map(({ loan, account, balances }) => {
-    const summary = loans.loanSummary(
-      loan,
-      { id: account.gid, name: account.name, type: account.type, currency: account.currency },
-      loans.loanValuation(loan, balances),
-      today,
-      base,
-    );
-    const next = loans
-      .schedule(loan.principal, loan.annualRate, loan.termMonths, loan.startDate)
-      .find((row) => row.date >= today);
-    return {
-      gid: loan.id,
-      name: account.name,
-      currency: account.currency,
-      outstanding: summary.outstanding,
-      monthlyPayment: summary.monthlyPayment,
-      annualRate: summary.annualRate,
-      payoffDate: summary.payoffDate,
-      nextPrincipal: next?.principal ?? null,
-    };
-  });
-}
-
 export interface BudgetWidgets {
   readonly month: {
     readonly label: string;
@@ -442,15 +415,6 @@ export function budgetWidgets(
   };
 }
 
-/** Public identity of this vault only, for profile routes and the device's open-vault picker. */
-export const profileIdentity = defineQuery({
-  id: "core.profileIdentity",
-  run: (read): { slug: string; name: string; baseCurrency: string } | null =>
-    read<{ slug: string; name: string; baseCurrency: string }>(
-      "SELECT slug, name, base_currency AS baseCurrency FROM profiles",
-    )[0] ?? null,
-});
-
 /**
  * The overview queries of a process, over the device's price cache (null: no cache, last trade
  * prices). The optional process-local change source wakes cache consumers after committed cache
@@ -474,37 +438,19 @@ export function overviewQueries(
       id: "core.moduleStates",
       run: (read) => moduleStates(read, sources),
     }),
-    accounts: defineQuery({
-      id: "core.overviewAccounts",
-      ...(env.changes === undefined ? {} : { changes: env.changes }),
-      run: (read, args: { readonly today: IsoDate }) =>
-        overviewAccounts(read, vaultNetWorthBook(read, { today: args.today, prices }, sources)),
-    }),
+    accounts: accountsQuery(env, sources),
     budgetWidgets: defineQuery({
       id: "core.budgetWidgets",
       run: (read, args: { readonly today: IsoDate }) => budgetWidgets(read, args.today, sources),
     }),
-    assets: defineQuery({
-      id: "core.overviewAssets",
-      ...(env.changes === undefined ? {} : { changes: env.changes }),
-      run: (read, args: { readonly today: IsoDate }) =>
-        overviewAssets(read, vaultNetWorthBook(read, { today: args.today, prices }, sources)),
-    }),
-    loans: defineQuery({
-      id: "core.overviewLoans",
-      run: (read, args: { readonly today: IsoDate }) => overviewLoans(read, args.today),
-    }),
+    assets: assetsQuery(env, sources),
+    loans: loansQuery(),
     investments: defineQuery({
       id: "core.overviewInvestments",
       ...(env.changes === undefined ? {} : { changes: env.changes }),
       run: (read, args: { readonly today: IsoDate; readonly lang: core.UiLang }) =>
         investmentWidgets(read, { today: args.today, lang: args.lang, prices }, sources),
     }),
-    bananaScale: defineQuery({
-      id: "core.bananaScale",
-      ...(env.changes === undefined ? {} : { changes: env.changes }),
-      run: (read, args: { readonly today: IsoDate }) =>
-        bananaScaleView(read, { today: args.today, prices }, sources),
-    }),
+    bananaScale: bananaScaleQuery(env, sources),
   };
 }

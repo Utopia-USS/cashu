@@ -9,11 +9,15 @@ import { Button, Line, Section } from "./parts";
 export interface DebugLoad {
   readonly firstLaunch: boolean;
   readonly events: number;
-  readonly applyMs: string;
-  readonly rebuildMs: string;
-  readonly rebuildMatches: boolean;
-  /** The view hash (hex) after the rebuild; compared with Node's by the S41 run. */
-  readonly viewHash: string;
+  /** The fixture build time; null after a rebuild (nothing was applied). */
+  readonly applyMs: string | null;
+  /** The rebuild from the log; null on the first launch (the build ran no rebuild). */
+  readonly rebuild: {
+    readonly ms: string;
+    readonly matches: boolean;
+    /** The view hash (hex) after the rebuild; compared with Node's by the S41 run. */
+    readonly viewHash: string;
+  } | null;
 }
 
 export interface DebugViewProps {
@@ -60,14 +64,18 @@ export function DebugView(props: DebugViewProps) {
                 {load.firstLaunch ? S.firstLaunch : S.rebuild}
               </Text>
               <Line label={S.events} value={String(load.events)} />
-              <Line label={S.applyMs} value={S.ms(load.applyMs)} />
-              <Line label={S.rebuildMs} value={S.ms(load.rebuildMs)} />
-              <Line label={S.viewHash} value={load.viewHash.slice(0, 16)} />
-              <Line
-                label={load.rebuildMatches ? S.rebuildMatch : S.rebuildMismatch}
-                value={load.rebuildMatches ? S.pass : S.fail}
-                tone={load.rebuildMatches ? "positive" : "negative"}
-              />
+              {load.applyMs === null ? null : <Line label={S.applyMs} value={S.ms(load.applyMs)} />}
+              {load.rebuild === null ? null : (
+                <>
+                  <Line label={S.rebuildMs} value={S.ms(load.rebuild.ms)} />
+                  <Line label={S.viewHash} value={load.rebuild.viewHash.slice(0, 16)} />
+                  <Line
+                    label={load.rebuild.matches ? S.rebuildMatch : S.rebuildMismatch}
+                    value={load.rebuild.matches ? S.pass : S.fail}
+                    tone={load.rebuild.matches ? "positive" : "negative"}
+                  />
+                </>
+              )}
             </>
           )}
           <Button label={S.rebuild} onPress={props.onRebuild} disabled={props.rebuilding} />

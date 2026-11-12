@@ -4,6 +4,7 @@ export {
   type BudgetAccount,
   type BudgetBook,
   type BudgetTxn,
+  bookOwnIbans,
   budgetBaseCurrency,
   inPeriod,
   isFlow,
@@ -62,10 +63,43 @@ export {
   type MonthSummary,
   monthSummary,
   NORM_MONTHS,
+  normMonths,
   type SubscriptionsSummary,
   subscriptionsSummary,
 } from "./overview.js";
-export { activeRecurring, recurringPayments, subscriptionExclusions } from "./recurring.js";
+export {
+  NEW_RECURRING_MIN_OCCURRENCES,
+  NEW_RECURRING_WINDOW_DAYS,
+  type PayeeChange,
+  type PayeeChangesInput,
+  type PayeeCharge,
+  type PayeeChargeHistory,
+  PRICE_UP_MIN_OLDER_CHARGES,
+  PRICE_UP_MIN_SHARE,
+  payeeChanges,
+} from "./payeeChanges.js";
+export {
+  type PayeeHit,
+  type PayeeSummary,
+  type PayeeYearRow,
+  payeeSummary,
+} from "./payeeHistory.js";
+export {
+  categoryNorm,
+  type MonthProjection,
+  type MonthProjectionInput,
+  monthProjection,
+  usualPayDay,
+  usualToDate,
+} from "./projection.js";
+export {
+  activeRecurring,
+  type RecurringSeries,
+  recurringPayments,
+  recurringSeries,
+  SERIES_DATE_SLACK_DAYS,
+  subscriptionExclusions,
+} from "./recurring.js";
 export {
   type BudgetSettings,
   type CushionAccountRef,
@@ -87,3 +121,20 @@ export {
   spendingByCategory,
   txnDetails,
 } from "./spending.js";
+export {
+  type AccountBalance,
+  type InstallmentDue,
+  isMonthlyGap,
+  MONTHLY_GAP_MAX_DAYS,
+  MONTHLY_GAP_MIN_DAYS,
+  nextChargeDate,
+  type PlannedOutflow,
+  type RecurringCharge,
+  UPCOMING_GRACE_DAYS,
+  UPCOMING_HORIZON_DAYS,
+  type Upcoming,
+  type UpcomingAccount,
+  type UpcomingInput,
+  type UpcomingRow,
+  upcomingCharges,
+} from "./upcoming.js";

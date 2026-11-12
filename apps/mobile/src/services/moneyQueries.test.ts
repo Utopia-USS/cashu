@@ -5,17 +5,18 @@ import { market } from "@cashu/domain/investments";
 import {
   betterSqlite3Driver,
   builtinModules,
+  createProfile,
   HybridClock,
   investmentsCommands,
   openAccount,
   runCommand,
   Store,
   storeWriter,
+  vaultSalt,
 } from "@cashu/store";
 import { SqlPriceCache } from "@cashu/store/investments/local";
 import { watchQuery } from "@cashu/store/query";
 import Database from "better-sqlite3";
-import { DEMO_SALT, DEMO_VAULT, demoLog } from "../fixture/demoLog";
 import { createMoneyQueries } from "./moneyQueries";
 
 it("updates exact mobile net worth from a committed quote without appending a vault event", () => {
@@ -23,13 +24,11 @@ it("updates exact mobile net worth from a committed quote without appending a va
   const cacheDb = new Database(":memory:");
   const store = Store.open({
     driver: betterSqlite3Driver(vaultDb),
-    vault: DEMO_VAULT,
-    salt: DEMO_SALT,
+    vault: "de000000000000000000000000000041",
+    salt: vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => (i * 7 + 3) & 0xff)),
     modules: builtinModules(),
   });
   try {
-    // The fixed demo prefix contains only a synthetic profile and its two module registrations.
-    store.applyEnvelopes(demoLog().slice(0, 3));
     const device = "d2000000000000000000000000000077";
     const clock = { now: () => Date.UTC(2026, 9, 1, 12) };
     let seed = 7;
@@ -45,6 +44,15 @@ it("updates exact mobile net worth from a committed quote without appending a va
         }),
     };
     const writer = storeWriter(store);
+    // A synthetic profile with the budget and investments modules.
+    const profile = runCommand(
+      store,
+      writer,
+      createProfile,
+      { slug: "synthetic", name: "Synthetic", modules: ["budget", "investments"] },
+      env,
+    );
+    if (!profile.ok) throw new Error(`synthetic profile refused: ${profile.reason}`);
     const account = runCommand(
       store,
       writer,

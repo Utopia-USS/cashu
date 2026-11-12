@@ -1,0 +1,1334 @@
+<!doctype html>
+<!--
+  cashU mobile companion - clickable prototype (concept v1.1, 2026-11-12).
+  One phone, every screen. Synthetic data only (people, balances, positions are invented;
+  public instrument names and tickers are fine).
+
+  The concept in one line: the phone is a calm mirror of what the Mac fetched - glance, find, sort,
+  decide small. Everything that builds or changes the setup stays on the Mac.
+
+  Two people, two vaults: Anna's own profile (budget, car, investments) and the shared Home profile
+  (budget, flat, mortgage) that Piotr's phone is paired to. Never mixed, never added up.
+
+  URL switches:
+    ?screen=<id>     today, stale, close, spending, activity, search, triage, tx, cash, portfolio, alert,
+                     position, review, note, strategy, networth, loan, profile, notifs, lock, widget, pair
+    &as=partner      Piotr's phone (Home profile, 3 tabs)
+    &incognito=1     hidden amounts (bananas), &theme=light, &step=N (pair / review card), &offline=1
+    &bare            no device chrome / side panel (for the hub's iframes); &still = no motion
+  Keys: 1-4 tabs, H hide amounts, T theme, P owner / partner, Esc back.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cashU companion - prototype</title>
+<style>
+:root {
+  color-scheme: dark;
+  --font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-tile: 16px; --radius-widget: 28px;
+  --ease-tile: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --color-surface: #0a0a0b; --color-surface-raised: #0e0e10; --color-surface-sunken: #070708;
+  --color-subtle: #111113; --color-chip: #17171a;
+  --color-fg: #ededf0; --color-fg-secondary: #a3a3ab; --color-fg-muted: #6e6e77; --color-fg-faint: #4a4a52;
+  --color-border-strong: rgba(255,255,255,.18);
+  --color-accent: #8ea4ff; --color-accent-muted: rgba(142,164,255,.13); --color-on-accent: #0a0a0b;
+  --color-positive: #4cc38a; --color-positive-bg: rgba(76,195,138,.12);
+  --color-negative: #ef6f6c; --color-negative-bg: rgba(239,111,108,.12);
+  --color-warning: #e5a54a; --color-warning-bg: rgba(229,165,74,.12);
+  --color-scrim: rgba(0,0,0,.6); --color-chart-grid: rgba(255,255,255,.065);
+  --tile-top: #161619; --tile-ring: rgba(255,255,255,.065); --tile-ring-hover: rgba(255,255,255,.11);
+  --tile-edge: rgba(255,255,255,.05);
+  --elevation-tile: 0 1px 2px rgba(0,0,0,.5), 0 14px 34px -18px rgba(0,0,0,.85);
+  --sub-top: rgba(255,255,255,.035); --sub-bottom: rgba(255,255,255,.012); --sub-edge: rgba(255,255,255,.04);
+  --track: rgba(255,255,255,.06); --press: rgba(255,255,255,.05);
+  --bar-bg: rgba(10,10,11,.78); --sheet-bg: #141416; --seg-bg: rgba(0,0,0,.3); --seg-thumb: #232327;
+  --c-housing: #8ea4ff; --c-groceries: #5cc0d6; --c-shopping: #b39cff; --c-travel: #e5a54a; --c-dining: #4cc38a;
+  --c-transport: #ef8fb0; --c-entertainment: #7d8fd6; --c-health: #9aa0a8; --c-subs: #6fa3a8; --c-other: #5d5d66;
+  --c-income: #4cc38a; --c-home: #d2a679;
+  --nw-money: #8ea4ff; --nw-property: #5cc0d6; --nw-vehicle: #4cc38a; --nw-invest: #e5a54a;
+  --inv-global: #8ea4ff; --inv-pl: #e5a54a; --inv-bonds: #5cc0d6; --inv-cash: #b39cff;
+  --stage: #050506;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-surface: #f6f7f9; --color-surface-raised: #ffffff; --color-surface-sunken: #eceef1;
+  --color-subtle: #f9fafb; --color-chip: #eef1f5;
+  --color-fg: #1a1d21; --color-fg-secondary: #374151; --color-fg-muted: #6b7280; --color-fg-faint: #9aa4b2;
+  --color-border-strong: #b8c0ca;
+  --color-accent: #2563eb; --color-accent-muted: #dbe5fb; --color-on-accent: #ffffff;
+  --color-positive: #16a34a; --color-positive-bg: rgba(22,163,74,.10);
+  --color-negative: #dc2626; --color-negative-bg: rgba(220,38,38,.10);
+  --color-warning: #b45309; --color-warning-bg: rgba(180,83,9,.12);
+  --color-scrim: rgba(15,18,22,.35); --color-chart-grid: #eef0f3;
+  --tile-top: #ffffff; --tile-ring: rgba(16,18,22,.08); --tile-ring-hover: rgba(16,18,22,.14);
+  --tile-edge: rgba(255,255,255,.7);
+  --elevation-tile: 0 1px 2px rgba(16,18,22,.04), 0 14px 34px -18px rgba(16,18,22,.16);
+  --sub-top: rgba(16,18,22,.025); --sub-bottom: rgba(16,18,22,.01); --sub-edge: rgba(255,255,255,.7);
+  --track: rgba(16,18,22,.07); --press: rgba(16,18,22,.05);
+  --bar-bg: rgba(246,247,249,.82); --sheet-bg: #ffffff; --seg-bg: var(--color-surface-sunken); --seg-thumb: #ffffff;
+  --c-housing: #2563eb; --c-groceries: #0891b2; --c-shopping: #7c3aed; --c-travel: #d97706; --c-dining: #059669;
+  --c-transport: #db2777; --c-entertainment: #4f46e5; --c-health: #6b7280; --c-subs: #0f766e; --c-other: #9aa4b2;
+  --c-income: #16a34a; --c-home: #a16207;
+  --nw-money: #2563eb; --nw-property: #0891b2; --nw-vehicle: #16a34a; --nw-invest: #d97706;
+  --inv-global: #2563eb; --inv-pl: #d97706; --inv-bonds: #0891b2; --inv-cash: #7c3aed;
+  --stage: #e4e6ea;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--stage); color: var(--color-fg);
+  font: 15px/20px var(--font); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; justify-content: center; gap: 48px; min-height: 100vh;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+svg { display: block; }
+.ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ic.s { width: 16px; height: 16px; } .ic.l { width: 24px; height: 24px; }
+
+/* ---------- side panel (standalone only) ---------- */
+.panel { width: 250px; font-size: 13px; color: var(--color-fg-secondary); align-self: center; }
+.panel h1 { font-size: 17px; margin: 0 0 4px; color: var(--color-fg); letter-spacing: -.01em; }
+.panel p { margin: 0 0 14px; color: var(--color-fg-muted); line-height: 18px; }
+.panel .grp { margin: 14px 0 6px; color: var(--color-fg-muted); font-size: 12px; }
+.panel .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.panel .opts button { height: 28px; padding: 0 10px; border-radius: 8px; background: var(--color-chip); color: var(--color-fg-secondary); box-shadow: inset 0 0 0 1px var(--tile-ring); font-size: 12px; }
+.panel .opts button.on { background: var(--color-fg); color: var(--color-surface); box-shadow: none; }
+.panel a { color: var(--color-accent); text-decoration: none; }
+
+/* ---------- device ---------- */
+.device { position: relative; width: 390px; height: 844px; flex: none; border-radius: 56px; overflow: hidden; background: var(--color-surface); isolation: isolate; box-shadow: 0 0 0 11px #1b1b1e, 0 0 0 12px #3a3a3f, 0 50px 90px -30px rgba(0,0,0,.7); }
+body.bare { display: block; background: var(--color-surface); min-height: 0; }
+body.bare .panel, body.bare .designed-by { display: none !important; }
+body.bare .device { border-radius: 0; box-shadow: none; }
+.island { position: absolute; top: 11px; left: 50%; width: 124px; height: 36px; margin-left: -62px; border-radius: 20px; background: #000; z-index: 60; }
+.statusbar { position: absolute; top: 0; left: 0; right: 0; height: 54px; z-index: 50; display: flex; align-items: center; justify-content: space-between; padding: 6px 30px 0 44px; font: 600 16px/1 var(--font); pointer-events: none; }
+.statusbar .sys { display: flex; gap: 6px; align-items: center; }
+.home-ind { position: absolute; bottom: 8px; left: 50%; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: var(--color-fg); opacity: .85; z-index: 80; pointer-events: none; }
+.on-lock .statusbar, .on-home .statusbar { color: #fff; } .on-lock .statusbar .time { visibility: hidden; }
+.on-lock .home-ind, .on-home .home-ind { background: #fff; }
+
+#app { position: absolute; inset: 0; }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--color-surface); }
+.scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 16px 120px; scrollbar-width: none; }
+.scroll::-webkit-scrollbar { display: none; }
+.screen.modal .scroll { padding-bottom: 40px; }
+.enter { animation: push 380ms var(--ease-tile) both; }
+@keyframes push { from { transform: translateX(28%); opacity: .4; } to { transform: none; opacity: 1; } }
+.still .enter, .still .rise, .still .sheet, .still .scrim { animation: none !important; }
+
+/* header */
+.top { padding: 54px 16px 0; flex: none; }
+.top-row { height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.who { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 5px; border-radius: 999px; background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); font-size: 13.5px; font-weight: 550; color: var(--color-fg-secondary); }
+.av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 650 12px/1 var(--font); color: #0a0a0b; background: #c9d3ff; flex: none; }
+.av.home { background: #e6c9a6; }
+.who .ic { width: 14px; height: 14px; color: var(--color-fg-muted); }
+.icon-btn { min-width: 40px; height: 40px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); color: var(--color-fg-secondary); font-size: 13.5px; font-weight: 550; }
+.icon-btn.txt { padding: 0 13px 0 10px; }
+.icon-btn:active, .btn:active, .who:active { transform: scale(.95); }
+.icon-btn.on { background: var(--color-accent-muted); color: var(--color-accent); box-shadow: none; }
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.ltitle { font: 700 30px/36px var(--font); letter-spacing: -.03em; margin: 8px 0 2px; }
+.fresh { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--color-fg-muted); margin-bottom: 14px; }
+.fresh b { color: var(--color-fg-secondary); font-weight: 550; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-fg-faint); flex: none; }
+.dot.ok { background: var(--color-positive); } .dot.warn { background: var(--color-warning); } .dot.neg { background: var(--color-negative); } .dot.acc { background: var(--color-accent); }
+.chip-off { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; color: var(--color-fg-secondary); background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); }
+
+/* pushed / modal header */
+.navbar { padding: 54px 8px 0; height: 98px; flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.navbar .back { display: inline-flex; align-items: center; gap: 2px; height: 44px; padding: 0 8px; color: var(--color-fg-secondary); font-size: 15px; justify-self: start; }
+.navbar .x { justify-self: start; margin-left: 8px; }
+.navbar .t { font: 600 17px/22px var(--font); text-align: center; }
+.navbar .r { justify-self: end; padding-right: 8px; display: flex; gap: 8px; }
+
+/* tab bar */
+.tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; z-index: 40; display: grid; padding: 7px 10px 0; background: var(--bar-bg); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4); box-shadow: inset 0 1px 0 var(--tile-ring); }
+.tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; height: 48px; color: var(--color-fg-muted); font-size: 10.5px; font-weight: 550; position: relative; }
+.tabbar button.on { color: var(--color-fg); }
+.tabbar .badge { position: absolute; top: 0; left: calc(50% + 7px); width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 2px var(--color-surface); }
+
+/* tiles */
+.tile { position: relative; border-radius: var(--radius-widget); padding: 18px; background: linear-gradient(180deg, var(--tile-top), var(--color-surface-raised) 58%); box-shadow: inset 0 0 0 1px var(--tile-ring), inset 0 1px 0 var(--tile-edge), var(--elevation-tile); }
+.tile + .tile, .tile + .sec, .sec + .tile, .note + .tile { margin-top: 12px; }
+.tile.tap:active { transform: scale(.985); }
+.rise { animation: rise 560ms var(--ease-tile) both; }
+.rise:nth-child(2) { animation-delay: 50ms; } .rise:nth-child(3) { animation-delay: 100ms; } .rise:nth-child(4) { animation-delay: 150ms; } .rise:nth-child(n+5) { animation-delay: 200ms; }
+@keyframes rise { from { transform: translateY(10px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+.t-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; font-size: 13px; font-weight: 500; color: var(--color-fg-secondary); }
+.t-h .r { font-size: 12.5px; color: var(--color-fg-muted); display: inline-flex; align-items: center; gap: 2px; }
+.t-h .r b { color: var(--color-fg-secondary); font-weight: 600; }
+.sec { font-size: 13px; font-weight: 550; color: var(--color-fg-muted); margin: 22px 4px 8px; display: flex; justify-content: space-between; }
+
+.hero-fig { display: flex; align-items: flex-start; font-weight: 700; letter-spacing: -.035em; line-height: 1; margin-top: 12px; white-space: nowrap; color: var(--color-fg); }
+.hero-fig .cur { font-size: 17px; font-weight: 600; color: var(--color-fg-muted); letter-spacing: 0; margin: 5px 6px 0 0; }
+.hero-fig .int { font-size: 50px; }
+.hero-fig .dec { font-size: 26px; color: var(--color-fg-muted); margin-top: 4px; letter-spacing: -.02em; }
+.hero-fig.m .int { font-size: 40px; } .hero-fig.m .dec { font-size: 22px; } .hero-fig.m .cur { font-size: 15px; margin-top: 3px; }
+.hero-sub { font-size: 12.5px; color: var(--color-fg-muted); margin-top: 10px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pos { color: var(--color-positive); } .neg { color: var(--color-negative); } .warn { color: var(--color-warning); } .muted { color: var(--color-fg-muted); } .acc { color: var(--color-accent); }
+b.pos, b.neg { font-weight: 650; }
+
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); margin: 16px -18px -18px; border-top: 1px solid var(--tile-ring); }
+.kpis > div { padding: 12px 18px 15px; border-left: 1px solid var(--tile-ring); min-width: 0; }
+.kpis > div:first-child { border-left: 0; }
+.kpis .l { font-size: 11.5px; color: var(--color-fg-muted); }
+.kpis .v { font-size: 15px; font-weight: 650; letter-spacing: -.01em; margin-top: 2px; white-space: nowrap; }
+
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.fact { padding: 11px 13px; border-radius: var(--radius-tile); display: grid; gap: 2px; align-content: start; background: linear-gradient(180deg, var(--sub-top), var(--sub-bottom)); box-shadow: inset 0 0 0 1px var(--tile-ring), inset 0 1px 0 var(--sub-edge); min-width: 0; }
+.fact .l { font-size: 11.5px; color: var(--color-fg-muted); }
+.fact .v { font-size: 16px; font-weight: 650; letter-spacing: -.02em; white-space: nowrap; }
+.fact .d { font-size: 11px; color: var(--color-fg-muted); }
+
+/* pace meter */
+.pace { margin-top: 16px; }
+.pace .track { position: relative; height: 8px; border-radius: 4px; background: var(--track); }
+.pace .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--color-fg-secondary); }
+.pace .mark { position: absolute; top: -4px; width: 2px; height: 16px; border-radius: 1px; background: var(--color-fg); }
+.pace .lbl { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--color-fg-muted); }
+
+/* rows: separators are inset pseudo-elements, so the press shape never bends them */
+.rows { margin-top: 6px; }
+.row { position: relative; display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 1px 12px; align-items: center; padding: 11px 0; }
+.row::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--tile-ring); }
+.rows > .row:first-child::before, .listcard > .row:first-child::before, .group > .row:first-child::before, .row.first::before { display: none; }
+.row.nolead { grid-template-columns: minmax(0,1fr) auto; }
+.row .lead { grid-row: span 2; }
+.row .n { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .v { font-weight: 650; text-align: right; white-space: nowrap; }
+.row .s { font-size: 12px; color: var(--color-fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .s2 { font-size: 12px; color: var(--color-fg-muted); text-align: right; white-space: nowrap; }
+.row .full { grid-column: 1 / -1; }
+.row .neg { color: var(--color-negative); } .row .pos { color: var(--color-positive); }
+.row.tap { margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 14px; cursor: pointer; }
+.row.tap::before { left: 10px; right: 10px; }
+.row.tap:active { background: var(--press); }
+.row .chev { color: var(--color-fg-faint); }
+.row.dim .n, .row.dim .v { color: var(--color-fg-muted); }
+.rows.tight .row { padding: 9px 0; }
+.lead-ic { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); color: var(--color-fg-secondary); }
+.lead-ic.warn { color: var(--color-warning); background: var(--color-warning-bg); box-shadow: none; }
+.lead-ic.neg { color: var(--color-negative); background: var(--color-negative-bg); box-shadow: none; }
+.lead-ic.acc { color: var(--color-accent); background: var(--color-accent-muted); box-shadow: none; }
+.lead-ic.pos { color: var(--color-positive); background: var(--color-positive-bg); box-shadow: none; }
+.date-ic { width: 34px; height: 36px; border-radius: 10px; display: grid; place-items: center; align-content: center; gap: 1px; background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); }
+.date-ic .d { font: 700 14px/1 var(--font); } .date-ic .w { font: 600 9.5px/1 var(--font); color: var(--color-fg-muted); }
+.swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; display: inline-block; }
+.meter { height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; margin-top: 7px; }
+.meter > i { display: block; height: 100%; border-radius: 3px; }
+.ticker { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: #000; color: #ededf0; font: 650 9px/1 var(--font); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+:root[data-theme="light"] .ticker { background: #1a1d21; }
+.ticker.risk { box-shadow: inset 0 0 0 1.5px var(--color-negative); }
+
+.tag { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 500; color: var(--color-fg-secondary); background: rgba(127,127,127,.1); white-space: nowrap; }
+.tag.pos { color: var(--color-positive); background: var(--color-positive-bg); }
+.tag.neg { color: var(--color-negative); background: var(--color-negative-bg); }
+.tag.warn { color: var(--color-warning); background: var(--color-warning-bg); }
+.tag.acc { color: var(--color-accent); background: var(--color-accent-muted); }
+.catpill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-fg-muted); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 46px; padding: 0 18px; border-radius: 14px; font-size: 15px; font-weight: 550; background: var(--color-chip); color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--tile-ring-hover); }
+.btn.primary { background: var(--color-fg); color: var(--color-surface); box-shadow: none; font-weight: 600; }
+.btn.ghost { background: transparent; box-shadow: none; color: var(--color-fg-secondary); }
+.btn.sm { height: 40px; padding: 0 14px; font-size: 14px; border-radius: 12px; }
+.btn.block { width: 100%; }
+.btn[disabled] { opacity: .35; pointer-events: none; }
+.btns { display: flex; gap: 8px; margin-top: 16px; }
+.btns .btn { flex: 1; }
+.link { font-size: 12.5px; color: var(--color-fg-muted); display: inline-flex; align-items: center; gap: 2px; }
+
+.seg { position: relative; display: inline-flex; padding: 2px; gap: 1px; border-radius: 11px; background: var(--seg-bg); box-shadow: inset 0 0 0 1px var(--tile-ring); }
+.seg button { height: 36px; padding: 0 13px; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: var(--color-fg-muted); }
+.seg button.on { color: var(--color-fg); background: var(--seg-thumb); box-shadow: inset 0 0 0 1px var(--tile-ring-hover), 0 1px 3px rgba(0,0,0,.3); }
+.seg.full { display: flex; } .seg.full button { flex: 1; }
+
+.row.att { align-items: start; } .row.att .n, .row.att .s { white-space: normal; } .row.att .lead { align-self: center; }
+.quiet { display: flex; align-items: center; gap: 8px; width: 100%; margin: 10px 0 -4px; padding: 10px 0 2px; border-top: 1px solid var(--tile-ring); font-size: 12.5px; color: var(--color-fg-muted); text-align: left; }
+.quiet span { flex: 1; } .quiet b { font-weight: 550; color: var(--color-fg-secondary); }
+.note { font-size: 12px; color: var(--color-fg-muted); line-height: 17px; margin: 12px 4px 0; display: flex; gap: 8px; }
+.note .ic { flex: none; margin-top: 1px; }
+.quote { padding: 12px 14px; border-radius: 16px; background: var(--color-subtle); box-shadow: inset 0 0 0 1px var(--tile-ring); font-size: 14px; line-height: 20px; color: var(--color-fg-secondary); }
+.quote b { color: var(--color-fg); }
+
+/* search + chips */
+.search { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px 0 12px; border-radius: 12px; background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); color: var(--color-fg-muted); margin-bottom: 10px; }
+.search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; font: 15px var(--font); color: var(--color-fg); }
+.search input::placeholder { color: var(--color-fg-muted); }
+.search .clr { width: 34px; height: 34px; display: grid; place-items: center; }
+.chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px 4px; padding: 0 16px 6px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chips button { flex: none; height: 36px; padding: 0 13px; border-radius: 999px; font-size: 13.5px; font-weight: 500; color: var(--color-fg-secondary); background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); display: inline-flex; align-items: center; gap: 6px; }
+.chips button.on { background: var(--color-fg); color: var(--color-surface); box-shadow: none; }
+.subtabs .cnt { font-size: 11px; font-weight: 650; padding: 1px 6px; border-radius: 8px; background: var(--color-negative-bg); color: var(--color-negative); margin-left: 4px; }
+.chips .cnt { font-size: 11px; font-weight: 650; padding: 1px 6px; border-radius: 8px; background: var(--color-warning-bg); color: var(--color-warning); }
+.day { font-size: 12.5px; font-weight: 550; color: var(--color-fg-muted); margin: 18px 4px 4px; display: flex; justify-content: space-between; }
+.listcard { border-radius: 22px; padding: 2px 16px; background: var(--color-surface-raised); box-shadow: inset 0 0 0 1px var(--tile-ring); }
+.listcard .row.tap { margin: 0 -8px; padding-left: 8px; padding-right: 8px; }
+.listcard .row.tap::before { left: 8px; right: 8px; }
+
+/* sheet */
+.scrim { position: absolute; inset: 0; background: var(--color-scrim); z-index: 70; animation: fade 220ms ease both; }
+@keyframes fade { from { opacity: 0; } }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 71; max-height: 92%; display: flex; flex-direction: column; border-radius: 30px 30px 0 0; background: var(--sheet-bg); box-shadow: inset 0 1px 0 var(--tile-ring-hover), 0 -20px 60px -20px rgba(0,0,0,.6); animation: sheet 380ms var(--ease-tile) both; }
+@keyframes sheet { from { transform: translateY(40%); opacity: 0; } }
+.sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--color-fg-faint); margin: 8px auto 4px; flex: none; }
+.sheet .sh { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px 4px; flex: none; }
+.sheet .sh .t { font: 600 17px/22px var(--font); }
+.sheet .sb { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 34px; scrollbar-width: none; }
+.sheet .sb::-webkit-scrollbar { display: none; }
+.sfoot { flex: none; padding: 10px 16px 34px; display: flex; gap: 8px; box-shadow: inset 0 1px 0 var(--tile-ring); }
+.sfoot .btn { flex: 1; }
+.group { border-radius: 18px; background: var(--color-subtle); box-shadow: inset 0 0 0 1px var(--tile-ring); padding: 0 14px; margin-top: 10px; }
+:root[data-theme="light"] .group { background: var(--color-surface); }
+.group .row { padding: 12px 0; }
+.group .row.tap { margin: 0 -14px; padding: 12px 14px; border-radius: 0; }
+.group .row.tap::before { left: 14px; right: 14px; }
+.group .row.tap:first-child { border-radius: 18px 18px 0 0; } .group .row.tap:last-child { border-radius: 0 0 18px 18px; }
+.toggle { display: inline-block; vertical-align: middle; width: 50px; height: 30px; border-radius: 15px; background: var(--track); position: relative; flex: none; box-shadow: inset 0 0 0 1px var(--tile-ring); }
+.toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform 200ms var(--ease-tile); }
+.toggle.on { background: var(--color-positive); box-shadow: none; }
+.toggle.on::after { transform: translateX(20px); }
+.toggle.fixed { opacity: .5; }
+
+/* category grid */
+.cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.cats button { height: 54px; border-radius: 14px; background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; padding: 0 12px; font-size: 13px; font-weight: 550; text-align: left; }
+.cats button .swatch { width: 10px; height: 10px; border-radius: 3px; }
+.cats button.on { background: var(--color-fg); color: var(--color-surface); box-shadow: none; }
+.cats button.sug { box-shadow: inset 0 0 0 1.5px var(--color-accent); }
+.cats button.more { color: var(--color-fg-muted); align-items: center; flex-direction: row; justify-content: center; }
+
+/* categorize cards */
+.tri-stage { position: relative; height: 300px; margin-top: 8px; }
+.tri-card { position: absolute; inset: 0; border-radius: 28px; padding: 22px 20px; background: linear-gradient(180deg, var(--tile-top), var(--color-surface-raised) 58%); box-shadow: inset 0 0 0 1px var(--tile-ring), inset 0 1px 0 var(--tile-edge), var(--elevation-tile); transition: transform 320ms var(--ease-tile), opacity 320ms; }
+.tri-card.behind, .dcard.p1, .dcard.p2 { pointer-events: none; }
+.tri-card.behind { transform: translateY(12px) scale(.95); opacity: .5; }
+.tri-card.out { transform: translateX(-120%) rotate(-6deg); opacity: 0; }
+.suggest { margin-top: 18px; padding: 12px 12px 12px 14px; border-radius: 18px; box-shadow: inset 0 0 0 1px var(--tile-ring-hover); display: flex; align-items: center; gap: 12px; }
+.suggest .q { flex: 1; font-size: 12.5px; color: var(--color-fg-muted); }
+.suggest .q b { display: flex; align-items: center; gap: 8px; font-size: 17px; color: var(--color-fg); margin-top: 3px; font-weight: 650; }
+.progress { display: flex; gap: 4px; }
+.progress i { flex: 1; height: 3px; border-radius: 2px; background: var(--track); }
+.progress i.on { background: var(--color-fg-secondary); }
+
+/* review deck */
+.deck-screen { background: #000; }
+:root[data-theme="light"] .deck-screen { background: var(--color-surface-sunken); }
+.deck { position: relative; flex: 1; margin: 10px 14px 0; }
+.dcard { position: absolute; inset: 0 0 12px; border-radius: 30px; padding: 22px 20px; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--tile-top), var(--color-surface-raised) 60%); box-shadow: inset 0 0 0 1px var(--tile-ring-hover), inset 0 1px 0 var(--tile-edge), 0 30px 60px -30px rgba(0,0,0,.9); transition: transform 360ms var(--ease-tile), opacity 360ms; touch-action: pan-y; }
+.dcard.p1 { transform: translateY(14px) scale(.955); opacity: .55; }
+.dcard.p2 { transform: translateY(26px) scale(.91); opacity: .25; }
+.dcard.gone-r { transform: translateX(130%) rotate(8deg); opacity: 0; }
+.dcard.gone-l { transform: translateX(-130%) rotate(-8deg); opacity: 0; }
+.dcard .k { font-size: 12.5px; color: var(--color-fg-muted); display: flex; justify-content: space-between; align-items: center; }
+.dcard h2 { font: 700 24px/29px var(--font); letter-spacing: -.025em; margin: 10px 0 0; }
+.dcard .body { margin-top: 14px; font-size: 14.5px; line-height: 21px; color: var(--color-fg-secondary); flex: 1; overflow: hidden; }
+.dcard ul { margin: 0; padding: 0; list-style: none; }
+.dcard li { position: relative; padding: 10px 0; display: flex; gap: 10px; align-items: flex-start; }
+.dcard li + li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--tile-ring); }
+.dcard .src { font-size: 11.5px; color: var(--color-fg-muted); margin-top: auto; padding-top: 10px; }
+.deck-foot { flex: none; display: flex; gap: 8px; padding: 10px 16px 40px; }
+.deck-foot .btn { flex: 1; }
+.dots { display: flex; gap: 4px; padding: 0 22px; }
+.dots i { flex: 1; height: 3px; border-radius: 2px; background: rgba(127,127,127,.25); }
+.dots i.on { background: var(--color-fg-secondary); }
+.dots i.flag { background: var(--color-warning); }
+
+/* reader */
+.reader h1 { font: 700 26px/31px var(--font); letter-spacing: -.025em; margin: 6px 0 10px; }
+.reader .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--color-fg-muted); }
+.reader p { font-size: 16px; line-height: 25px; color: var(--color-fg-secondary); margin: 14px 0; }
+.reader h3 { font: 650 15px/20px var(--font); margin: 22px 0 6px; color: var(--color-fg); }
+.reader blockquote { margin: 14px 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--color-border-strong); color: var(--color-fg); font-size: 15.5px; line-height: 23px; }
+.reader ol { padding-left: 18px; color: var(--color-fg-secondary); font-size: 13px; line-height: 20px; }
+
+/* keypad */
+.amount-entry { text-align: center; padding: 12px 0 4px; }
+.amount-entry .hero-fig { justify-content: center; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; }
+.keypad button { height: 48px; border-radius: 14px; font: 500 22px/1 var(--font); }
+.keypad button:active { background: var(--press); }
+.field { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-radius: 14px; background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring); color: var(--color-fg-muted); font-size: 15px; margin-top: 10px; }
+.field b { color: var(--color-fg); font-weight: 500; }
+.fields { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.fields .field { margin-top: 10px; }
+
+/* lock + home screen */
+.wall { position: absolute; inset: 0; background: radial-gradient(120% 70% at 30% 0%, #26304f 0%, #10131c 45%, #050507 100%); color: #fff; display: flex; flex-direction: column; align-items: center; }
+.wall .date { margin-top: 74px; font: 600 19px/1 var(--font); opacity: .85; }
+.wall .clock { font: 700 92px/1 var(--font); letter-spacing: -.03em; margin-top: 6px; }
+.notif { width: 358px; border-radius: 22px; padding: 12px 14px; background: rgba(40,42,52,.62); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); display: grid; grid-template-columns: 36px 1fr auto; gap: 2px 10px; margin-top: 8px; color: #fff; }
+.appic { width: 36px; height: 36px; border-radius: 9px; background: #0e0e10; display: grid; place-items: center; font: 800 13px/1 var(--font); color: #8ea4ff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.notif .appic { grid-row: span 2; }
+.notif .ttl { font-weight: 600; font-size: 14.5px; }
+.notif .when { font-size: 12.5px; opacity: .6; }
+.notif .msg { grid-column: 2 / -1; font-size: 14.5px; line-height: 19px; opacity: .92; }
+.hs { padding: 70px 22px 0; width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px 0; justify-items: center; align-content: start; }
+.hs .app { display: grid; justify-items: center; gap: 6px; font-size: 11.5px; color: rgba(255,255,255,.9); }
+.hs .app i { width: 62px; height: 62px; border-radius: 15px; display: block; }
+.widget { border-radius: 24px; padding: 15px 16px; background: rgba(18,18,22,.78); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); color: #ededf0; }
+.widget .w-h { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #a3a3ab; font-weight: 550; }
+.widget .w-h .appic { width: 18px; height: 18px; border-radius: 5px; font-size: 7px; }
+.hs .wide { grid-column: 1 / -1; width: 100%; }
+.hs .small { grid-column: 1 / span 2; grid-row: span 2; width: 158px; height: 158px; align-self: start; }
+
+/* pairing */
+.code { display: flex; justify-content: center; gap: 10px; margin: 26px 0 10px; }
+.code span { width: 44px; height: 58px; border-radius: 14px; display: grid; place-items: center; font: 700 30px/1 var(--font); background: var(--color-chip); box-shadow: inset 0 0 0 1px var(--tile-ring-hover); }
+.code .gap { width: 8px; background: none; box-shadow: none; }
+.viewfinder { position: relative; height: 330px; border-radius: 28px; margin-top: 10px; overflow: hidden; background: radial-gradient(80% 60% at 50% 40%, #2a2d36, #0c0d10); }
+.viewfinder .frame { position: absolute; left: 50%; top: 50%; width: 200px; height: 200px; margin: -100px 0 0 -100px; border-radius: 26px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); border: 3px solid rgba(255,255,255,.85); }
+.qr { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin: -75px 0 0 -75px; opacity: .85; }
+.hidden-amt { letter-spacing: .08em; }
+</style>
+</head>
+<body>
+<div class="designed-by" style="position:fixed;left:12px;bottom:12px;z-index:9999;pointer-events:none;font:600 10px/1 system-ui,-apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#8e8e94;background:rgba(22,22,25,.9);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:4px 10px;">designed by <span style="color:#8ea4ff;">jakob</span></div>
+
+<aside class="panel" id="panel"></aside>
+<div class="device" id="device">
+  <div class="island"></div>
+  <div class="statusbar"><span class="time">9:41</span><span class="sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 2.6c2.2 0 4.2.9 5.7 2.3l1.1-1.1A9.6 9.6 0 0 0 8 1C5.4 1 3 2 1.2 3.8l1.1 1.1A8 8 0 0 1 8 2.6zm0 3.2c1.3 0 2.5.5 3.4 1.4l1.1-1.1A6.3 6.3 0 0 0 8 4.2c-1.7 0-3.3.7-4.5 1.9l1.1 1.1c.9-.9 2.1-1.4 3.4-1.4zm0 3.3c-.5 0-1 .2-1.3.6L8 11l1.3-1.3c-.3-.4-.8-.6-1.3-.6z"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13"><rect x=".5" y=".5" width="23" height="12" rx="3.8" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="18" height="9" rx="2.5" fill="currentColor"/><path d="M25 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2z" fill="currentColor" opacity=".45"/></svg>
+  </span></div>
+  <div id="app"></div>
+  <div class="home-ind"></div>
+</div>
+
+<script>
+/* ======================================================================
+   Data - synthetic. Today is Thu 12 Nov 2026; Anna's MacBook fetched at 06:40.
+   Two vaults: Anna's own profile and the shared Home profile. Never mixed.
+   ====================================================================== */
+const FX = { PLN: 1, EUR: 4.2386, USD: 3.6794 };   // NBP mid rate table of Tue 10 Nov (11 Nov is a holiday)
+const NBP_DAY = 'Tue 10 Nov';
+const CAT = {
+  groceries: ['Groceries', '--c-groceries'], dining: ['Dining', '--c-dining'], home: ['Home', '--c-home'],
+  transport: ['Transport', '--c-transport'], shopping: ['Shopping', '--c-shopping'], health: ['Health', '--c-health'],
+  housing: ['Bills', '--c-housing'], subs: ['Subscriptions', '--c-subs'], entertainment: ['Entertainment', '--c-entertainment'],
+  travel: ['Travel', '--c-travel'], other: ['Other', '--c-other'], income: ['Income', '--c-income'],
+};
+const CAT_ORDER = ['groceries', 'dining', 'home', 'transport', 'shopping', 'health', 'housing', 'subs', 'entertainment', 'travel', 'other'];
+
+const DATA = {
+  owner: {
+    who: ['A', 'Anna', ''], wallet: 320, banana: 12500,
+    month: { income: 14800, spent: 5960, due: 5240, usualMonth: 13100, usualToDate: 6400, daysLeft: 18,
+      cats: [['groceries', 1412.30, 1360], ['travel', 1286.00, 600], ['shopping', 920.45, 610], ['transport', 642.15, 700],
+             ['dining', 486.20, 540], ['other', 423.23, 380], ['subs', 318.97, 319], ['health', 256.70, 210], ['entertainment', 214.00, 260]] },
+    upcoming: [
+      { d: 13, w: 'Fri', n: 'Netflix', s: 'from mBank Personal', v: -49.00 },
+      { d: 15, w: 'Sun', n: 'Share to the Home account', s: 'from mBank Personal', v: -4800.00, big: true },
+      { d: 16, w: 'Mon', n: 'Spotify Family', s: 'from Erste Account', v: -37.99 },
+      { d: 18, w: 'Wed', n: 'CityFit gym', s: 'from Erste Account', v: -159.00 },
+      { d: 19, w: 'Thu', n: 'Plus phone plan', s: 'from mBank Personal', v: -65.00 },
+    ],
+    tx: [
+      { id: 't1', day: 'Wed 11 Nov', n: 'Biedronka', cat: 'groceries', acc: 'mBank Personal', v: -87.43, title: 'BIEDRONKA 4471 KRAKOW' },
+      { id: 't2', day: 'Wed 11 Nov', n: 'Pyszne.pl', cat: null, sug: 'dining', acc: 'mBank Personal', v: -64.90, title: 'PYSZNE.PL*ORDER 88213 WARSZAWA' },
+      { id: 't3', day: 'Wed 11 Nov', n: 'Orlen', cat: 'transport', acc: 'Erste Account', v: -251.60, title: 'ORLEN STACJA NR 1187' },
+      { id: 't4', day: 'Tue 10 Nov', n: 'Salary · Northwind', cat: 'income', acc: 'mBank Personal', v: 14800.00, title: 'WYNAGRODZENIE 11/2026' },
+      { id: 't5', day: 'Tue 10 Nov', n: 'To mBank Savings', cat: 'transfer', acc: 'mBank Personal', v: -3000.00, title: 'PRZELEW WLASNY' },
+      { id: 't6', day: 'Tue 10 Nov', n: 'Allegro', cat: null, sug: 'home', acc: 'mBank Personal', v: -129.99, title: 'ALLEGRO.PL ZAMOWIENIE 55-1029' },
+      { id: 't7', day: 'Tue 10 Nov', n: 'Zara', cat: 'shopping', acc: 'Erste Account', v: -239.00, title: 'ZARA GALERIA KAZIMIERZ' },
+      { id: 't8', day: 'Mon 9 Nov', n: 'Lidl', cat: 'groceries', acc: 'mBank Personal', v: -142.18, title: 'LIDL SP. Z O.O. 0912' },
+      { id: 't9', day: 'Mon 9 Nov', n: 'Apteka Gemini', cat: null, sug: 'health', acc: 'Erste Account', v: -56.70, title: 'APTEKA GEMINI 211' },
+      { id: 't10', day: 'Mon 9 Nov', n: 'Uber', cat: 'transport', acc: 'Erste Account', v: -38.40, title: 'UBER *TRIP HELP.UBER.COM' },
+      { id: 't11', day: 'Sun 8 Nov', n: 'Farmers market', cat: 'groceries', acc: 'Cash wallet', v: -45.00, title: 'Added on this phone', cash: true },
+      { id: 't12', day: 'Sun 8 Nov', n: 'Kino Pod Baranami', cat: null, sug: 'entertainment', acc: 'mBank Personal', v: -64.00, title: 'KINO POD BARANAMI KRAKOW' },
+      { id: 't13', day: 'Sun 8 Nov', n: 'Empik', cat: 'shopping', acc: 'Erste Account', v: -79.99, title: 'EMPIK S.A. 0441' },
+      { id: 'w1', day: 'Sat 14 Mar 2026', n: 'Warta', cat: 'transport', acc: 'mBank Personal', v: -1284.00, title: 'WARTA POLISA OC/AC 7731', old: true },
+      { id: 'w2', day: 'Thu 12 Mar 2025', n: 'Warta', cat: 'transport', acc: 'mBank Personal', v: -1190.00, title: 'WARTA POLISA OC/AC 7731', old: true },
+      { id: 'w3', day: 'Fri 15 Mar 2024', n: 'Warta', cat: 'transport', acc: 'mBank Personal', v: -1102.00, title: 'WARTA POLISA OC/AC 7731', old: true },
+    ],
+    accounts: [
+      { n: 'mBank Personal', v: 8212.40, cur: 'PLN' }, { n: 'mBank Savings', v: 28400.00, cur: 'PLN' },
+      { n: 'Erste Account', v: 1930.15, cur: 'PLN' }, { n: 'Pekao Euro account', v: 1240.00, cur: 'EUR' },
+      { n: 'Cash wallet', v: 320.00, cur: 'PLN', manual: true },
+    ],
+    assets: [{ n: 'Car', s: 'loses about PLN 580 a month', v: 58000, kind: 'vehicle' }],
+    loan: null, invest: true,
+  },
+  partner: {
+    who: ['H', 'Home', 'home'], wallet: 0, banana: 9600,
+    month: { income: 9600, spent: 3410, due: 2797, usualMonth: 8900, usualToDate: 3620, daysLeft: 18,
+      cats: [['groceries', 1640.20, 1500], ['home', 618.35, 400], ['housing', 412.00, 412], ['other', 318.05, 300], ['dining', 284.50, 320], ['health', 136.90, 150]] },
+    upcoming: [
+      { d: 15, w: 'Sun', n: 'Mortgage installment', s: 'from Erste Joint account', v: -2431.18, big: true },
+      { d: 16, w: 'Mon', n: 'PGE electricity', s: 'from Erste Joint account', v: -286.40 },
+      { d: 18, w: 'Wed', n: 'UPC internet', s: 'from Erste Joint account', v: -79.00 },
+    ],
+    tx: [
+      { id: 'h1', day: 'Wed 11 Nov', n: 'Biedronka', cat: 'groceries', acc: 'Joint account', v: -112.60, title: 'BIEDRONKA 2210 KRAKOW' },
+      { id: 'h2', day: 'Wed 11 Nov', n: 'Castorama', cat: null, sug: 'home', acc: 'Joint account', v: -248.90, title: 'CASTORAMA KRAKOW ZAKOPIANSKA' },
+      { id: 'h3', day: 'Tue 10 Nov', n: 'Anna\'s share', cat: 'income', acc: 'Joint account', v: 4800.00, title: 'WPLATA NA DOM 11/2026' },
+      { id: 'h4', day: 'Tue 10 Nov', n: 'Piotr\'s share', cat: 'income', acc: 'Joint account', v: 4800.00, title: 'WPLATA NA DOM 11/2026' },
+      { id: 'h5', day: 'Tue 10 Nov', n: 'IKEA', cat: 'home', acc: 'Joint account', v: -369.45, title: 'IKEA KRAKOW' },
+      { id: 'h6', day: 'Mon 9 Nov', n: 'Lidl', cat: 'groceries', acc: 'Joint account', v: -96.30, title: 'LIDL SP. Z O.O. 0731' },
+      { id: 'h7', day: 'Mon 9 Nov', n: 'Rossmann', cat: null, sug: 'health', acc: 'Joint account', v: -54.20, title: 'ROSSMANN 118 KRAKOW' },
+      { id: 'h8', day: 'Sun 8 Nov', n: 'Pyszne.pl', cat: 'dining', acc: 'Joint account', v: -71.80, title: 'PYSZNE.PL*ORDER 40991 WARSZAWA' },
+    ],
+    accounts: [{ n: 'Erste Joint account', v: 6180.20, cur: 'PLN' }, { n: 'Pekao Joint savings', v: 18400.00, cur: 'PLN' }],
+    assets: [{ n: 'Flat', s: 'valued Feb 2026', v: 720000, kind: 'property' }],
+    loan: { n: 'Mortgage', bank: 'Erste', left: 389600, inst: 2431.18, rate: 6.85, until: 'Mar 2049', paid: 0.22, principal: 500000 },
+    invest: false,
+  },
+};
+const POS = [
+  { t: 'S&P500', n: 'Beta ETF S&P 500', acc: 'IKE', cur: 'PLN', v: 31400, r: 22.1, wk: -1.4 },
+  { t: 'EDO', n: 'Treasury bonds 10Y', acc: 'IKE', cur: 'PLN', v: 24000, r: 9.8, wk: 0.1 },
+  { t: 'VT', n: 'Vanguard Total World', acc: 'Brokerage', cur: 'USD', v: 8120, r: 18.4, wk: -1.9 },
+  { t: 'PKN', n: 'Orlen', acc: 'IKE', cur: 'PLN', v: 11850, r: 4.2, wk: -3.8 },
+  { t: 'CDR', n: 'CD Projekt', acc: 'IKE', cur: 'PLN', v: 9630, r: -12.6, wk: -9.4, risk: true },
+  { t: 'ASML', n: 'ASML Holding', acc: 'Brokerage', cur: 'USD', v: 4280, r: -3.1, wk: -2.2 },
+  { t: 'CASH', n: 'Cash in IKE', acc: 'IKE', cur: 'PLN', v: 7320, r: null, wk: 0 },
+];
+
+/* ======================================================================
+   State
+   ====================================================================== */
+const P = new URLSearchParams(location.search);
+const S = {
+  as: P.get('as') === 'partner' ? 'partner' : 'owner',
+  incog: P.get('incognito') === '1', theme: P.get('theme') === 'light' ? 'light' : 'dark',
+  offline: P.get('offline') === '1', still: P.has('still') || P.has('bare'),
+  tab: 'today', stack: [], sheet: null, returnSheet: null,
+  step: +(P.get('step') || 0), q: '', filter: 'all',
+  deck: 0, deckFlags: [], decided: false, inv: 'portfolio', reviewState: 'new', decision: null, moreCats: false,
+  cashAmt: '45', cashCat: 'groceries', planned: false, rule: false, categorized: {},
+};
+if (P.has('bare')) document.body.classList.add('bare');
+if (S.still) document.body.classList.add('still');
+document.documentElement.dataset.theme = S.theme;
+
+const isPartner = () => S.as === 'partner';
+const D = () => DATA[S.as];
+const TABS = () => isPartner()
+  ? [['today', 'Today'], ['activity', 'Activity'], ['networth', 'Net worth']]
+  : [['today', 'Today'], ['activity', 'Activity'], ['portfolio', 'Investments'], ['networth', 'Net worth']];
+const TITLES = { today: 'Today', activity: 'Activity', portfolio: 'Investments', networth: 'Net worth', spending: 'Spending', position: 'CD Projekt', note: 'Note', strategy: 'Strategy', loan: 'Mortgage', notifs: 'Notifications', close: 'Today' };
+
+/* ======================================================================
+   Formatting - English mockup copy; hidden amounts = bananas ("hides only money")
+   ====================================================================== */
+const nf = (v, d) => new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }).format(v);
+const bananas = (v, cur) => Math.abs(v) * FX[cur] * 1000 / D().banana;
+const bfmt = (b) => nf(b, b >= 100 ? 0 : b >= 10 ? 1 : 2);
+function money(v, cur = 'PLN', o = {}) {
+  const dec = o.dec ?? 2, sign = v < 0 ? '-' : (o.sign && v > 0 ? '+' : '');
+  if (S.incog) return `<span class="amt">${sign}🍌 ${bfmt(bananas(v, cur))}</span>`;
+  return `<span class="amt">${sign}${cur} ${nf(Math.abs(v), dec)}</span>`;
+}
+function hero(v, cur = 'PLN', o = {}) {
+  const dec = o.dec ?? 0, cls = o.m ? 'hero-fig m' : 'hero-fig';
+  if (S.incog) return `<div class="${cls}"><span class="int">${v < 0 ? '-' : ''}🍌 ${bfmt(bananas(v, cur))}</span></div>`;
+  const [i, d] = nf(Math.abs(v), dec).split('.');
+  return `<div class="${cls}"><span class="cur">${cur}</span><span class="int">${v < 0 ? '-' : ''}${i}</span>${d ? `<span class="dec">.${d}</span>` : ''}</div>`;
+}
+const label = (t) => S.incog ? `${t}, in bananas` : t;
+const pct = (v, d = 1, sign = true) => `${v > 0 && sign ? '+' : v < 0 ? '-' : ''}${nf(Math.abs(v), d)}%`;
+const own = (s) => S.incog ? '<span class="hidden-amt">•••</span>' : s;
+const catName = (k) => k === 'transfer' ? 'Internal transfer' : (CAT[k] ? CAT[k][0] : 'Needs a category');
+const catVar = (k) => CAT[k] ? `var(${CAT[k][1]})` : 'var(--color-fg-faint)';
+const sum = (a) => a.reduce((s, x) => s + x, 0);
+const toCat = () => D().tx.filter((t) => !t.cat && !S.categorized[t.id]);
+const keep = (m) => m.income - m.spent - m.due - Math.max(0, m.usualMonth - m.usualToDate - m.due);
+const PORT_PLN = () => sum(POS.map((p) => p.v * FX[p.cur]));
+
+/* ======================================================================
+   Icons
+   ====================================================================== */
+const I = {
+  today: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  activity: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  portfolio: '<path d="M4 4v15.5h16"/><path d="m7.5 14.5 4-4.5 3 3 5-6"/>',
+  networth: '<path d="m12 3.5-9 5 9 5 9-5-9-5z"/><path d="m3 13.5 9 5 9-5"/>',
+  eye: '<path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  eyeoff: '<path d="M2.5 12s3.5-6.5 9.5-6.5c1.6 0 3 .4 4.2 1M21.5 12s-1.2 2.3-3.6 4.1M9.8 18.2c.7.2 1.4.3 2.2.3"/><path d="M4 4l16 16"/>',
+  back: '<path d="M15 5l-7 7 7 7"/>', chev: '<path d="m9 6 6 6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>', check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  tag: '<path d="M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8-9 9-8-8z"/><circle cx="8.5" cy="8.5" r="1.4"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  deck: '<rect x="4" y="6" width="13" height="15" rx="2.5"/><path d="M8 3h9.5A2.5 2.5 0 0 1 20 5.5V17"/>',
+  laptop: '<rect x="4.5" y="5" width="15" height="10.5" rx="1.5"/><path d="M2.5 19h19"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  doc: '<path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4M9 12h6M9 16h6"/>',
+  flag: '<path d="M5 21V4h11l-2 4 2 4H5"/>', bulb: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',
+  cal: '<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  scan: '<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/>',
+  shield: '<path d="M12 3 5 6v5.5c0 4.3 3 7.7 7 9.5 4-1.8 7-5.2 7-9.5V6z"/>',
+  sync: '<path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5"/>',
+};
+const ic = (k, cls = '') => `<svg class="ic ${cls}" viewBox="0 0 24 24">${I[k]}</svg>`;
+
+/* ======================================================================
+   Small charts (inline SVG scenes, like the shared chart components)
+   ====================================================================== */
+function series(n, end, drift, seed, vol) {
+  let s = seed, out = [], v = end;
+  const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280 - 0.5;
+  for (let i = 0; i < n; i++) { out.unshift(v); v = v / (1 + drift) * (1 + rnd() * vol); }
+  return out;
+}
+function area(vals, w, h, opts = {}) {
+  const all = opts.level != null ? [...vals, opts.level] : vals;
+  const min = Math.min(...all), max = Math.max(...all), pad = 8;
+  const x = (i) => (i / (vals.length - 1)) * w, y = (v) => pad + (1 - (v - min) / (max - min || 1)) * (h - pad * 2);
+  const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  const id = 'g' + Math.random().toString(36).slice(2, 7), col = opts.color || 'var(--color-accent)';
+  const lvl = opts.level != null ? `<line x1="0" x2="${w}" y1="${y(opts.level)}" y2="${y(opts.level)}" stroke="var(--color-fg-muted)" stroke-dasharray="3 3" stroke-width="1"/><text x="2" y="${y(opts.level) + 14}" font-size="10.5" fill="var(--color-fg-muted)">${opts.levelLabel || ''}</text>` : '';
+  const grid = [0.25, 0.5, 0.75].map((f) => `<line x1="0" x2="${w}" y1="${(h * f).toFixed(1)}" y2="${(h * f).toFixed(1)}" stroke="var(--color-chart-grid)"/>`).join('');
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="height:${h}px;overflow:visible">
+    <defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".2"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    ${grid}<path d="M0,${h} L${pts.join(' L')} L${w},${h} Z" fill="url(#${id})"/>
+    <path d="M${pts.join(' L')}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${lvl}
+    <circle cx="${x(vals.length - 1)}" cy="${y(vals[vals.length - 1])}" r="3.5" fill="${col}" stroke="var(--color-surface-raised)" stroke-width="2"/></svg>`;
+}
+function donut(parts, size, stroke, center) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, tot = sum(parts.map((p) => p[0])), gap = 2.2;
+  let off = 0;
+  const arcs = parts.map(([v, col]) => {
+    const len = (v / tot) * c, seg = `<circle r="${r}" cx="${size / 2}" cy="${size / 2}" fill="none" stroke="${col}" stroke-width="${stroke}" stroke-dasharray="${Math.max(len - gap, 0.5)} ${c}" stroke-dashoffset="${-off}" transform="rotate(-90 ${size / 2} ${size / 2})"/>`;
+    off += len; return seg;
+  }).join('');
+  return `<div style="position:relative;width:${size}px;height:${size}px;margin:0 auto"><svg width="${size}" height="${size}">${arcs}</svg><div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center">${center}</div></div>`;
+}
+
+/* ======================================================================
+   Shared pieces
+   ====================================================================== */
+function topBar(title, o = {}) {
+  const [a, n, cls] = D().who;
+  return `<div class="top"><div class="top-row">
+      <button class="who" data-sheet="profile"><span class="av ${cls}">${a}</span>${n}${ic('down')}</button>
+      <div class="top-actions">
+        ${S.offline ? `<span class="chip-off">${ic('sync', 's')}2 changes waiting</span>` : ''}
+        ${o.right || ''}
+        <button class="icon-btn ${S.incog ? 'on' : ''}" data-act="incog" aria-label="Hide amounts">${ic(S.incog ? 'eyeoff' : 'eye')}</button>
+      </div></div>
+    <div class="ltitle">${title}</div>${o.fresh === false ? '' : freshLine(o.fresh)}</div>`;
+}
+function freshLine(kind) {
+  if (S.stale && kind !== 'prices') return `<div class="fresh"><span class="dot warn"></span>${kind === 'prices' ? 'Prices' : 'Bank data'} from <b>Mon ${kind === 'prices' ? '07:31' : '07:30'}</b> · 3 days old</div>`;
+  if (kind === 'prices') return `<div class="fresh"><span class="dot ok"></span>Prices <b>live</b> · fetched by this phone</div>`;
+  return `<div class="fresh"><span class="dot ok"></span>Bank data from <b>06:40 today</b> · Anna's MacBook</div>`;
+}
+function backLabel() {
+  if (S.returnSheet) return 'Profile';
+  const prev = S.stack[S.stack.length - 2];
+  return TITLES[prev ? prev.split(':')[0] : S.tab] || 'Back';
+}
+function navBar(title, right = '') {
+  return `<div class="navbar"><button class="back" data-back>${ic('back')}${backLabel()}</button><div class="t">${title}</div><div class="r">${right}</div></div>`;
+}
+function modalBar(title, right = '') {
+  return `<div class="navbar"><button class="icon-btn x" data-back aria-label="Close">${ic('close', 's')}</button><div class="t">${title}</div><div class="r">${right}</div></div>`;
+}
+function tabBar() {
+  const tabs = TABS();
+  return `<nav class="tabbar" style="grid-template-columns:repeat(${tabs.length},1fr)">${tabs.map(([k, l]) =>
+    `<button class="${S.tab === k ? 'on' : ''}" data-tab="${k}">${ic(k, 'l')}${l}${k === 'portfolio' && !S.decided ? '<span class="badge"></span>' : ''}</button>`).join('')}</nav>`;
+}
+function catGrid(sel, act, sug) {
+  const list = S.moreCats ? CAT_ORDER : CAT_ORDER.slice(0, 5);
+  return `<div class="cats">${list.map((k) => `<button class="${sel === k ? 'on' : ''} ${sug === k && sel !== k ? 'sug' : ''}" data-act="${act}:${k}"><span class="swatch" style="background:${catVar(k)}"></span>${catName(k)}</button>`).join('')}
+    ${S.moreCats ? '' : `<button class="more" data-act="morecats">All categories</button>`}</div>`;
+}
+
+/* ======================================================================
+   Screens
+   ====================================================================== */
+const SCREENS = {};
+
+/* ---------- Worth a look: the significance model ----------
+   Only what matters at the user's own scale gets on Today; everything else stays in a quiet layer.
+   Tiers (lower = first): 1 money at risk (bill not covered, a large sum without a category),
+   2 a held position's thesis or an action alert (one item per subject: alert + news merge),
+   3 data going stale (shown as the banner above, not as a row), 4 unusual charges. At most 3 items; none = no tile at all. */
+function attention(variant) {
+  const d = D(), m = d.month, items = [];
+  const usum = -sum(toCat().map((t) => t.v)) + (variant === 'big' ? 2180 : 0);
+  if (usum >= 0.10 * m.spent) items.push({ tier: 1, ic: 'tag', cls: 'warn', go: 'data-go="triage"', t: `${S.incog ? money(usum, 'PLN', { dec: 0 }) : 'PLN ' + nf(usum, 0)} not categorized`, s: variant === 'big' ? 'mostly IKEA on Tuesday · the projection above may be off' : 'the projection above may be off', mag: pct(usum / (m.spent + (variant === 'big' ? 2180 : 0)) * 100, 0, false), ml: 'of spending' });
+  if (!isPartner() && !S.decided) items.push({ tier: 2, ic: 'bell', cls: 'neg', go: 'data-sheet="alert"', t: 'CD Projekt fell 9.4%', s: 'your alert fired · a reported delay weakens your thesis', mag: '7.4%', ml: 'of portfolio' });
+  if (isPartner()) items.push({ tier: 4, ic: 'cal', cls: '', go: '', t: 'Electricity 38% above usual', s: 'PGE, due Mon · usually about PLN 208', mag: S.incog ? money(78, 'PLN', { dec: 0, sign: true }) : '+PLN 78', ml: 'this bill' });
+  else items.push({ tier: 4, ic: 'cal', cls: '', go: '', t: 'Netflix costs more', s: 'PLN 49 to 60 a month, from Friday', mag: S.incog ? money(132, 'PLN', { dec: 0, sign: true }) : '+PLN 132', ml: 'a year' });
+  return items.sort((a, b) => a.tier - b.tier).slice(0, 3);
+}
+const attRow = (x) => `<div class="row att ${x.go ? 'tap' : ''}" ${x.go}><span class="lead lead-ic ${x.cls}">${ic(x.ic)}</span><span class="n">${x.t}</span><span class="v">${x.mag}</span><span class="s">${x.s}</span><span class="s2">${x.ml}</span></div>`;
+
+/* ---------- Today ---------- */
+SCREENS.today = { tab: 'today', root: true, render: (variant) => {
+  const d = D(), m = d.month, stale = variant === 'stale';
+  S.stale = stale;
+  const under = m.usualToDate - m.spent, n = toCat().length;
+  const items = attention(variant), uncat = toCat(), usum = -sum(uncat.map((t) => t.v));
+  const cats = [...m.cats].sort((a, b) => b[1] - a[1]);
+  const top = cats.slice(0, 4), rest = cats.slice(4), max = top[0][1];
+  return `<div class="screen">${topBar('November')}
+  <div class="scroll">
+    ${stale ? `<div class="tile rise" style="background:var(--color-warning-bg);box-shadow:none">
+      <div class="t-h" style="color:var(--color-warning);justify-content:flex-start">${ic('laptop', 's')}Anna's MacBook has not fetched since Monday</div>
+      <div style="font-size:13px;line-height:18px;color:var(--color-fg-secondary);margin-top:6px">It fetches bank data once a day when it is awake and online; prices still come live to this phone. Open it to catch up - nothing to do on this phone.</div></div>` : ''}
+    <div class="tile tap rise" data-go="spending" style="${stale ? 'opacity:.72' : ''}">
+      <div class="t-h">${label('On track to keep')}<span class="r">${m.daysLeft} days to go</span></div>
+      ${hero(keep(m))}
+      <div class="hero-sub">by 30 Nov, if the rest of the month goes like usual${stale ? ' · as of Monday' : ''}</div>
+      <div class="pace">
+        <div class="track"><div class="fill" style="width:${(m.spent / m.usualMonth * 100).toFixed(1)}%"></div><div class="mark" style="left:${(m.usualToDate / m.usualMonth * 100).toFixed(1)}%"></div></div>
+        <div class="lbl"><span>Spending vs a usual month</span><span>${stale ? 'pace as of Monday' : `<b class="pos">${money(under, 'PLN', { dec: 0 })} under</b> usual so far`}</span></div>
+      </div>
+      <div class="kpis"><div><div class="l">Income</div><div class="v">${money(m.income, 'PLN', { dec: 0 })}</div></div>
+        <div><div class="l">Spent</div><div class="v">${money(m.spent, 'PLN', { dec: 0 })}</div></div>
+        <div><div class="l">Bills still due</div><div class="v">${money(m.due, 'PLN', { dec: 0 })}</div></div></div>
+    </div>
+
+    ${items.length ? `<div class="tile rise"><div class="t-h">Worth a look</div><div class="rows">${items.map(attRow).join('')}</div></div>` : ''}
+
+    <div class="tile rise"><div class="t-h">Next 7 days<span class="r"><b>${money(sum(d.upcoming.map((u) => u.v)))}</b></span></div>
+      <div class="rows">${d.upcoming.map((u) => `<div class="row"><span class="lead date-ic"><span class="d">${u.d}</span><span class="w">${u.w}</span></span>
+        <span class="n">${u.n}</span><span class="v">${money(u.v)}</span>
+        <span class="s">${u.s}</span><span class="s2">${u.big ? 'covered' : ''}</span></div>`).join('')}</div></div>
+
+    <div class="tile tap rise" data-go="spending"><div class="t-h">Where it went<span class="r">All categories ${ic('chev', 's')}</span></div>
+      <div class="rows tight">${top.map(([k, v]) => `<div class="row nolead"><span class="n" style="display:flex;align-items:center;gap:8px"><span class="swatch" style="background:${catVar(k)}"></span>${catName(k)}</span><span class="v">${money(v, 'PLN', { dec: 0 })}</span>
+        <div class="full meter"><i style="width:${(v / max * 100).toFixed(1)}%;background:${catVar(k)}"></i></div></div>`).join('')}
+        <div class="row nolead"><span class="s">${rest.length} more categories</span><span class="s2">${money(sum(rest.map((r) => r[1])), 'PLN', { dec: 0 })}</span></div></div>
+      ${uncat.length && variant !== 'big' ? `<button class="quiet" data-go="triage">${ic('tag', 's')}<span>${uncat.length} small payments without a category · ${money(usum, 'PLN', { dec: 0 })}</span><b>Categorize</b></button>` : ''}</div>
+    <div class="note">${ic('laptop', 's')}<span>Bank data comes from Anna's MacBook once a day - this phone never asks your bank on its own. Prices it fetches itself.${isPartner() ? '' : ' Showing PLN; your euro account is on Net worth.'}</span></div>
+  </div>${tabBar()}</div>`;
+} };
+
+/* ---------- Month closed (Today on 1 Dec) ---------- */
+SCREENS.close = { tab: 'today', root: true, render: () => `<div class="screen">${topBar('November closed', { fresh: false })}
+  <div class="fresh" style="padding:0 16px"><span class="dot ok"></span>Closed on <b>1 Dec 06:40</b> · Anna's MacBook</div>
+  <div class="scroll">
+    <div class="tile rise"><div class="t-h">${label('Kept in November')}<span class="r">savings rate <b>&nbsp;17%</b></span></div>
+      ${hero(2560)}
+      <div class="hero-sub"><b class="pos">${money(420, 'PLN', { dec: 0, sign: true })}</b> more than projected on 12 Nov</div>
+      <div class="kpis"><div><div class="l">Income</div><div class="v">${money(14800, 'PLN', { dec: 0 })}</div></div>
+        <div><div class="l">Spent</div><div class="v">${money(12240, 'PLN', { dec: 0 })}</div></div>
+        <div><div class="l">Cushion</div><div class="v">6.0 mo.</div></div></div></div>
+    <div class="tile rise"><div class="t-h">Your strategy says</div>
+      <div style="font-size:15px;line-height:21px;margin-top:8px">The cushion is full, so the surplus can go to investing. Your monthly plan is <b>${money(2500, 'PLN', { dec: 0 })}</b>.</div>
+      ${S.planned ? `<div class="quote" style="margin-top:14px;display:flex;gap:10px;align-items:center;color:var(--color-fg)">${ic('check', 's')}<span style="flex:1">Planned ${money(2500, 'PLN', { dec: 0 })} for December.</span><button class="link" data-act="unplan">Undo</button></div>`
+        : `<div class="btns"><button class="btn primary" data-act="plan">Plan ${money(2500, 'PLN', { dec: 0 })}</button><button class="btn">Other amount</button></div>`}</div>
+    <div class="note">${ic('shield', 's')}<span>A plan is a note to yourself. cashU never moves money or places orders.</span></div>
+    <div class="tile rise"><div class="t-h">Where November went<span class="r">vs usual</span></div>
+      <div class="rows tight">${[['groceries', 2890, 2800], ['travel', 1286, 600], ['shopping', 1720, 1220], ['transport', 1310, 1400]].map(([k, v, a]) => `<div class="row nolead"><span class="n" style="display:flex;align-items:center;gap:8px"><span class="swatch" style="background:${catVar(k)}"></span>${catName(k)}</span><span class="v">${money(v, 'PLN', { dec: 0 })}</span><span class="s"></span><span class="s2 ${v > a * 1.1 ? 'neg' : ''}">${v > a * 1.1 ? pct((v - a) / a * 100, 0) : 'as usual'}</span></div>`).join('')}</div></div>
+  </div>${tabBar()}</div>` };
+
+/* ---------- Activity ---------- */
+function txRow(t, o = {}) {
+  const c = t.cat || S.categorized[t.id];
+  const sub = !c ? `<span class="tag warn" style="height:19px">To categorize</span>`
+    : c === 'transfer' ? `<span class="catpill"><span class="swatch" style="background:var(--color-fg-faint)"></span>Between your accounts · not counted</span>`
+    : `<span class="catpill"><span class="swatch" style="background:${catVar(c)}"></span>${catName(c)} · ${t.acc}</span>`;
+  const amt = c === 'income' ? `<span class="pos">${money(t.v, 'PLN', { sign: true })}</span>` : money(t.v);
+  return `<div class="row nolead tap ${c === 'transfer' ? 'dim' : ''}" data-sheet="tx:${t.id}"><span class="n">${o.name || t.n}</span><span class="v">${amt}</span><span class="s">${sub}</span><span class="s2">${t.cash ? 'cash' : ''}</span></div>`;
+}
+function activityList() {
+  const q = S.q.trim().toLowerCase(), tx = D().tx;
+  if (q) {
+    const hits = tx.filter((t) => (t.n + ' ' + t.title + ' ' + catName(t.cat)).toLowerCase().includes(q) || nf(Math.abs(t.v), 2).includes(q));
+    if (!hits.length) return `<div class="note" style="justify-content:center;margin-top:30px">No payments match “${S.q}”.</div>`;
+    const same = hits.length > 1 && hits.every((h) => h.n === hits[0].n);
+    const head = same ? `<div class="tile rise" style="margin-top:4px"><div class="t-h">${hits[0].n}<span class="r">${hits.length} payments since ${hits[hits.length - 1].day.split(' ').pop()}</span></div>
+        <div class="rows">${hits.map((h, i) => { const prev = hits[i + 1]; return `<div class="row nolead"><span class="n">${h.day.split(' ').pop()}</span><span class="v">${money(h.v)}</span><span class="s">${h.day.split(' ').slice(1, 3).join(' ')}</span><span class="s2 ${prev ? 'neg' : ''}">${prev ? pct((Math.abs(h.v) - Math.abs(prev.v)) / Math.abs(prev.v) * 100) + ' vs the year before' : ''}</span></div>`; }).join('')}</div></div>` : '';
+    return `${head}<div class="day"><span>${hits.length} payments</span><span>all history · searched on this phone</span></div><div class="listcard">${hits.map((t) => txRow(t, { name: t.old ? t.day : t.n })).join('')}</div>`;
+  }
+  let list = tx.filter((t) => !t.old);
+  if (S.filter === 'need') list = list.filter((t) => !t.cat && !S.categorized[t.id]);
+  if (S.filter === 'cash') list = list.filter((t) => t.cash);
+  if (S.filter === 'income') list = list.filter((t) => t.cat === 'income');
+  const days = [...new Set(list.map((t) => t.day))];
+  return days.map((day) => {
+    const items = list.filter((t) => t.day === day);
+    const out = sum(items.filter((t) => t.v < 0 && t.cat !== 'transfer').map((t) => t.v));
+    return `<div class="day"><span>${day}</span><span>${out ? `spent ${money(-out)}` : ''}</span></div><div class="listcard">${items.map((t) => txRow(t)).join('')}</div>`;
+  }).join('') || `<div class="note" style="justify-content:center;margin-top:30px">Nothing here.</div>`;
+}
+SCREENS.activity = { tab: 'activity', root: true, render: () => {
+  const n = toCat().length;
+  const f = (k, l, extra = '') => `<button class="${S.filter === k ? 'on' : ''}" data-filter="${k}">${l}${extra}</button>`;
+  return `<div class="screen">${topBar('Activity', { right: isPartner() ? '' : `<button class="icon-btn txt" data-sheet="cash">${ic('plus', 's')}Cash</button>` })}
+  <div class="scroll">
+    <label class="search">${ic('search', 's')}<input id="q" placeholder="Payees, titles, amounts" value="${S.q.replace(/"/g, '&quot;')}" autocomplete="off">${S.q ? `<button class="clr" data-act="clearq" aria-label="Clear">${ic('close', 's')}</button>` : ''}</label>
+    ${S.q ? '' : `<div class="chips">${f('all', 'All')}${f('need', 'To categorize', n ? `<span class="cnt">${n}</span>` : '')}${f('income', 'Income')}${isPartner() ? '' : f('cash', 'Cash')}<button>Account ${ic('down', 's')}</button></div>`}
+    <div id="act-list">${activityList()}</div>
+  </div>${tabBar()}</div>`;
+} };
+
+/* ---------- Categorize (one card at a time) ---------- */
+SCREENS.triage = { tab: 'activity', modal: true, render: () => {
+  const all = D().tx.filter((t) => !t.cat), left = all.filter((t) => !S.categorized[t.id]), i = all.length - left.length;
+  if (!left.length) return `<div class="screen modal">${modalBar('')}
+    <div class="scroll" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-bottom:140px">
+      <span class="lead-ic pos" style="width:56px;height:56px;border-radius:18px">${ic('check', 'l')}</span>
+      <div style="font:700 24px/30px var(--font);letter-spacing:-.02em;margin-top:16px">All categorized</div>
+      <div style="color:var(--color-fg-muted);margin-top:6px;max-width:290px">${all.length} payments done. Your other devices see them at the next sync.</div>
+      <button class="btn primary" data-back style="margin-top:22px;min-width:180px">Done</button></div></div>`;
+  const t = left[0], nxt = left[1];
+  const card = (x, cls) => `<div class="tri-card ${cls}" ${cls ? '' : 'id="tri-top"'}>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--color-fg-muted)"><span>${x.day} · ${x.acc}</span><span>${i + (cls ? 2 : 1)} of ${all.length}</span></div>
+      <div style="font:700 26px/31px var(--font);letter-spacing:-.025em;margin-top:14px">${x.n}</div>
+      ${hero(x.v, 'PLN', { dec: 2, m: true })}
+      <div style="font:12px var(--mono);color:var(--color-fg-muted);margin-top:10px">${x.title}</div>
+      <div class="suggest"><div class="q">Suggested<b><span class="swatch" style="background:${catVar(x.sug)};width:10px;height:10px;border-radius:3px"></span>${catName(x.sug)}</b></div><button class="btn primary sm" data-act="accept:${x.id}:${x.sug}">${ic('check', 's')}Use it</button></div>
+    </div>`;
+  return `<div class="screen modal">${modalBar('Categorize', `<button class="btn ghost sm" data-act="skip">Skip</button>`)}
+    <div class="scroll">
+      <div class="progress">${all.map((x, k) => `<i class="${k < i ? 'on' : ''}"></i>`).join('')}</div>
+      <div class="tri-stage">${nxt ? card(nxt, 'behind') : ''}${card(t, '')}</div>
+      <div class="sec" style="margin-top:18px">Or pick another</div>
+      ${catGrid(null, `accept:${t.id}`, t.sug)}
+      <div class="group" style="margin-top:14px"><div class="row nolead tap" data-act="rule"><span class="n" style="font-weight:500">Same for every ${t.n} payment</span><span class="v"><span class="toggle ${S.rule ? 'on' : ''}"></span></span><span class="s">Also past and future ones (${D().tx.filter((x) => x.n === t.n).length} so far)</span></div></div>
+    </div></div>`;
+} };
+
+/* ---------- Payment sheet ---------- */
+function txSheet(id) {
+  const t = D().tx.find((x) => x.id === id) || toCat()[0] || D().tx[0];
+  const c = t.cat || S.categorized[t.id];
+  const hist = D().tx.filter((x) => x.n === t.n && x.id !== t.id);
+  const rows = [['Account', t.acc], ['Date', t.day], ['Statement', `<span style="font:12px var(--mono)">${t.title}</span>`]];
+  return `<div class="sh"><span class="t">${t.n}</span><button class="icon-btn" data-close aria-label="Close">${ic('close', 's')}</button></div><div class="sb">
+    ${hero(t.v, 'PLN', { dec: 2, m: true })}
+    ${c === 'transfer' ? `<div class="quote" style="margin-top:14px">${'<b>Between your own accounts</b> - recognised by the account number of mBank Savings, so it does not count as spending.'}</div>` : ''}
+    ${c === 'transfer' || c === 'income' ? '' : `<div class="sec" style="margin-top:18px">Category${!c && t.sug ? `<span style="font-weight:500">suggested: <span class="acc">${catName(t.sug)}</span></span>` : ''}</div>
+    ${catGrid(c, `settx:${t.id}`, t.sug)}
+    <div class="group"><div class="row nolead tap" data-act="rule"><span class="n" style="font-weight:500">Same for every ${t.n} payment</span><span class="v"><span class="toggle ${S.rule ? 'on' : ''}"></span></span><span class="s">Also past and future ones (${D().tx.filter((x) => x.n === t.n).length} so far)</span></div></div>`}
+    <div class="group">${rows.map(([l, v]) => `<div class="row nolead"><span class="s" style="font-size:14px">${l}</span><span class="v" style="font-weight:500;font-size:14px">${v}</span></div>`).join('')}</div>
+    ${hist.length ? `<div class="sec">Earlier with ${t.n}</div><div class="group">${hist.map((h) => `<div class="row nolead"><span class="n" style="font-weight:500">${h.day}</span><span class="v">${money(h.v)}</span></div>`).join('')}</div>`
+      : `<div class="note">${ic('search', 's')}<span>First payment to ${t.n} in your history.</span></div>`}
+  </div>`;
+}
+
+/* ---------- Cash expense ---------- */
+function cashSheet() {
+  const v = parseFloat(S.cashAmt || '0');
+  return `<div class="sh"><span class="t">Cash expense</span><button class="icon-btn" data-close aria-label="Close">${ic('close', 's')}</button></div><div class="sb">
+    <div class="amount-entry">${S.incog ? `<div class="hero-fig" style="justify-content:center"><span class="cur">PLN</span><span class="int">${S.cashAmt || '0'}</span></div>` : hero(v, 'PLN', { dec: S.cashAmt.includes('.') ? 2 : 0 })}
+      <div style="font-size:12.5px;color:var(--color-fg-muted);margin-top:8px">From your cash wallet · ${money(D().wallet)} in it</div></div>
+    ${catGrid(S.cashCat, 'cashcat')}
+    <div class="fields"><div class="field">${ic('doc', 's')}<b>Farmers market</b></div><div class="field">${ic('cal', 's')}<b>Today</b>${ic('down', 's')}</div></div>
+    <div class="keypad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map((k) => `<button data-key="${k}">${k}</button>`).join('')}</div>
+    <button class="btn primary block" data-act="savecash" style="margin-top:10px">Add ${S.incog ? 'expense' : money(-v)}</button>
+  </div>`;
+}
+
+/* ---------- Spending ---------- */
+SCREENS.spending = { tab: 'today', render: () => {
+  const m = D().month, cats = [...m.cats].sort((a, b) => b[1] - a[1]), tot = sum(cats.map((c) => c[1]));
+  return `<div class="screen enter">${navBar('Spending')}
+  <div class="scroll">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 12px">
+      <div class="seg"><button class="on">Month</button><button>Quarter</button><button>Year</button></div>
+      <div style="display:flex;align-items:center;gap:2px;font-weight:650"><button class="icon-btn" style="background:none;box-shadow:none">${ic('back', 's')}</button>Nov 2026<button class="icon-btn" style="background:none;box-shadow:none;opacity:.3">${ic('chev', 's')}</button></div>
+    </div>
+    <div class="tile rise">
+      ${donut(cats.map(([k, v]) => [v, catVar(k)]), 196, 20, `<div><div style="font-size:12px;color:var(--color-fg-muted)">Spent so far</div><div style="font:700 24px/30px var(--font);letter-spacing:-.03em">${money(tot, 'PLN', { dec: 0 })}</div><div style="font-size:12px" class="pos">${pct((tot - m.usualToDate) / m.usualToDate * 100)} vs usual</div></div>`)}
+      <div class="rows" style="margin-top:14px">${cats.map(([k, v, avg]) => `<div class="row nolead tap" data-go="activity"><span class="n" style="display:flex;align-items:center;gap:8px"><span class="swatch" style="background:${catVar(k)}"></span>${catName(k)}</span><span class="v">${money(v, 'PLN', { dec: 0 })}</span>
+        <span class="s">${pct(v / tot * 100, 0, false)} of spending</span><span class="s2 ${v > avg * 1.1 ? 'neg' : ''}">${v > avg * 1.1 ? `${pct((v - avg) / avg * 100, 0)} vs usual` : 'as usual'}</span></div>`).join('')}</div>
+    </div>
+    <div class="note">${ic('sync', 's')}<span>Transfers between your own accounts are not counted.${isPartner() ? '' : ` Showing PLN; your euro account spent ${money(86, 'EUR')} this month.`}</span></div>
+  </div>${tabBar()}</div>`;
+} };
+
+/* ---------- Investments: one tab, three top tabs (Portfolio / Signals / Strategy) ---------- */
+function reviewCard() {
+  if (S.reviewState === 'done') return `<div class="tile rise" style="padding:14px 16px;display:flex;align-items:center;gap:12px"><span class="lead-ic pos">${ic('check')}</span><div style="flex:1"><div style="font-weight:550">Review done</div><div style="font-size:12px;color:var(--color-fg-muted)">Next one on Sun 22 Nov</div></div></div>`;
+  const open = S.reviewState === 'open';
+  return `<div class="tile tap rise" data-go="review">
+    <div style="display:flex;gap:14px;align-items:center"><span class="lead-ic acc" style="width:46px;height:46px;border-radius:15px">${ic('deck', 'l')}</span>
+      <div style="flex:1;min-width:0"><div style="font:650 18px/23px var(--font);letter-spacing:-.01em">Weekly review</div><div style="font-size:12.5px;color:var(--color-fg-muted);margin-top:1px">${open ? `${S.deckFlags.length} cards to come back to` : '9-15 Nov · 7 cards · due Sunday'}</div></div></div>
+    ${open ? '' : `<div style="font-size:14px;line-height:20px;color:var(--color-fg-secondary);margin-top:12px">A down week for Warsaw, one decision waiting on CD Projekt, one idea outside the portfolio.</div>`}
+    <span class="btn primary block" style="margin-top:14px">${open ? 'Continue the review' : 'Start the review'}</span></div>`;
+}
+function invPortfolio() {
+  const tot = PORT_PLN(), s = series(52, tot, 0.0028, 11, 0.022);
+  const alloc = [['Global stocks', 61, 60, '--inv-global'], ['Polish stocks', 16, 15, '--inv-pl'], ['Bonds', 17, 20, '--inv-bonds'], ['Cash', 6, 5, '--inv-cash']];
+  return `${reviewCard()}
+    <div class="tile rise"><div class="t-h">${S.incog ? 'Value, in bananas' : 'Value, converted to PLN'}<span class="r">All accounts ${ic('down', 's')}</span></div>
+      ${hero(tot)}
+      <div class="hero-sub"><b class="neg">${money(-780, 'PLN', { dec: 0 })} (-0.6%)</b> today · <b class="neg">-2.4%</b> this week</div>
+      ${S.incog ? '' : `<div class="hero-sub" style="margin-top:3px">incl. ${money(12400, 'USD')} at the NBP mid rate of ${NBP_DAY}</div>`}
+      <div style="margin:14px -4px 0">${area(s, 330, 74)}</div>
+      <div class="facts"><div class="fact"><span class="l">This year</span><span class="v pos">+6.1%</span></div>
+        <div class="fact"><span class="l">From the 12-month high</span><span class="v">-5.2%</span></div>
+        <div class="fact"><span class="l">Gain so far</span><span class="v">${money(14820, 'PLN', { dec: 0, sign: true })}</span></div>
+        <div class="fact"><span class="l">Added in 2026</span><span class="v">${money(24000, 'PLN', { dec: 0 })}</span><span class="d">plan to date ${money(27500, 'PLN', { dec: 0 })}</span></div></div>
+    </div>
+    <div class="tile rise"><div class="t-h">Allocation vs your targets<span class="r"><span class="tag warn">Bonds 3% below target</span></span></div>
+      <div class="rows tight">${alloc.map(([n, now, tgt, c]) => `<div class="row nolead"><span class="n">${n}</span><span class="v">${now}% <span class="muted" style="font-weight:500">/ ${tgt}%</span></span>
+        <div class="full" style="position:relative;height:6px;border-radius:3px;background:var(--track);margin-top:7px"><i style="position:absolute;left:0;top:0;bottom:0;width:${now}%;border-radius:3px;background:var(${c})"></i><i style="position:absolute;top:-3px;width:2px;height:12px;border-radius:1px;left:${tgt}%;background:var(--color-fg)"></i></div></div>`).join('')}</div></div>
+    <div class="tile rise"><div class="t-h">Positions<span class="r">by value · prices live</span></div>
+      <div class="rows">${POS.map((p) => `<div class="row ${p.t === 'CDR' ? 'tap' : ''}" ${p.t === 'CDR' ? 'data-go="position"' : ''}><span class="lead ticker ${p.risk ? 'risk' : ''}">${p.t}</span><span class="n">${p.n}</span><span class="v">${money(p.v, p.cur, { dec: 0 })}</span>
+        <span class="s">${p.acc} · week <span class="${p.wk < 0 ? 'neg' : p.wk > 0 ? 'pos' : ''}">${pct(p.wk)}</span></span><span class="s2 ${p.r == null ? '' : p.r < 0 ? 'neg' : 'pos'}">${p.r == null ? '' : pct(p.r)}</span></div>`).join('')}</div></div>`;
+}
+function invSignals() {
+  const notes = [['CD Projekt: Q3 and the 2027 slate', 'weakens your thesis', 'neg'], ['Polish bonds after the rate cut', 'supports', 'pos'], ['USD/PLN: what moved it this month', 'background', '']];
+  return `<div class="sec" style="margin-top:4px">New since your review on Sun 8 Nov</div>
+    <div class="tile rise"><div class="t-h">Fired<span class="r">your alerts</span></div><div class="rows">
+      ${S.decided ? `<div class="row"><span class="lead lead-ic pos">${ic('check')}</span><span class="n">CD Projekt - noted</span><span class="v"></span><span class="s">${S.decision ? ({ nothing: 'Nothing for now', buy: 'Buy more', sell: 'Sell' })[S.decision] : 'Decide later - back in your review'}</span></div>`
+        : `<div class="row tap" data-sheet="alert"><span class="lead lead-ic neg">${ic('bell')}</span><span class="n">CD Projekt fell 9.4% in 5 sessions</span><span class="v chev">${ic('chev', 's')}</span><span class="s">risk · today 07:31 · waiting for a decision</span></div>`}</div></div>
+    <div class="tile rise"><div class="t-h">Close to your levels<span class="r">live prices</span></div><div class="rows">
+      <div class="row nolead"><span class="n">Vanguard Total World</span><span class="v">USD 111.40</span><span class="s">alert below USD 110</span><span class="s2">1.3% away</span></div>
+      <div class="row nolead"><span class="n">CD Projekt</span><span class="v">PLN 214.60</span><span class="s">buy-more level PLN 205</span><span class="s2">4.5% away</span></div></div></div>
+    <div class="tile rise"><div class="t-h">From your rules</div><div class="rows">
+      <div class="row"><span class="lead lead-ic acc">${ic('bulb')}</span><span class="n">Bonds 3% below target</span><span class="v"></span><span class="s">opportunity · the next money in could go there</span></div>
+      <div class="row"><span class="lead lead-ic warn">${ic('cal')}</span><span class="n">PLN 3,500 behind the plan</span><span class="v"></span><span class="s">added this year vs PLN 2,500 a month</span></div></div></div>
+    <div class="tile rise"><div class="t-h">From research<span class="r">Sat 7 Nov</span></div>
+      <div class="rows">${notes.map(([t, tag, cls], k) => `<div class="row nolead ${k === 0 ? 'tap' : ''}" ${k === 0 ? 'data-go="note"' : ''}><span class="n">${t}</span><span class="v">${k === 0 ? `<span class="chev">${ic('chev', 's')}</span>` : ''}</span><span class="s"><span class="${cls}">${tag}</span> · 4 sources</span></div>`).join('')}</div></div>
+    <div class="tile rise"><div class="t-h">Your recent decisions</div><div class="rows">
+      <div class="row nolead"><span class="n">Orlen - nothing</span><span class="v muted" style="font-weight:500">8 Nov</span><span class="s">“oil, not the company”</span></div>
+      <div class="row nolead"><span class="n">Beta ETF S&amp;P 500 - bought more</span><span class="v muted" style="font-weight:500">2 Nov</span><span class="s">monthly plan</span></div></div></div>
+    <div class="note">${ic('laptop', 's')}<span>Alerts and rules are set up on the Mac, and they run there once a day.</span></div>`;
+}
+function invStrategy() {
+  return `<div class="tile rise reader" style="padding:20px 20px 8px">
+      <div class="meta"><span class="tag acc">active</span><span>updated 2 Oct</span></div>
+      <h1 style="margin-top:10px">Long-term, boring on purpose</h1>
+      <h3>Goal</h3><p>Independence from a salary by 2045. I can sit through a 30% fall without selling.</p>
+      <h3>Buckets</h3><p>Global stocks 60%, Polish stocks 15%, bonds 20%, cash 5%. Within 5% of a target I do nothing.</p>
+      <h3>Money in</h3><p>When the cushion is full, the surplus goes in - PLN 2,500 a month.</p>
+      <h3>Drawdowns</h3><blockquote>A drawdown alone is not a reason to sell. Check the thesis, then decide.</blockquote>
+      <h3>Single stocks</h3><p>At most 10% of the portfolio each, each with a written thesis and a “wrong if”.</p></div>
+    <div class="tile rise"><div class="t-h">What watches it<span class="r">4 rules · 6 alerts</span></div><div class="rows">
+      <div class="row nolead"><span class="n">Buckets within 5% of target</span><span class="v"><span class="tag warn">bonds -3%</span></span></div>
+      <div class="row nolead"><span class="n">Single stock at most 10%</span><span class="v"><span class="tag pos">ok</span></span></div>
+      <div class="row nolead"><span class="n">PLN 2,500 a month</span><span class="v"><span class="tag warn">behind</span></span></div>
+      <div class="row nolead"><span class="n">Fall from the high above 20%</span><span class="v"><span class="tag pos">ok</span></span></div></div></div>
+    <div class="note">${ic('laptop', 's')}<span>Read only here. Changes are made on your Mac, where you approve them before they apply.</span></div>`;
+}
+SCREENS.portfolio = { tab: 'portfolio', root: true, render: () => {
+  const sub = S.inv || 'portfolio';
+  const open = S.decided ? 0 : 1;
+  const tabs = [['portfolio', 'Portfolio'], ['signals', `Signals${open ? ' <span class="cnt">1</span>' : ''}`], ['strategy', 'Strategy']];
+  return `<div class="screen">${topBar('Investments', { fresh: 'prices' })}
+  <div style="padding:0 16px 12px;flex:none"><div class="seg full subtabs">${tabs.map(([k, l]) => `<button class="${sub === k ? 'on' : ''}" data-act="inv:${k}">${l}</button>`).join('')}</div></div>
+  <div class="scroll">${sub === 'signals' ? invSignals() : sub === 'strategy' ? invStrategy() : invPortfolio()}</div>${tabBar()}</div>`;
+} };
+SCREENS.signals = { tab: 'portfolio', root: true, init: () => { S.inv = 'signals'; } };
+SCREENS.strategy = { tab: 'portfolio', root: true, init: () => { S.inv = 'strategy'; } };
+
+/* ---------- Alert sheet: see it, then decide - nothing preselected ---------- */
+const DEC = [['nothing', 'Nothing'], ['buy', 'Buy more'], ['sell', 'Sell']];
+function decideBlock() {
+  return `<div class="seg full">${DEC.map(([k, l]) => `<button class="${S.decision === k ? 'on' : ''}" data-act="dec:${k}">${l}</button>`).join('')}</div>
+    <div class="field" style="color:var(--color-fg-muted)">${ic('doc', 's')}Why? (optional)</div>`;
+}
+function alertSheet() {
+  return `<div class="sh"><span class="t"><span class="tag neg">Your alert · risk</span></span><button class="icon-btn" data-close aria-label="Close">${ic('close', 's')}</button></div><div class="sb">
+    <div style="font:700 23px/28px var(--font);letter-spacing:-.02em;margin-top:6px">CD Projekt fell 9.4% in 5 sessions</div>
+    <div style="font-size:12.5px;color:var(--color-fg-muted);margin-top:6px">“CDR -8% in 5 sessions” · fired today 07:31 on Anna's MacBook</div>
+    <div class="facts"><div class="fact"><span class="l">Price</span><span class="v">PLN 214.60</span><span class="d">live, 9:40</span></div>
+      <div class="fact"><span class="l">Your position</span><span class="v">${money(9630, 'PLN', { dec: 0 })}</span><span class="d">7.4% of the portfolio</span></div>
+      <div class="fact"><span class="l">Result</span><span class="v neg">-12.6%</span><span class="d">average cost ${own('PLN 245.50')}</span></div>
+      <div class="fact"><span class="l">Your size plan</span><span class="v">8% max</span><span class="d">buy more below PLN 205</span></div></div>
+    <div class="sec">Your thesis</div>
+    <div class="quote"><b>Wrong if</b> the 2027 release slips again.<br><span class="muted" style="font-size:12.5px">Saturday's research: <span class="neg">weakens</span> - one report of a possible delay, not confirmed.</span></div>
+    <div class="sec">Your strategy says</div>
+    <div class="quote">“A drawdown alone is not a reason to sell. Check the thesis, then decide.”</div>
+    <div class="sec">Your decision</div>
+    ${decideBlock()}
+    <div class="note">${ic('shield', 's')}<span>A decision is a note in your journal. cashU never places a trade.</span></div>
+  </div><div class="sfoot"><button class="btn" data-act="later">Decide later</button><button class="btn primary" data-act="decide" ${S.decision ? '' : 'disabled'}>Save decision</button></div>`;
+}
+
+/* ---------- Position ---------- */
+SCREENS.position = { tab: 'portfolio', render: () => {
+  const s = series(60, 214.6, -0.004, 5, 0.03);
+  return `<div class="screen enter">${navBar('CD Projekt')}
+  <div class="scroll">
+    <div class="tile rise"><div class="t-h"><span style="display:flex;gap:10px;align-items:center"><span class="ticker risk" style="width:30px;height:30px;border-radius:9px;font-size:8.5px">CDR</span>Warsaw · IKE</span><span class="r">7.4% of the portfolio</span></div>
+      ${hero(9630)}
+      <div class="hero-sub"><b class="neg">-12.6%</b> result · <b class="neg">-9.4%</b> this week</div>
+      <div class="hero-sub" style="margin-top:3px">PLN 214.60 a share · 24% under the 52-week high</div>
+      <div style="margin:16px -4px 4px">${area(s, 330, 110, { level: 205, levelLabel: 'your buy-more level, PLN 205' })}</div>
+      <div class="seg" style="margin-top:8px"><button>1M</button><button class="on">3M</button><button>1Y</button><button>Max</button></div>
+      <div class="facts"><div class="fact"><span class="l">Quantity</span><span class="v">${own('45 shares')}</span></div><div class="fact"><span class="l">Average cost</span><span class="v">${own('PLN 245.50')}</span></div></div>
+    </div>
+    <div class="tile rise"><div class="t-h">Your thesis</div>
+      <div style="font-size:14px;line-height:20px;color:var(--color-fg-secondary);margin-top:8px"><b style="color:var(--color-fg)">Why:</b> a full release pipeline through 2028 at a fair price.<br><b style="color:var(--color-fg)">Wrong if:</b> the 2027 release slips again.<br><b style="color:var(--color-fg)">Size plan:</b> at most 8%, buy more only below PLN 205.</div></div>
+    <div class="note">${ic('laptop', 's')}<span>Edit the thesis on your Mac.</span></div>
+    <div class="tile rise"><div class="t-h">Signals and decisions</div><div class="rows">
+      ${S.decided ? `<div class="row nolead"><span class="n">Fell 9.4% in 5 sessions</span><span class="v"><span class="tag pos">noted</span></span><span class="s">Your alert · today</span></div>` : `<div class="row nolead tap" data-sheet="alert"><span class="n">Fell 9.4% in 5 sessions</span><span class="v"><span class="tag neg">open</span></span><span class="s">Your alert · today</span></div>`}
+      <div class="row nolead tap" data-go="note"><span class="n">Q3 and the 2027 slate</span><span class="v"><span class="tag neg">weakens</span></span><span class="s">Research note · Sat 7 Nov</span></div>
+      <div class="row nolead"><span class="n">Nothing - “results first”</span><span class="v muted" style="font-weight:500">decision</span><span class="s">After the Q2 report · 30 Aug</span></div></div></div>
+  </div>${tabBar()}</div>`;
+} };
+
+/* ---------- Weekly review deck ---------- */
+const DECK = [
+  { k: 'Your portfolio', h: 'Down 2.4% in a down week', b: () => `${hero(PORT_PLN(), 'PLN', { m: true })}<ul style="margin-top:14px">
+      <li><span class="dot neg" style="margin-top:7px"></span><span>Biggest move: <b style="color:var(--color-fg)">CD Projekt -9.4%</b></span></li>
+      <li><span class="dot" style="margin-top:7px"></span><span>From the 12-month high: -5.2%. Your strategy expects falls of up to 30%.</span></li>
+      <li><span class="dot pos" style="margin-top:7px"></span><span>Bonds held up: EDO +0.1%.</span></li></ul>` },
+  { k: 'The world this week', h: 'Warsaw fell harder than the world', b: () => `<ul>
+      <li><span class="dot" style="margin-top:7px"></span><span>WIG20 -3.2% on the week; global stocks -1.6%.</span></li>
+      <li><span class="dot" style="margin-top:7px"></span><span>USD/PLN -1.1%: your dollar holdings are worth less in złoty.</span></li>
+      <li><span class="dot" style="margin-top:7px"></span><span>Oil -4%: weighs on Orlen.</span></li></ul>`, src: '4 sources · the full note is on your Mac' },
+  { k: 'Your positions', h: 'Two of six moved more than 3%', b: () => `<ul>${POS.filter((p) => p.r != null).map((p) => `<li style="justify-content:space-between"><span>${p.n}</span><span class="${p.wk < 0 ? 'neg' : 'pos'}" style="font-weight:650">${pct(p.wk)}</span></li>`).join('')}</ul>` },
+  { k: 'Thesis check', h: 'CD Projekt: the picture weakened', b: () => `<p style="margin:0">Saturday's research found one report of a possible delay of the 2027 release. Your thesis is wrong if “the release slips again”.</p><div class="quote" style="margin-top:14px">Weakened, not broken. Worth a look before the Q4 call on 26 Nov.</div>`, src: '3 sources' },
+  { k: 'Decision waiting', h: 'CD Projekt alert: what do you do?', decide: true, b: () => `<p style="margin:0 0 12px">Fell 9.4% in 5 sessions. 7.4% of the portfolio; your buy-more level is PLN 205.</p>${decideBlock()}<div class="note" style="margin:10px 0 0">${ic('shield', 's')}<span>A decision never places a trade.</span></div>` },
+  { k: 'An idea outside the portfolio', h: 'Beta ETF mWIG40TR', b: () => `<p style="margin:0">Polish mid caps. It fits a gap your strategy names: Polish stocks are the bucket you want to grow after bonds.</p>
+      <div class="btns"><button class="btn sm">Watch</button><button class="btn sm ghost">Not interested</button></div>`, src: 'From the research candidates · not a recommendation' },
+  { k: 'Next week', h: 'Two dates that touch you', b: () => `<ul><li><span class="date-ic"><span class="d">18</span><span class="w">Wed</span></span><span><b style="color:var(--color-fg)">NBP rate decision</b><br><span class="muted">your EDO bonds follow inflation</span></span></li>
+      <li><span class="date-ic"><span class="d">26</span><span class="w">Thu</span></span><span><b style="color:var(--color-fg)">CD Projekt Q4 call</b><br><span class="muted">your decision waits for it</span></span></li></ul>` },
+];
+SCREENS.review = { tab: 'portfolio', modal: true, render: () => {
+  const i = S.deck, dots = DECK.map((_, k) => `<i class="${S.deckFlags.includes(k) ? 'flag' : k < i ? 'on' : ''}"></i>`).join('');
+  if (i >= DECK.length) {
+    const f = S.deckFlags.length;
+    return `<div class="screen modal deck-screen">${modalBar('Weekly review')}<div class="dots">${dots}</div>
+    <div class="deck"><div class="dcard"><div class="k"><span>Summary</span><span>9-15 Nov</span></div><h2>${f ? 'Saved' : 'Review done'}</h2>
+      <div class="body"><ul><li><span class="lead-ic pos" style="width:26px;height:26px;border-radius:8px">${ic('check', 's')}</span><span>${DECK.length - f} cards clear</span></li>
+        ${f ? `<li><span class="lead-ic warn" style="width:26px;height:26px;border-radius:8px">${ic('flag', 's')}</span><span>${f} to come back to: ${S.deckFlags.map((k) => DECK[k].k.toLowerCase()).join(', ')}</span></li>` : ''}
+        <li><span class="lead-ic acc" style="width:26px;height:26px;border-radius:8px">${ic('doc', 's')}</span><span>CD Projekt: ${S.decision ? ({ nothing: 'Nothing', buy: 'Buy more', sell: 'Sell' })[S.decision] : 'no decision yet'}</span></li></ul>
+        ${f ? `<div class="quote" style="margin-top:14px">The review stays open. The flagged cards wait for you - here or on the Mac with the full notes.</div>` : ''}</div></div></div>
+    <div class="deck-foot"><button class="btn primary" data-act="reviewend">${f ? 'Done for now' : 'Mark review done'}</button></div></div>`;
+  }
+  const card = (k, cls) => { const c = DECK[k]; if (!c) return ''; return `<div class="dcard ${cls}" ${cls ? '' : 'id="dtop"'}><div class="k"><span>${c.k}</span><span>${k + 1} / ${DECK.length}</span></div><h2>${c.h}</h2><div class="body">${c.b()}</div>${c.src ? `<div class="src">${c.src}</div>` : ''}</div>`; };
+  const dec = DECK[i].decide;
+  return `<div class="screen modal deck-screen">${modalBar('Weekly review')}<div class="dots">${dots}</div>
+    <div class="deck">${card(i + 2, 'p2')}${card(i + 1, 'p1')}${card(i, '')}</div>
+    <div class="deck-foot"><button class="btn" data-act="flag">Come back to this</button><button class="btn primary" data-act="next" ${dec && !S.decision ? 'disabled' : ''}>${dec ? 'Save and next' : 'Got it, next'}</button></div></div>`;
+} };
+
+/* ---------- Research note ---------- */
+SCREENS.note = { tab: 'portfolio', render: () => `<div class="screen enter">${navBar('')}
+  <div class="scroll reader">
+    <div class="meta"><span class="tag neg">weakens your thesis</span><span>CD Projekt · research · Sat 7 Nov</span></div>
+    <h1>Q3 and the 2027 slate</h1>
+    <p>Third-quarter revenue came in close to expectations; the back catalogue carried the quarter, as it has since 2024. The company repeated its plan for the next major release but stopped short of naming a quarter.</p>
+    <blockquote>Your thesis is wrong if “the 2027 release slips again”. Not yet - one industry report suggests a delay, the company has not confirmed it.</blockquote>
+    <h3>What changed since the last note</h3>
+    <p>Bookings guidance unchanged. Two analysts cut their targets after the call, and the shares fell 6% over the two sessions that followed.</p>
+    <h3>What to watch</h3>
+    <p>The Q4 call on 26 November and any update on the release window.</p>
+    <h3>Sources</h3>
+    <ol><li>Company Q3 report and call transcript - 5 Nov</li><li>Industry news site - 6 Nov</li><li>Exchange quote history - 7 Nov</li><li>Public broker note summary - 6 Nov</li></ol>
+    <div class="note" style="margin:18px 0 0">${ic('laptop', 's')}<span>Written by your research agent on Anna's MacBook.</span></div>
+  </div>${tabBar()}</div>` };
+
+/* ---------- Net worth ---------- */
+SCREENS.networth = { tab: 'networth', root: true, render: () => {
+  const d = D();
+  const cash = sum(d.accounts.map((a) => a.v * FX[a.cur])), inv = d.invest ? PORT_PLN() : 0;
+  const assets = sum(d.assets.map((a) => a.v)), liab = d.loan ? d.loan.left : 0;
+  const tot = cash + inv + assets - liab, s = series(12, tot, 0.006, 3, 0.012);
+  const months = cash / (d.month.usualMonth * 0.95);
+  const comp = [['Money', cash, '--nw-money'], ...(d.invest ? [['Investments', inv, '--nw-invest']] : []), ...d.assets.map((a) => [a.n, a.v, a.kind === 'property' ? '--nw-property' : '--nw-vehicle'])];
+  const ctot = sum(comp.map((c) => c[1]));
+  const eur = d.accounts.find((a) => a.cur === 'EUR');
+  const incl = [eur ? money(eur.v, 'EUR') : '', d.invest ? money(12400, 'USD') : ''].filter(Boolean).join(' · ');
+  return `<div class="screen">${topBar('Net worth')}
+  <div class="scroll">
+    <div class="tile rise"><div class="t-h">${S.incog ? 'Net worth, in bananas' : incl ? 'Net worth, converted to PLN' : 'Net worth'}<span class="r">12 months</span></div>
+      ${hero(tot)}
+      <div class="hero-sub"><b class="pos">${money(isPartner() ? 2210 : 4120, 'PLN', { dec: 0, sign: true })}</b> since October</div>
+      ${incl && !S.incog ? `<div class="hero-sub" style="margin-top:3px">incl. ${incl} at the NBP mid rate of ${NBP_DAY}</div>` : ''}
+      <div style="margin:14px -4px 0">${area(s, 330, 80)}</div>
+      <div class="facts">${d.loan ? `<div class="fact"><span class="l">Owned</span><span class="v">${money(cash + inv + assets, 'PLN', { dec: 0 })}</span></div>
+        <div class="fact"><span class="l">Owed</span><span class="v">${money(-liab, 'PLN', { dec: 0 })}</span></div>
+        <div class="fact"><span class="l">Home equity</span><span class="v">${money(720000 - liab, 'PLN', { dec: 0 })}</span></div>`
+        : `<div class="fact"><span class="l">Investments</span><span class="v">${money(inv, 'PLN', { dec: 0 })}</span></div><div class="fact"><span class="l">Owed</span><span class="v">${money(0, 'PLN', { dec: 0 })}</span><span class="d">no loans</span></div><div class="fact"><span class="l">Car</span><span class="v">${money(58000, 'PLN', { dec: 0 })}</span></div>`}
+        <div class="fact"><span class="l">Cash at hand</span><span class="v">${money(cash, 'PLN', { dec: 0 })}</span><span class="d">${nf(months, 1)} months of spending</span></div></div>
+    </div>
+    <div class="tile rise"><div class="t-h">Accounts<span class="r">from 06:40 today</span></div>
+      <div class="rows">${d.accounts.map((a) => `<div class="row nolead"><span class="n">${a.n}</span><span class="v">${money(a.v, a.cur)}</span><span class="s">${a.manual ? 'you keep it up to date' : 'updates daily'}</span><span class="s2"></span></div>`).join('')}
+      ${d.invest ? `<div class="row nolead tap" data-tab="portfolio"><span class="n">Investments</span><span class="v">${money(inv, 'PLN', { dec: 0 })}</span><span class="s">IKE and brokerage · prices 07:31</span><span class="s2">${ic('chev', 's')}</span></div>` : ''}</div></div>
+    ${d.loan ? `<div class="tile tap rise" data-go="loan"><div class="t-h">Loans<span class="r">${ic('chev', 's')}</span></div>
+      <div class="rows"><div class="row nolead"><span class="n">${d.loan.n} · ${d.loan.bank}</span><span class="v">${money(-d.loan.left, 'PLN', { dec: 0 })}</span><span class="s">next ${money(d.loan.inst)} on Sun 15 Nov</span><span class="s2">until ${d.loan.until}</span>
+        <div class="full meter"><i style="width:${d.loan.paid * 100}%;background:var(--color-accent)"></i></div></div></div></div>` : ''}
+    <div class="tile rise"><div class="t-h">${d.loan ? 'The flat' : 'The car'}</div>
+      <div class="rows">${d.assets.map((a) => `<div class="row nolead"><span class="n">${a.n}</span><span class="v">${money(a.v, 'PLN', { dec: 0 })}</span><span class="s">${a.s}</span><span class="s2"></span></div>`).join('')}</div></div>
+    <div class="tile rise"><div class="t-h">What it is made of</div>
+      <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px;margin-top:12px">${comp.map((c) => `<i style="flex:${c[1]};background:var(${c[2]})"></i>`).join('')}</div>
+      <div class="rows tight" style="margin-top:8px">${comp.map((c) => `<div class="row nolead"><span class="n" style="display:flex;align-items:center;gap:8px;font-weight:500"><span class="swatch" style="background:var(${c[2]})"></span>${c[0]}</span><span class="v" style="font-weight:500">${Math.round(c[1] / ctot * 100)}%</span></div>`).join('')}</div></div>
+    <div class="note">${ic('laptop', 's')}<span>Values${d.loan ? ' and loan terms' : ''} are updated on the Mac, a few times a year.</span></div>
+  </div>${tabBar()}</div>`;
+} };
+
+/* ---------- Mortgage (Home profile) ---------- */
+SCREENS.loan = { tab: 'networth', render: () => {
+  const L = DATA.partner.loan, s = [];
+  for (let i = 0; i <= 24; i++) s.push(L.principal - (L.principal - L.left) * Math.pow(i / 24, 1.15));
+  const sched = [['Sun 15 Nov', 2224.00], ['Tue 15 Dec', 2211.40], ['Fri 15 Jan', 2198.70]];
+  return `<div class="screen enter">${navBar('Mortgage')}
+  <div class="scroll">
+    <div class="tile rise"><div class="t-h">${label('Left to repay')}<span class="r">${L.bank} · ${L.rate}% a year</span></div>
+      ${hero(L.left)}
+      <div class="hero-sub">${Math.round(L.paid * 100)}% of ${money(L.principal, 'PLN', { dec: 0 })} repaid · until ${L.until}</div>
+      <div style="margin:14px -4px 0">${area(s, 330, 70)}</div>
+      <div class="facts"><div class="fact"><span class="l">Each month</span><span class="v">${money(L.inst)}</span></div><div class="fact"><span class="l">Interest paid so far</span><span class="v">${money(118400, 'PLN', { dec: 0 })}</span></div></div></div>
+    <div class="tile rise"><div class="t-h">Next installments</div><div class="rows">${sched.map(([d, int]) => `<div class="row nolead"><span class="n">${d}</span><span class="v">${money(L.inst)}</span><span class="s">interest ${money(int)}</span><span class="s2">repays ${money(L.inst - int)}</span></div>`).join('')}</div></div>
+    <div class="tile rise"><div class="t-h">Last installment</div><div class="rows"><div class="row"><span class="lead lead-ic pos">${ic('check')}</span><span class="n">Thu 15 Oct · ${money(L.inst)}</span><span class="v"></span><span class="s">found in the Erste Joint account</span></div></div></div>
+    <div class="note">${ic('laptop', 's')}<span>Loan terms are changed on the Mac.</span></div>
+  </div>${tabBar()}</div>`;
+} };
+
+/* ---------- Profile sheet ---------- */
+function profileSheet() {
+  const owner = !isPartner();
+  return `<div class="sh"><span class="t">${owner ? 'Profiles and this phone' : 'This phone'}</span><button class="icon-btn" data-close aria-label="Close">${ic('close', 's')}</button></div><div class="sb">
+    <div class="group">
+      ${owner ? `<div class="row tap"><span class="lead av">A</span><span class="n">Anna</span><span class="v">${ic('check', 's')}</span><span class="s">Budget, car, investments</span></div>` : ''}
+      <div class="row tap" ${owner ? 'data-act="as:partner"' : ''}><span class="lead av home">H</span><span class="n">Home</span><span class="v">${owner ? '' : ic('check', 's')}</span><span class="s">Shared by Anna and Piotr · budget, flat, mortgage</span></div></div>
+    <div class="note">${ic('lock', 's')}<span>${owner ? 'Each profile is kept separately. The phone shows one at a time and never adds them up.' : 'This phone has only the profiles shared with it.'}</span></div>
+    ${owner ? `<div class="sec">Waiting for you on the Mac</div><div class="group">
+      <div class="row"><span class="lead lead-ic">${ic('doc')}</span><span class="n">2 suggestions to approve</span><span class="v"></span><span class="s">a strategy change, an import</span></div>
+      <div class="row"><span class="lead lead-ic warn">${ic('lock')}</span><span class="n">Reconnect mBank</span><span class="v"></span><span class="s">the bank's permission ends in 6 days</span></div></div>
+      <div class="note">${ic('laptop', 's')}<span>Approvals and bank logins happen on the Mac, where you see the whole change.</span></div>` : ''}
+    <div class="sec">This phone</div><div class="group">
+      <div class="row nolead tap" data-go="notifs"><span class="n" style="font-weight:500">Notifications</span><span class="v chev">${ic('chev', 's')}</span></div>
+      <div class="row nolead tap"><span class="n" style="font-weight:500">Face ID to open</span><span class="v"><span class="toggle on"></span></span></div>
+      <div class="row nolead tap" data-act="incog"><span class="n" style="font-weight:500">Hide amounts</span><span class="v"><span class="toggle ${S.incog ? 'on' : ''}"></span></span><span class="s">money shows in bananas; the app switcher is always blurred</span></div>
+      <div class="row nolead tap"><span class="n" style="font-weight:500">Language</span><span class="v muted" style="font-weight:500">System</span></div></div>
+    <div class="group"><div class="row nolead"><span class="n" style="font-weight:500">${owner ? 'Anna' : 'Piotr'}'s iPhone</span><span class="v muted" style="font-weight:500">added 3 Nov</span><span class="s">up to date 1 min ago</span></div>
+      <div class="row nolead tap"><span class="n neg" style="font-weight:500">Remove this phone</span><span class="v"></span><span class="s">deletes the copy on this phone</span></div></div>
+  </div>`;
+}
+
+/* ---------- Notifications ---------- */
+SCREENS.notifs = { tab: 'today', render: () => {
+  const r = (n, s, on, fixed) => `<div class="row nolead tap"><span class="n" style="font-weight:500">${n}</span><span class="v"><span class="toggle ${on ? 'on' : ''} ${fixed ? 'fixed' : ''}"></span></span>${s ? `<span class="s" style="white-space:normal">${s}</span>` : ''}</div>`;
+  const p = isPartner();
+  return `<div class="screen enter">${navBar('Notifications')}
+  <div class="scroll">
+    <div class="sec">When the phone next syncs</div><div class="group">${p ? '' : r('Alerts you mark “tell my phone”', 'Today: CD Projekt -8%, VT below USD 110', true)}${r('A device joins or leaves', 'For safety - always on', true, true)}</div>
+    <div class="sec">Digests</div><div class="group">${r('Sunday, 18:00', 'The week in one line, next week\'s bills' + (p ? '' : ', review due') + '.', true)}${r('Month closed', 'What you kept' + (p ? '' : ' and what your plan says') + '.', true)}${r('Evening, 19:00', 'Bills due tomorrow, payments to categorize. Skipped when empty.', false)}</div>
+    ${p ? '' : `<div class="sec">Warnings, once</div><div class="group">${r('Bank data is getting old', 'After 36 hours without a fetch; again only if it gets worse.', true)}${r('A bank permission ends soon', '7 days and 1 day before.', true)}</div>`}
+    <div class="note">${ic('shield', 's')}<span>Notifications only count things - never amounts, payees or names. They are written on this phone; nothing readable passes through a push service.</span></div>
+    <div class="note">${ic('close', 's')}<span>Never sent: single payments, daily portfolio moves, market news, ${p ? '' : 'agent suggestions, '}streaks.</span></div>
+  </div>${tabBar()}</div>`;
+} };
+
+/* ---------- Lock screen ---------- */
+SCREENS.lock = { tab: 'today', modal: true, render: () => `<div class="screen modal"><div class="wall">
+    <div class="date">Thursday 12 November</div><div class="clock">19:02</div>
+    <div style="margin-top:auto;margin-bottom:56px">
+      <div class="notif"><span class="appic">cU</span><span class="ttl">cashU · Anna</span><span class="when">now</span><span class="msg">1 bill due tomorrow. 4 payments to categorize.</span></div>
+      <div class="notif"><span class="appic">cU</span><span class="ttl">cashU · Anna</span><span class="when">09:12</span><span class="msg">An alert you follow fired. Open cashU to see it.</span></div>
+      <div class="notif" style="opacity:.8"><span class="appic">cU</span><span class="ttl">cashU · Home</span><span class="when">Sun</span><span class="msg">Your week is ready. 3 bills next week.</span></div>
+    </div></div></div>` };
+
+/* ---------- Home-screen widget ---------- */
+SCREENS.widget = { tab: 'today', modal: true, render: () => {
+  const m = D().month, n = toCat().length;
+  const apps = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#64748b', '#ec4899'];
+  return `<div class="screen modal"><div class="wall" style="background:radial-gradient(120% 80% at 70% 10%, #3b3150 0%, #161321 50%, #07070a 100%)">
+    <div class="hs">
+      <div class="widget wide"><div class="w-h"><span class="appic">cU</span>cashU · ${D().who[1]}<span style="margin-left:auto;color:#6e6e77">06:40</span></div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:12px">
+          <div><div style="font-size:12px;color:#a3a3ab">${label('On track to keep')}</div>
+          <div style="font:700 34px/1 var(--font);letter-spacing:-.03em;margin-top:6px">${S.incog ? `🍌 ${bfmt(bananas(keep(m), 'PLN'))}` : `<span style="font-size:15px;color:#6e6e77;font-weight:600;vertical-align:top">PLN </span>${nf(keep(m), 0)}`}</div></div>
+          <div style="text-align:right;font-size:12px;color:#a3a3ab;line-height:17px">${S.incog ? 'spending under usual' : `<span style="color:#4cc38a;font-weight:650">${nf(m.usualToDate - m.spent, 0)} under</span> usual`}<br>next: ${D().upcoming[0].n}, ${D().upcoming[0].w}</div></div>
+        <div style="position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:14px"><i style="position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:#a3a3ab;width:${(m.spent / m.usualMonth * 100).toFixed(0)}%"></i><i style="position:absolute;top:-3px;width:2px;height:12px;background:#ededf0;left:${(m.usualToDate / m.usualMonth * 100).toFixed(0)}%"></i></div></div>
+      <div class="widget small"><div class="w-h"><span class="appic">cU</span>Needs you</div>
+        <div style="font:700 40px/1 var(--font);margin-top:16px">${n + (isPartner() ? 0 : 1)}</div>
+        <div style="font-size:12.5px;color:#a3a3ab;margin-top:8px;line-height:17px">${n} to categorize${isPartner() ? '' : '<br>1 alert'}</div></div>
+      ${apps.slice(0, 4).map((c) => `<div class="app"><i style="background:${c}"></i>App</div>`).join('')}
+      ${apps.slice(4).map((c) => `<div class="app"><i style="background:${c}"></i>App</div>`).join('')}
+    </div></div></div>`;
+} };
+
+/* ---------- Pairing / first run ---------- */
+SCREENS.pair = { tab: 'today', modal: true, render: () => {
+  const st = Math.min(S.step, 3);
+  const body = [
+    () => `<div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:30px">
+        <div class="appic" style="width:64px;height:64px;border-radius:18px;font-size:22px">cU</div>
+        <div style="font:700 30px/36px var(--font);letter-spacing:-.03em;margin-top:22px">Your money lives on your computer</div>
+        <div style="font-size:15px;line-height:22px;color:var(--color-fg-secondary);margin-top:10px">This phone gets a private copy of the profiles you add to it - to check, search and sort on the go. Nothing readable leaves your devices.</div>
+        <div class="rows" style="margin-top:22px">
+          <div class="row"><span class="lead lead-ic" style="border-radius:50%;font-weight:650">1</span><span class="n">On the Mac: Settings → Devices</span><span class="v"></span><span class="s">then “Connect a phone”</span></div>
+          <div class="row"><span class="lead lead-ic" style="border-radius:50%;font-weight:650">2</span><span class="n">Scan the code it shows</span><span class="v"></span><span class="s">with this phone</span></div>
+          <div class="row"><span class="lead lead-ic" style="border-radius:50%;font-weight:650">3</span><span class="n">Type six digits on the Mac</span><span class="v"></span><span class="s">so both sides know it is really you</span></div></div></div>
+      <button class="btn primary block" data-act="step:1">${ic('scan', 's')}Scan the code</button>
+      <div style="text-align:center;font-size:13px;color:var(--color-fg-muted);margin-top:14px;line-height:18px">Someone at home set cashU up? Ask them to connect your phone on their Mac.</div>`,
+    () => `<div style="font:700 24px/30px var(--font);letter-spacing:-.02em;margin-top:6px">Scan the code on your Mac</div>
+      <div class="viewfinder"><svg class="qr" viewBox="0 0 21 21" shape-rendering="crispEdges">${qr()}</svg><div class="frame"></div></div>
+      <div class="note">${ic('lock', 's')}<span>The code is an invitation for this phone only and expires in 10 minutes.</span></div>
+      <div style="flex:1"></div><button class="btn block" data-act="step:2">Simulate a scan</button>`,
+    () => `<div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center;padding-bottom:40px">
+        <div style="font:700 26px/32px var(--font);letter-spacing:-.025em">Type these digits on your Mac</div>
+        <div style="color:var(--color-fg-secondary);margin-top:8px">If the Mac asks for different digits, stop - someone else may be on your network.</div>
+        <div class="code"><span>4</span><span>1</span><span>8</span><span class="gap"></span><span>2</span><span>0</span><span>7</span></div>
+        <div style="display:flex;justify-content:center;gap:8px;align-items:center;color:var(--color-fg-muted);font-size:13px"><span class="dot acc"></span>Waiting for Anna's MacBook…</div></div>
+      <button class="btn block" data-act="step:3">Simulate the Mac confirming</button>`,
+    () => `<div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:30px">
+        <span class="lead-ic pos" style="width:52px;height:52px;border-radius:16px">${ic('check', 'l')}</span>
+        <div style="font:700 28px/34px var(--font);letter-spacing:-.03em;margin-top:18px">Anna is on this phone</div>
+        <div class="group" style="margin-top:20px">
+          <div class="row"><span class="lead lead-ic pos">${ic('check', 's')}</span><span class="n">Accounts and this month</span><span class="v muted" style="font-weight:500">ready</span></div>
+          <div class="row"><span class="lead lead-ic acc">${ic('sync', 's')}</span><span class="n">History 2019-2026</span><span class="v muted" style="font-weight:500">62%</span><div class="full meter"><i style="width:62%;background:var(--color-accent)"></i></div></div>
+          <div class="row"><span class="lead lead-ic">${ic('portfolio', 's')}</span><span class="n">Investments</span><span class="v muted" style="font-weight:500">next</span></div></div>
+        <div class="note">${ic('lock', 's')}<span>Stored encrypted on this phone. Turn on Face ID so only you can open it.</span></div></div>
+      <button class="btn primary block" data-act="finishpair">Open cashU</button>`,
+  ][st];
+  return `<div class="screen modal"><div class="scroll" style="padding-top:64px;padding-bottom:44px;display:flex;flex-direction:column">${body()}</div></div>`;
+} };
+function qr() {
+  let s = 7, out = ''; const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  const finder = (x, y) => { for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) { if (i === 0 || i === 6 || j === 0 || j === 6 || (i > 1 && i < 5 && j > 1 && j < 5)) out += `<rect x="${x + i}" y="${y + j}" width="1" height="1" fill="#fff"/>`; } };
+  finder(0, 0); finder(14, 0); finder(0, 14);
+  for (let i = 0; i < 21; i++) for (let j = 0; j < 21; j++) { if ((i < 8 && j < 8) || (i > 12 && j < 8) || (i < 8 && j > 12)) continue; if (rnd() > .52) out += `<rect x="${i}" y="${j}" width="1" height="1" fill="#fff"/>`; }
+  return out;
+}
+
+/* ======================================================================
+   Router
+   ====================================================================== */
+const SHEETS = { profile: profileSheet, cash: cashSheet, alert: alertSheet, tx: txSheet };
+const current = () => S.stack.length ? S.stack[S.stack.length - 1] : S.tab;
+function render(anim) {
+  const [id, variant] = current().split(':');
+  if (id !== 'today') S.stale = false;
+  const scr = SCREENS[id] || SCREENS.today;
+  let html = scr.render(variant);
+  if (!anim) html = html.replace('class="screen enter"', 'class="screen"');
+  if (S.sheet) {
+    const [sid, arg] = S.sheet.split(':');
+    html += `<div class="scrim" data-close></div><div class="sheet"><div class="grab"></div>${SHEETS[sid](arg)}</div>`;
+  }
+  const app = document.getElementById('app'), dev = document.getElementById('device');
+  const prevScroll = app.querySelector('.scroll')?.scrollTop || 0;
+  app.innerHTML = html;
+  dev.classList.toggle('on-lock', id === 'lock'); dev.classList.toggle('on-home', id === 'widget');
+  if (!anim && !S.resetScroll) { const sc = app.querySelector('.scroll'); if (sc) sc.scrollTop = prevScroll; }
+  S.resetScroll = false;
+  if (!anim) app.querySelectorAll('.rise').forEach((e) => e.classList.remove('rise'));
+  wire(); renderPanel();
+}
+function go(id) { S.stack.push(id); S.resetScroll = true; render(true); }
+function back() {
+  if (S.stack.length) S.stack.pop();
+  if (S.returnSheet) { S.sheet = S.returnSheet; S.returnSheet = null; }
+  S.resetScroll = true; render(false);
+}
+function wire() {
+  const q = document.getElementById('q');
+  if (q) q.addEventListener('input', () => { S.q = q.value; document.getElementById('act-list').innerHTML = activityList(); });
+  const top = document.getElementById('dtop');
+  if (top) drag(top);
+}
+function drag(el) {
+  let x0 = null, dx = 0;
+  el.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; x0 = e.clientX; el.style.transition = 'none'; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove', (e) => { if (x0 == null) return; dx = e.clientX - x0; el.style.transform = `translateX(${dx}px) rotate(${dx / 30}deg)`; });
+  el.addEventListener('pointerup', () => { if (x0 == null) return; el.style.transition = ''; x0 = null; const blocked = DECK[S.deck]?.decide && !S.decision && dx > 0; if (Math.abs(dx) > 90 && !blocked) deckNext(dx < 0); else el.style.transform = ''; dx = 0; });
+}
+function deckNext(flag) {
+  const top = document.getElementById('dtop');
+  if (flag && !S.deckFlags.includes(S.deck)) S.deckFlags.push(S.deck);
+  if (DECK[S.deck]?.decide && !flag) S.decided = true;
+  if (top && !S.still) { top.classList.add(flag ? 'gone-l' : 'gone-r'); setTimeout(() => { S.deck++; render(false); }, 260); }
+  else { S.deck++; render(false); }
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-go],[data-tab],[data-back],[data-sheet],[data-close],[data-act],[data-filter],[data-key]');
+  if (!t || !document.getElementById('device').contains(t)) return;
+  if (t.dataset.go) {
+    if (t.dataset.go === 'activity') { S.tab = 'activity'; S.stack = []; S.sheet = null; S.resetScroll = true; return render(true); }
+    if (t.dataset.go === 'review') { S.deck = 0; S.deckFlags = []; }
+    if (S.sheet && t.dataset.go === 'notifs') S.returnSheet = S.sheet.split(':')[0];
+    S.sheet = null; return go(t.dataset.go);
+  }
+  if (t.dataset.tab) { S.tab = t.dataset.tab; S.stack = []; S.sheet = null; S.returnSheet = null; S.resetScroll = true; return render(false); }
+  if (t.hasAttribute('data-back')) { S.sheet = null; return back(); }
+  if (t.dataset.sheet) { S.sheet = t.dataset.sheet; S.moreCats = false; S.rule = false; return render(false); }
+  if (t.hasAttribute('data-close')) { S.sheet = null; return render(false); }
+  if (t.dataset.filter) { S.filter = t.dataset.filter; return render(false); }
+  if (t.dataset.key) {
+    const k = t.dataset.key; let a = S.cashAmt;
+    if (k === '⌫') a = a.slice(0, -1); else if (k === '.') { if (!a.includes('.')) a = (a || '0') + '.'; } else if (!(a.includes('.') && a.split('.')[1].length >= 2)) a = (a === '0' ? '' : a) + k;
+    S.cashAmt = a; return render(false);
+  }
+  if (!t.dataset.act) return;
+  const [act, a1, a2] = t.dataset.act.split(':');
+  if (act === 'incog') S.incog = !S.incog;
+  if (act === 'accept') {
+    const card = document.getElementById('tri-top');
+    S.categorized[a1] = a2; S.rule = false; S.moreCats = false;
+    if (card && !S.still) { card.classList.add('out'); setTimeout(() => render(false), 230); return; }
+  }
+  if (act === 'skip') { const tx = D().tx, l = toCat(); if (l.length) tx.push(tx.splice(tx.indexOf(l[0]), 1)[0]); }
+  if (act === 'rule') S.rule = !S.rule;
+  if (act === 'morecats') S.moreCats = true;
+  if (act === 'settx') S.categorized[a1] = a2;
+  if (act === 'cashcat') S.cashCat = a1;
+  if (act === 'savecash') S.sheet = null;
+  if (act === 'clearq') S.q = '';
+  if (act === 'dec') S.decision = a1;
+  if (act === 'decide') { S.decided = true; S.sheet = null; }
+  if (act === 'later') { S.decided = true; S.decision = null; S.sheet = null; }
+  if (act === 'flag') return deckNext(true);
+  if (act === 'next') return deckNext(false);
+  if (act === 'plan') S.planned = true;
+  if (act === 'inv') { S.inv = a1; S.resetScroll = true; }
+  if (act === 'reviewend') { S.reviewState = S.deckFlags.length ? 'open' : 'done'; S.sheet = null; return back(); }
+  if (act === 'unplan') S.planned = false;
+  if (act === 'step') S.step = +a1;
+  if (act === 'finishpair') { S.stack = []; S.tab = 'today'; }
+  if (act === 'as') { S.as = a1; S.tab = 'today'; S.stack = []; S.sheet = null; }
+  render(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  const tabs = TABS();
+  if (/^[1-4]$/.test(e.key) && tabs[+e.key - 1]) { S.tab = tabs[+e.key - 1][0]; S.stack = []; S.sheet = null; render(false); }
+  if (e.key === 'h' || e.key === 'H') { S.incog = !S.incog; render(false); }
+  if (e.key === 't' || e.key === 'T') toggleTheme();
+  if (e.key === 'p' || e.key === 'P') setAs(isPartner() ? 'owner' : 'partner');
+  if (e.key === 'Escape') { if (S.sheet) { S.sheet = null; render(false); } else back(); }
+});
+
+/* ---------- side panel ---------- */
+const JUMPS = [['today', 'Today'], ['stale', 'Data 3 days old'], ['bigsum', 'Large sum uncategorized'], ['close', 'Month closed'], ['widget', 'Widget'], ['spending', 'Spending'], ['activity', 'Activity'], ['search', 'Search “warta”'], ['triage', 'Categorize'], ['tx', 'Payment'], ['cash', 'Cash'], ['portfolio', 'Investments'], ['signals', 'Signals'], ['strategy', 'Strategy'], ['alert', 'Alert'], ['position', 'Position'], ['review', 'Weekly review'], ['note', 'Note'], ['networth', 'Net worth'], ['loan', 'Mortgage'], ['profile', 'This phone'], ['notifs', 'Notifications'], ['lock', 'Lock screen'], ['pair', 'Pairing']];
+function renderPanel() {
+  if (P.has('bare')) return;
+  const b = (on, act, l) => `<button class="${on ? 'on' : ''}" onclick="${act}">${l}</button>`;
+  document.getElementById('panel').innerHTML = `<h1>cashU companion</h1><p>Clickable concept, synthetic data. <a href="index.html">The concept and all screens →</a></p>
+    <div class="grp">Whose phone</div><div class="opts">${b(!isPartner(), "setAs('owner')", 'Anna (owner)')}${b(isPartner(), "setAs('partner')", 'Piotr (Home)')}</div>
+    <div class="grp">Display</div><div class="opts">${b(S.incog, 'toggleIncog()', 'Hide amounts (H)')}${b(S.theme === 'light', 'toggleTheme()', 'Light (T)')}${b(S.offline, 'toggleOffline()', 'Offline')}</div>
+    <div class="grp">Jump to</div><div class="opts">${JUMPS.map(([k, l]) => `<button onclick="jump('${k}')">${l}</button>`).join('')}</div>`;
+}
+function setAs(a) { S.as = a; S.tab = 'today'; S.stack = []; S.sheet = null; render(false); }
+function toggleIncog() { S.incog = !S.incog; render(false); }
+function toggleTheme() { S.theme = S.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = S.theme; render(false); }
+function toggleOffline() { S.offline = !S.offline; render(false); }
+function jump(k) { open(k); S.resetScroll = true; render(true); }
+
+function open(k) {
+  S.sheet = null; S.stack = []; S.returnSheet = null; S.q = k === 'search' ? 'warta' : '';
+  const ownerOnly = ['signals', 'portfolio', 'alert', 'position', 'review', 'note', 'strategy', 'search', 'cash', 'close'];
+  if (ownerOnly.includes(k)) S.as = 'owner';
+  if (k === 'loan') S.as = 'partner';
+  const sheetBase = { profile: 'today', cash: 'activity', alert: 'portfolio', tx: 'activity' };
+  if (k === 'alert') S.inv = 'signals';
+  if (sheetBase[k]) { S.tab = sheetBase[k]; S.sheet = k === 'tx' ? `tx:${(toCat()[0] || D().tx[0]).id}` : k; return; }
+  if (k === 'stale') { S.tab = 'today'; S.stack = ['today:stale']; return; }
+  if (k === 'bigsum') { S.as = 'owner'; S.tab = 'today'; S.stack = ['today:big']; return; }
+  if (k === 'search') { S.tab = 'activity'; return; }
+  if (k === 'review') S.deck = S.step || 0;
+  const scr = SCREENS[k]; if (!scr) { S.tab = 'today'; return; }
+  if (scr.init) scr.init(); else if (scr.tab === 'portfolio') S.inv = 'portfolio';
+  S.tab = scr.tab; if (!scr.root || k === 'close') S.stack = [k];
+}
+open(P.get('screen') || 'today');
+if (P.get('screen') === 'triage' && P.get('step')) toCat().slice(0, +P.get('step')).forEach((t) => { S.categorized[t.id] = t.sug; });
+render(false);
+</script>
+</body>
+</html>

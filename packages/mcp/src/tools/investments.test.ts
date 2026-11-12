@@ -128,15 +128,18 @@ it.each(["strict", "amounts"])(
     expect(f.committed()).toBe(0);
   },
 );
-it.each(["strict", "amounts"])("exposes an opaque brokerage account reference in %s", async (privacy) => {
-  const f = fixture();
-  const account = f.run(C.addBrokerageAccount, { name: "Synthetic broker", broker: "dif" });
-  if (!account.ok) throw new Error(account.reason);
-  const ctx = await context(f, privacy);
-  expect(call(ctx, "portfolio_overview").accounts).toMatchObject([
-    { account_id: encodeEntityRef("account", account.value.account), broker: "dif" },
-  ]);
-});
+it.each(["strict", "amounts"])(
+  "exposes an opaque brokerage account reference in %s",
+  async (privacy) => {
+    const f = fixture();
+    const account = f.run(C.addBrokerageAccount, { name: "Synthetic broker", broker: "dif" });
+    if (!account.ok) throw new Error(account.reason);
+    const ctx = await context(f, privacy);
+    expect(call(ctx, "portfolio_overview").accounts).toMatchObject([
+      { account_id: encodeEntityRef("account", account.value.account), broker: "dif" },
+    ]);
+  },
+);
 it("refuses unowned opaque instrument references, wrong kinds, numeric source ids and unavailable view authority", () => {
   const f = fixture(),
     ctx = f.context();

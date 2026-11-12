@@ -2,12 +2,34 @@
 // average monthly salary of the budget's whole months, else a tenth of the brokerage accounts' value,
 // both in PLN at today's NBP rates, plus the PLN rate of every account currency so the renderer can
 // convert any amount. Only the factor and the rates leave the host, never the anchor itself.
+//
+// `@cashu/store/overview/bananas` is its own entry (like `./networth.ts`) so the phone, whose bundler
+// (Metro) does not tree-shake, carries the scale without the desktop widgets of `./index.ts`.
 import { budget, core, D, type Decimal, type IsoDate, ZERO } from "@cashu/domain";
+import type { market } from "@cashu/domain/investments";
 import { budgetBook } from "../budget/read-models.js";
 import { profileOf } from "../core/queries.js";
-import type { Read } from "../query.js";
+import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
 import type { NetWorthEnv } from "../registry.js";
 import { type OverviewSources, vaultNetWorthBook, vaultRateAt } from "./networth.js";
+
+/**
+ * The privacy mode's banana scale query (`core.bananaScale`) over the device's price cache (null: last
+ * trade prices); null without a salary or a portfolio. The overview queries reuse this factory, so the
+ * id has one definition.
+ */
+export function bananaScaleQuery(
+  env: { readonly prices: market.PriceCache | null; readonly changes?: ChangeSource },
+  sources: OverviewSources = {},
+): Query<{ readonly today: IsoDate }, core.BananaScale | null> {
+  const prices = env.prices;
+  return defineQuery({
+    id: "core.bananaScale",
+    ...(env.changes === undefined ? {} : { changes: env.changes }),
+    run: (read, args: { readonly today: IsoDate }) =>
+      bananaScaleView(read, { today: args.today, prices }, sources),
+  });
+}
 
 /** The scale, or null when the vault has neither a salary nor an invested portfolio. */
 export function bananaScaleView(

@@ -34,7 +34,7 @@ Apps compose packages and never import another app.
 | `apps/host/` | Apps | One local host per data dir: exclusive stores, CLI and MCP sessions, worker, connectors, workspaces, banking, sync, Python-data migration. |
 | `apps/desktop/` | Apps | Electron main/preload, React renderer, e2e suite, macOS packaging and native helpers. |
 | `apps/cli/` | Apps | The `cashu` shim: a thin client of the host; bundled into the app as `shim.mjs`. |
-| `apps/mobile/` | Apps | Expo/Hermes development client, routes/screens and native store/crypto/platform adapters. |
+| `apps/mobile/` | Apps | Expo/Hermes companion app: tabs Today / Activity / Investments / Net worth by module (`app/(tabs)/`), sheets (`app/sheet/`) and full-screen flows (`app/modal/`), screen hook + View per screen under `src/screens/`, the shell (`src/shell/`: tab header, incognito, `useNow`, privacy cover), the two-vault synthetic fixture (`src/fixture/`), NBP rates into the device price cache (`src/services/rates.ts`). |
 | `apps/relay/` | Apps | Sync relay scaffold. |
 | `tools/arch/` | Development tooling | `pnpm arch:check`: runner, dependency graph, ESLint (react-hooks), Knip, sherif and the guard tests (`src/guards/`). |
 | `tools/claude-dev/` | Development tooling | Repo-local TS architecture / UI / dev-design skills and the file-check hook; not shipped to profile workspaces. |

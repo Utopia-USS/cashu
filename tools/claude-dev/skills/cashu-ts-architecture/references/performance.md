@@ -22,7 +22,7 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Tap / click to visual response | <= 100 ms |
 | Scrolling the 60k list | no dropped frames > 1% in a 10 s fling at 60 Hz (120 Hz on ProMotion) |
 | Mobile memory, steady state with 60k transactions | <= 250 MB |
-| Bundles | mobile JS (Hermes bytecode) <= 6.60 MB ceiling, target 6.0 MB (see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
+| Bundles | mobile JS (Hermes bytecode) <= 8.30 MB ceiling (M1 companion budget, see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
 | Render regressions on key screens (Reassure) | <= 10% more renders or render time than the baseline |
 
 Mobile bundle note (lead, 2026-11-01, from S41b measurements): the first 4 MB budget was a guess. React Native +
@@ -42,6 +42,15 @@ carried the research layer as a value namespace (now `@cashu/domain/investments/
 fold reads only `.../research/contract`); the core index carried the agent workspace templates (now
 `@cashu/domain/core/workspace`). Measured 6,590,065 B on iOS and 6,566,198 B on Android; the ceiling
 is lowered to 6.60 MB. The tools/arch guard nativeStyles.test.ts keeps native.css to the phone's files.
+
+Companion budget (owner, 2026-11-12): the 6.0 MB target and the 6.60 MB ratchet could not hold the mobile
+companion (four tabs, sheets, the display layer, the store's companion queries, later the investments
+domain). The owner decided that bundle size is not a product concern ("you can raise it even more; Flutter
+apps weigh ~50 MB and that is fine"); the user-facing gates stay cold start p50 <= 1.5 s / p95 <= 2.5 s on
+the reference device, memory and list performance. The ceiling is therefore set per milestone from a
+measurement plus real headroom: M1 8.30 MB, M2 9.30 MB, M3 9.60 MB. Within a milestone it stays a ratchet
+(a regression guard: it may only be lowered); each milestone commit lists the top bundle owners from
+`bundle-size.mjs --report` and its cold-start measurement.
 
 ## Rules that keep the budgets
 

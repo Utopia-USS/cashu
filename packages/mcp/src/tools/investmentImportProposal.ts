@@ -47,7 +47,9 @@ function account(ctx: Context, args: ToolArgs) {
   const row = brokerageAccounts(ctx.store.read).find(
     (a) =>
       wanted === a.gid ||
-      (wanted === null && value !== "" && pyCasefold(labels.get(a.gid) ?? "") === pyCasefold(value)),
+      (wanted === null &&
+        value !== "" &&
+        pyCasefold(labels.get(a.gid) ?? "") === pyCasefold(value)),
   );
   if (!row)
     throw new ToolError(

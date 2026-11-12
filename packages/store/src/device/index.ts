@@ -17,9 +17,13 @@ export {
 } from "./connector-runs.js";
 export {
   currentVault,
+  devicePhoneState,
   devicePreferences,
+  monthClosedSeen,
   setCurrentVault,
+  setDevicePhoneState,
   setDevicePreferences,
+  setMonthClosedSeen,
 } from "./settings.js";
 export {
   DEVICE_TABLES,

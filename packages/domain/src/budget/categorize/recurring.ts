@@ -192,7 +192,7 @@ const SUBSCRIPTIONS = "subscriptions";
 /** The engine's default for a merchant nothing files yet (`categorize`, step 6). */
 const UNFILED = "other";
 /** The default relative amount drift of one charge (foreign-currency billing). */
-const DEFAULT_AMOUNT_TOLERANCE = D("0.15");
+export const RECURRING_AMOUNT_TOLERANCE = D("0.15");
 
 export interface RecurringListOptions extends RecurringOptions {
   /** Relative amount drift one charge cluster tolerates (`max <= min * (1 + t)`), default 0.15. */
@@ -340,7 +340,7 @@ function detectRecurringPaymentsWith(
   opts: RecurringListOptions,
   categorizeRow: Categorize,
 ): RecurringCandidate[] {
-  const tolerance = opts.amountTolerance ?? DEFAULT_AMOUNT_TOLERANCE;
+  const tolerance = opts.amountTolerance ?? RECURRING_AMOUNT_TOLERANCE;
   const groups = new Map<string, { payee: string; currency: string; entries: ListEntry[] }>();
   let seq = 0;
   for (const t of rows) {

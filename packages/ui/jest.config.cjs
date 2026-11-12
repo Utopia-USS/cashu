@@ -4,6 +4,8 @@
 module.exports = {
   preset: "jest-expo/ios",
   testMatch: ["<rootDir>/src/**/*.native.test.tsx"],
+  // Gesture handler, worklets and Reanimated stand-ins (SwipeStack); apps/mobile loads the same file.
+  setupFiles: ["<rootDir>/src/testing/jestNativeSetup.cjs"],
   // Workspace packages ship TypeScript sources with NodeNext `.js` specifiers.
   moduleNameMapper: { "^(\\.{1,2}/.*)\\.js$": "$1" },
   transformIgnorePatterns: [
