@@ -4,6 +4,7 @@ export const S = catalog({
   title: { pl: "Wydatki", en: "Spending" },
   byCategory: { pl: "Wydatki według kategorii", en: "Spending by category" },
   period: { pl: "Okres", en: "Period" },
+  currency: { pl: "Waluta", en: "Currency" },
   month: { pl: "Miesiąc", en: "Month" },
   quarter: { pl: "Kwartał", en: "Quarter" },
   year: { pl: "Rok", en: "Year" },

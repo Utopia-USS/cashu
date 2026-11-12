@@ -31,3 +31,14 @@ export const Odd: Story<FactsProps> = {
   },
 };
 export const PrivacyMode: Story<FactsProps> = { decorators: [privacyMode] };
+/** Three facts in one row of three (no spacer hole). */
+export const ThreeColumns: Story<FactsProps> = {
+  args: {
+    columns: 3,
+    items: [
+      { label: "Assets", value: pln("930000") },
+      { label: "Liabilities", value: pln("-412000") },
+      { label: "Investments", value: pln("61789") },
+    ],
+  },
+};

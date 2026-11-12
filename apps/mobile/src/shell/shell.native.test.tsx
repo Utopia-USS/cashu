@@ -241,6 +241,24 @@ describe("profile sheet", () => {
     expect(screen.getByRole("button", { name: "Synthetic B, current profile" })).toBeOnTheScreen();
   });
 
+  it("shows Diagnostics and Bench only in a dev build", async () => {
+    const Sheet = profileMeta.component;
+    const view = await render(<Sheet {...profileMeta.args} />);
+    expect(screen.getByText("Diagnostics")).toBeOnTheScreen();
+    expect(screen.getByText("Bench")).toBeOnTheScreen();
+    await view.rerender(<Sheet {...profileMeta.args} {...Release.args} />);
+    expect(screen.queryByText("Diagnostics")).toBeNull();
+    expect(screen.queryByText("Bench")).toBeNull();
+  });
+
+  it("closes from the icon button named by its label", async () => {
+    const Sheet = profileMeta.component;
+    const onClose = jest.fn();
+    await render(<Sheet {...profileMeta.args} onClose={onClose} />);
+    await fireEvent.press(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("toggles incognito from the sheet", async () => {
     const fixture = setup();
     await render(

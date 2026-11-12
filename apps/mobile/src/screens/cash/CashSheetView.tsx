@@ -11,7 +11,7 @@ import {
   Seg,
   useUiEnv,
 } from "@cashu/ui/native";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, View } from "react-native";
 import { S } from "./Cash.strings";
 import type { CashSheetState } from "./useCashSheet";
 
@@ -41,15 +41,9 @@ export function CashSheetView(props: CashSheetViewProps) {
         <Text role="heading" className="shrink text-headline font-strong text-fg">
           {S.cashExpense}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={S.close}
-          onPress={props.onClose}
-          hitSlop={4}
-          className="size-9 items-center justify-center rounded-full bg-chip active:opacity-70"
-        >
-          <Icon name="x" className="text-fg-secondary" />
-        </Pressable>
+        <Button variant="glyph" label={S.close} onPress={props.onClose}>
+          <Icon name="x" size={20} />
+        </Button>
       </View>
       <View className="gap-2">
         <Amount amount={props.amount} />
@@ -72,7 +66,8 @@ export function CashSheetView(props: CashSheetViewProps) {
         expanded={props.grid.expanded}
         onPick={props.grid.onPick}
         onExpand={props.grid.onExpand}
-        expandLabel={S.allCategories}
+        expandLabel={S.more}
+        columns={2}
       />
       <View className="min-h-11 flex-row items-center gap-3 rounded-lg bg-subtle px-3">
         <Icon name="doc" size={20} className="text-fg-muted" />
@@ -108,6 +103,7 @@ export function CashSheetView(props: CashSheetViewProps) {
       <Button
         variant="primary"
         size="lg"
+        block
         disabled={!props.canSave}
         pending={props.isSaving}
         onPress={props.onSave}

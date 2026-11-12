@@ -172,10 +172,10 @@ describe("Activity over the real synchronous store", () => {
     const { current } = await show();
     const state = current();
     expect(state.mode).toBe("browse");
-    // No wallet yet: no Cash chip, but the Cash button adds the first expense.
+    // No wallet yet: no Cash chip, but the plus button adds the first expense.
     expect(state.showCash).toBe(false);
     expect(state.canAddCash).toBe(true);
-    expect(screen.getByRole("button", { name: "Cash" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Add a cash expense" })).toBeOnTheScreen();
     expect(state.days.slice(0, 2).map((d) => [d.label, d.spent?.amount.toString()])).toEqual([
       ["Wed, Nov 11", "403.93"],
       ["Tue, Nov 10", "45.00"],

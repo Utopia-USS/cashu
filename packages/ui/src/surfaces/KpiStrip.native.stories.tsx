@@ -29,3 +29,13 @@ export const Three: Story<KpiStripProps> = {
   },
 };
 export const PrivacyMode: Story<KpiStripProps> = { decorators: [privacyMode] };
+/** Three wide values in a narrow phone cell: each stays on one line and shrinks to fit. */
+export const LongValues: Story<KpiStripProps> = {
+  args: {
+    items: [
+      { label: "Income", value: pln("14800") },
+      { label: "Spent", value: pln("14800") },
+      { label: "Left", value: pln("14800") },
+    ],
+  },
+};

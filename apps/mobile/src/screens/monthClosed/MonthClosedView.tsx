@@ -67,18 +67,21 @@ function Strategy({ strategy }: { strategy: MonthClosedStrategy }) {
         ) : (
           strategy.canPlan && (
             <View className="gap-2">
-              <View className="flex-row flex-wrap gap-2">
-                {strategy.planLabel !== null && (
-                  <Button variant="primary" onPress={strategy.onPlan} pending={strategy.pending}>
-                    {strategy.planLabel}
-                  </Button>
-                )}
-                {strategy.other === null && (
-                  <Button variant="secondary" onPress={strategy.onOther}>
-                    {S.otherAmount}
-                  </Button>
-                )}
-              </View>
+              {strategy.planLabel !== null && (
+                <Button
+                  variant="primary"
+                  block
+                  onPress={strategy.onPlan}
+                  pending={strategy.pending}
+                >
+                  {strategy.planLabel}
+                </Button>
+              )}
+              {strategy.other === null && (
+                <Button variant="secondary" block onPress={strategy.onOther}>
+                  {S.otherAmount}
+                </Button>
+              )}
               {strategy.other !== null && (
                 <View className="flex-row items-center gap-2">
                   <TextInput

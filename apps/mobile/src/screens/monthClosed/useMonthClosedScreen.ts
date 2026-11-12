@@ -4,7 +4,7 @@
 // `cancelPlannedDeposit`) and where the month went against a usual one. Shown on Today in the first
 // days of a month and pushed from Spending's "{Month} closed" link.
 import { D, type Decimal, daysInMonth, type IsoDate, Money } from "@cashu/domain";
-import { formatClockTime, formatDecimalValue } from "@cashu/i18n/values";
+import { formatDecimalValue } from "@cashu/i18n/values";
 import { cancelPlannedDeposit, createPlannedDeposit } from "@cashu/store/investments/planned";
 import { type CommandOutcome, useCommand, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";

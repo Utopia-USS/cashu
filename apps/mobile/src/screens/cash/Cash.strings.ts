@@ -15,7 +15,7 @@ export const S = catalog({
     pl: "Portfel z gotówką powstanie przy pierwszym wydatku",
     en: "A cash wallet is created with the first expense",
   },
-  allCategories: { pl: "Wszystkie kategorie", en: "All categories" },
+  more: { pl: "Więcej", en: "More" },
   titleLabel: { pl: "Na co", en: "What it was" },
   titlePlaceholder: { pl: "Na co to było?", en: "What was it?" },
   date: { pl: "Dzień", en: "Day" },

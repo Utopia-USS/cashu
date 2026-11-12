@@ -37,6 +37,17 @@ const PATHS = {
   ],
   shield: ["M12 3 5 6v5.5c0 4.3 3 7.7 7 9.5 4-1.8 7-5.2 7-9.5V6z"],
   search: ["M4.5 11a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0", "m16 16 4.5 4.5"],
+  // Three dots in a row (the overflow menu): circles of radius 1 whose 1.5 stroke reads as a solid dot.
+  more: [
+    "M4.5 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0",
+    "M11 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0",
+    "M17.5 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0",
+  ],
+  // The iOS share glyph: an arrow up out of an open box.
+  share: [
+    "M12 3.5v11M8 7.5l4-4 4 4",
+    "M8.5 10.5H7A1.5 1.5 0 0 0 5.5 12v7A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5h-1.5",
+  ],
   sync: [
     "M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5",
   ],

@@ -18,8 +18,6 @@ const owner: NetWorthViewProps = {
     onIncognitoToggle: () => {},
   },
   currency: "PLN",
-  currencies: ["EUR", "PLN"],
-  onCurrencyPicked: () => {},
   hero: {
     label: "converted",
     value: pln("97374.11"),
@@ -43,8 +41,9 @@ const owner: NetWorthViewProps = {
       },
     ],
     xLabels: [
-      { i: 0, text: "2025-11" },
-      { i: 11, text: "2026-11" },
+      { i: 0, text: "Nov 2025" },
+      { i: 5, text: "May 2026" },
+      { i: 11, text: "Nov 2026" },
     ],
   },
   facts: [
@@ -108,7 +107,6 @@ const owner: NetWorthViewProps = {
 const partner: NetWorthViewProps = {
   ...owner,
   header: { ...owner.header, profile: { initial: "H", name: "Home" } },
-  currencies: ["PLN"],
   hero: {
     label: "net",
     value: pln("354980.20"),
@@ -196,7 +194,6 @@ export const EmptyShown = { args: { ...owner, showEmpty: true } satisfies NetWor
 export const Empty = {
   args: {
     ...owner,
-    currencies: [],
     hero: { ...partner.hero, value: null, change: null },
     chart: { ...owner.chart, series: [{ values: [] }], xLabels: [] },
     facts: [],

@@ -177,7 +177,7 @@ describe("the payment sheet over the real synchronous store", () => {
         { gid: gidOf(fixture, "quux-1"), dateLabel: "Sep 2, 2026", amount: expect.anything() },
       ],
     });
-    await fireEvent.press(screen.getByRole("button", { name: "All categories" }));
+    await fireEvent.press(screen.getByRole("button", { name: "More" }));
     await fireEvent.press(screen.getByRole("button", { name: "Travel" }));
     expect(ready().category?.selected).toBe("travel");
     expect(ready().error).toBeNull();

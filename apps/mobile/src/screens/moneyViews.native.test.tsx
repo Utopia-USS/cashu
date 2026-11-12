@@ -22,6 +22,7 @@ import spendingMeta, {
   Empty as EmptySpending,
   ExactLargeValue,
   ManyCategories,
+  OneCurrency,
   Quarter,
 } from "./spending/SpendingView.stories";
 
@@ -38,6 +39,7 @@ const cases: [string, ComponentType<never>, object][] = [
   ["loan paid off", loanMeta.component, PaidOff.args],
   ["loan gone", loanMeta.component, Gone.args],
   ["spending current month", spendingMeta.component, CurrentMonth.args],
+  ["spending one currency", spendingMeta.component, OneCurrency.args],
   ["spending closed month", spendingMeta.component, ClosedMonth.args],
   ["spending quarter", spendingMeta.component, Quarter.args],
   ["spending large value", spendingMeta.component, ExactLargeValue.args],
@@ -119,4 +121,24 @@ it.each([
   await render(decorate(() => <View {...story.args} />));
   expect(screen.getAllByLabelText("Amount hidden").length).toBeGreaterThan(0);
   expect(JSON.stringify(screen.toJSON())).not.toContain("389,600");
+});
+
+it("puts a compact currency choice in the period row only with more than one currency", async () => {
+  const View = spendingMeta.component;
+  const view = await render(
+    <UiEnvProvider locale="en-US" privacy={false}>
+      <View {...CurrentMonth.args} />
+    </UiEnvProvider>,
+  );
+  expect(screen.getByLabelText("Currency")).toBeOnTheScreen();
+  expect(screen.getByRole("tab", { name: "EUR" })).toBeOnTheScreen();
+  expect(screen.getByRole("tab", { name: "PLN", selected: true })).toBeOnTheScreen();
+  await view.rerender(
+    <UiEnvProvider locale="en-US" privacy={false}>
+      <View {...OneCurrency.args} />
+    </UiEnvProvider>,
+  );
+  expect(screen.queryByLabelText("Currency")).toBeNull();
+  expect(screen.queryByRole("tab", { name: "PLN" })).toBeNull();
+  expect(screen.getByRole("tab", { name: "Month", selected: true })).toBeOnTheScreen();
 });

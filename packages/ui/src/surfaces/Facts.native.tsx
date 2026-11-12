@@ -1,4 +1,4 @@
-// The facts of a phone tile (visual.md `.fact`, the hero facts in a 2x2 grid): sub-tiles two to a row, each a
+// The facts of a phone tile (visual.md `.fact`, the hero facts in a 2x2 grid): sub-tiles two (or three) to a row, each a
 // muted label, a heavy value and an optional muted detail. The one sub-box a tile may hold.
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
@@ -12,6 +12,8 @@ export interface FactsItem {
 
 export interface FactsProps {
   items: readonly FactsItem[];
+  /** Facts per row (default 2, the 2x2 grid); 3 sets three facts in one row. */
+  columns?: 2 | 3;
 }
 
 function Fact({ label, value, detail }: FactsItem) {
@@ -28,7 +30,7 @@ function Fact({ label, value, detail }: FactsItem) {
         value
       )}
       {typeof detail === "string" ? (
-        <Text numberOfLines={1} className="text-caption text-fg-muted">
+        <Text numberOfLines={2} className="text-caption text-fg-muted">
           {detail}
         </Text>
       ) : (
@@ -38,10 +40,13 @@ function Fact({ label, value, detail }: FactsItem) {
   );
 }
 
-/** Facts two to a row; an odd last fact keeps half the width. */
-export function Facts({ items }: FactsProps) {
+// Fillers of a short last row, so its facts keep the cell width (at most columns - 1 of them).
+const SPACERS = ["spacer-1", "spacer-2"] as const;
+
+/** Facts `columns` to a row; a short last row keeps the cell width (spacers fill the rest). */
+export function Facts({ items, columns = 2 }: FactsProps) {
   const rows: FactsItem[][] = [];
-  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+  for (let i = 0; i < items.length; i += columns) rows.push(items.slice(i, i + columns));
   return (
     <View className="gap-2">
       {rows.map((row) => (
@@ -49,7 +54,9 @@ export function Facts({ items }: FactsProps) {
           {row.map((item) => (
             <Fact key={item.label} {...item} />
           ))}
-          {row.length === 1 && <View className="flex-1" />}
+          {SPACERS.slice(0, columns - row.length).map((key) => (
+            <View key={key} className="flex-1" />
+          ))}
         </View>
       ))}
     </View>

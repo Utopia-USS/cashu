@@ -27,7 +27,7 @@ export const S = catalog({
     pl: "Kwoty zamieniają się w banany; nazwy i procenty zostają",
     en: "Money becomes bananas; names and percentages stay",
   },
-  waitingOnMac: { pl: "Czeka na ciebie na Macu", en: "Waiting for you on the Mac" },
+  waitingOnMac: { pl: "Czeka na Ciebie na Macu", en: "Waiting for you on the Mac" },
   nothingWaiting: { pl: "Nic nie czeka", en: "Nothing waiting" },
   proposals: {
     pl: (n: number) => `${plCount(n, "propozycja", "propozycje", "propozycji")} do zatwierdzenia`,

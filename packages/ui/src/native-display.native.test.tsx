@@ -98,6 +98,34 @@ describe("Figure (native)", () => {
   });
 });
 
+describe("KpiStrip and Facts (native)", () => {
+  it("keeps every KPI value, a Money node included, on one shrinking line", async () => {
+    await render(story(kpiStories, "LongValues"));
+    const values = screen
+      .getAllByText(/14,800/)
+      .map((node) => node.parent)
+      .filter((wrapper) => wrapper?.props.numberOfLines === 1);
+    expect(values).toHaveLength(3);
+    for (const wrapper of values) {
+      expect(wrapper?.props.adjustsFontSizeToFit).toBe(true);
+      expect(wrapper?.props.minimumFontScale).toBe(0.75);
+    }
+  });
+
+  it("sets three facts in one row of three with no spacer", async () => {
+    await render(story(factsStories, "ThreeColumns"));
+    const rows = (screen.toJSON() as { children: { children: unknown[] }[] }).children;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.children).toHaveLength(3);
+  });
+
+  it("keeps the 2x2 grid by default and fills an odd last row with a spacer", async () => {
+    await render(story(factsStories, "Odd"));
+    const rows = (screen.toJSON() as { children: { children: unknown[] }[] }).children;
+    expect(rows.map((row) => row.children.length)).toEqual([2, 2]);
+  });
+});
+
 describe("rows and meters (native)", () => {
   it("shows a date lead as day and weekday, spoken as the whole date", async () => {
     await render(story(dateLeadStories, "Default"));

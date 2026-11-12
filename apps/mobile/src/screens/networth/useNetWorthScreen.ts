@@ -25,6 +25,7 @@ const INSTITUTIONS = core.builtinRegistry().institutions;
 const STALE_DAYS = 365;
 
 const monthFormats = new Map<string, Intl.DateTimeFormat>();
+const monthShortFormats = new Map<string, Intl.DateTimeFormat>();
 const rateDayFormats = new Map<string, Intl.DateTimeFormat>();
 
 function cached(
@@ -48,6 +49,11 @@ function sinceMonth(date: IsoDate, locale: string): string {
     noon(date),
   );
   return parts.find((p) => p.type === "month")?.value ?? date.slice(0, 7);
+}
+
+/** A chart axis month: "Nov 2025" / "lis 2025". */
+function monthShort(date: IsoDate, locale: string): string {
+  return cached(monthShortFormats, locale, { month: "short", year: "numeric" }).format(noon(date));
 }
 
 /** The NBP table day: "Tue, Nov 10" / "wt., 10 lis". */
@@ -80,18 +86,12 @@ export function useNetWorthScreen(args: {
   const accountLines = useQuery(moneyQueries.holdings.accounts, { today });
   const assetLines = useQuery(moneyQueries.holdings.assets, { today });
   const loanLines = useQuery(moneyQueries.loans.screen, { today });
-  const [requested, setRequested] = useState<string | null>(null);
   const [showEmpty, setShowEmpty] = useState(false);
 
-  const headline = heroView.facts.currency;
-  const currencies = Object.keys(summary.networth);
-  const currency =
-    requested !== null && currencies.includes(requested)
-      ? requested
-      : currencies.includes(headline)
-        ? headline
-        : (currencies[0] ?? headline);
-  const converted = currency === headline ? heroView.converted : null;
+  // The hero is the base currency: converted at NBP when the device holds every rate, else its own
+  // amount with the other currencies beside it (no currency choice on the phone).
+  const currency = heroView.facts.currency;
+  const converted = heroView.converted;
   const isConverted = converted !== null && converted.rateDate !== null;
 
   const history = useQuery(moneyQueries.overview.netWorthSeries, {
@@ -118,7 +118,7 @@ export function useNetWorthScreen(args: {
         ? null
         : new Money(own, currency),
     change:
-      currency === headline && heroView.change !== null
+      heroView.change !== null
         ? {
             amount: new Money(heroView.change.change, currency),
             pct: heroView.change.changePct,
@@ -151,31 +151,28 @@ export function useNetWorthScreen(args: {
       ? converted
       : { assets: facts.assets, liabilities: facts.liabilities, liquid: facts.liquid };
   const months = core.monthsOfSpending(sums.liquid, heroView.norm?.expense ?? null);
-  const showFacts = currency === headline;
-  const factRows: NetWorthViewProps["facts"] = showFacts
-    ? [
-        { label: S.owned, value: new Money(sums.assets, headline) },
-        {
-          label: S.owed,
-          value: new Money(sums.liabilities.neg(), headline),
-          ...(sums.liabilities.isZero() ? { detail: S.noLoans } : {}),
-        },
-        ...(facts.homeEquity === null
-          ? []
-          : [{ label: S.homeEquity, value: new Money(facts.homeEquity, headline) }]),
-        {
-          label: S.cashAtHand,
-          value: new Money(sums.liquid, headline),
-          ...(months === null
-            ? {}
-            : {
-                detail: S.monthsOfSpending(
-                  formatDecimalValue(months, locale, { fractionDigits: 1 }).text,
-                ),
-              }),
-        },
-      ]
-    : [];
+  const factRows: NetWorthViewProps["facts"] = [
+    { label: S.owned, value: new Money(sums.assets, currency) },
+    {
+      label: S.owed,
+      value: new Money(sums.liabilities.neg(), currency),
+      ...(sums.liabilities.isZero() ? { detail: S.noLoans } : {}),
+    },
+    ...(facts.homeEquity === null
+      ? []
+      : [{ label: S.homeEquity, value: new Money(facts.homeEquity, currency) }]),
+    {
+      label: S.cashAtHand,
+      value: new Money(sums.liquid, currency),
+      ...(months === null
+        ? {}
+        : {
+            detail: S.monthsOfSpending(
+              formatDecimalValue(months, locale, { fractionDigits: 1 }).text,
+            ),
+          }),
+    },
+  ];
 
   // Accounts: the money lines (no loans, no valued assets).
   const assetIds = new Set(assetLines.map((a) => a.gid));
@@ -250,8 +247,6 @@ export function useNetWorthScreen(args: {
   return {
     header,
     currency,
-    currencies,
-    onCurrencyPicked: setRequested,
     hero,
     chart: {
       label: S.history,
@@ -269,7 +264,10 @@ export function useNetWorthScreen(args: {
               : S.noHistory,
         },
       ],
-      xLabels: xIndices.map((i) => ({ i, text: points[i]?.date.slice(0, 7) ?? "" })),
+      xLabels: xIndices.map((i) => {
+        const point = points[i];
+        return { i, text: point === undefined ? "" : monthShort(point.date, locale) };
+      }),
       tooltip: (i) => {
         const point = points[i];
         return {

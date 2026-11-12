@@ -1,6 +1,7 @@
 // Pure Net worth tab: the hero (figure, change, the other currencies and the NBP table date, the
-// 12-month chart, four facts), then the accounts, loans and valued assets. Every amount arrives as
-// exact Money from the screen hook; the household profile without investments leads with Accounts.
+// 12-month chart, the facts: four in 2x2, three in one row), then the accounts, loans and valued
+// assets. Every amount arrives as exact Money from the screen hook; the household profile without
+// investments leads with Accounts.
 import {
   DateText,
   Delta,
@@ -16,7 +17,6 @@ import {
 } from "@cashu/ui/native";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { TabHeader } from "../../shell/TabHeader";
-import { CurrencyPicker } from "../controls/CurrencyPicker";
 import type { NetWorthAccountRow, NetWorthViewProps } from "../money-contracts";
 import { S } from "./NetWorth.strings";
 
@@ -78,6 +78,7 @@ function Hero(props: NetWorthViewProps) {
       {props.facts.length > 0 && (
         <View className="mt-3">
           <Facts
+            columns={props.facts.length === 3 ? 3 : 2}
             items={props.facts.map((fact) => ({
               label: fact.label,
               value:
@@ -88,15 +89,6 @@ function Hero(props: NetWorthViewProps) {
                 ),
               ...(fact.detail === undefined ? {} : { detail: fact.detail }),
             }))}
-          />
-        </View>
-      )}
-      {props.currencies.length > 1 && (
-        <View className="mt-3">
-          <CurrencyPicker
-            currencies={props.currencies}
-            currency={props.currency}
-            onCurrencyChange={props.onCurrencyPicked}
           />
         </View>
       )}

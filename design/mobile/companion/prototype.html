@@ -759,7 +759,7 @@ function activityList() {
 SCREENS.activity = { tab: 'activity', root: true, render: () => {
   const n = toCat().length;
   const f = (k, l, extra = '') => `<button class="${S.filter === k ? 'on' : ''}" data-filter="${k}">${l}${extra}</button>`;
-  return `<div class="screen">${topBar('Activity', { right: isPartner() ? '' : `<button class="icon-btn txt" data-sheet="cash">${ic('plus', 's')}Cash</button>` })}
+  return `<div class="screen">${topBar('Activity', { right: isPartner() ? '' : `<button class="icon-btn" data-sheet="cash" aria-label="Add a cash expense">${ic('plus')}</button>` })}
   <div class="scroll">
     <label class="search">${ic('search', 's')}<input id="q" placeholder="Payees, titles, amounts" value="${S.q.replace(/"/g, '&quot;')}" autocomplete="off">${S.q ? `<button class="clr" data-act="clearq" aria-label="Clear">${ic('close', 's')}</button>` : ''}</label>
     ${S.q ? '' : `<div class="chips">${f('all', 'All')}${f('need', 'To categorize', n ? `<span class="cnt">${n}</span>` : '')}${f('income', 'Income')}${isPartner() ? '' : f('cash', 'Cash')}<button>Account ${ic('down', 's')}</button></div>`}

@@ -4,7 +4,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react-nativ
 import { useState } from "react";
 import type { PeriodChoice } from "../money-contracts";
 import meta, { Empty, RetainedHistory } from "./Controls.stories";
-import { CurrencyPicker } from "./CurrencyPicker";
 import { PeriodPicker } from "./PeriodPicker";
 
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
@@ -23,24 +22,9 @@ it.each([RetainedHistory, Empty])(
         <meta.component {...story.args} />
       </UiEnvProvider>,
     );
-    expect(screen.getByText("Currency")).toBeTruthy();
     expect(screen.getByText("Period")).toBeTruthy();
-    if (story.args.empty) expect(screen.getByText("No currencies")).toBeTruthy();
-    else expect(screen.getByTestId("money-currency").props.selectedValue).toBe("PLN");
   },
 );
-
-it("selects only a different currency supplied by the genuine hook contract", async () => {
-  const changed = jest.fn();
-  await render(
-    <CurrencyPicker currencies={["PLN", "EUR"]} currency="PLN" onCurrencyChange={changed} />,
-  );
-  await fireEvent(screen.getByTestId("money-currency"), "valueChange", "USD");
-  await fireEvent(screen.getByTestId("money-currency"), "valueChange", "PLN");
-  expect(changed).not.toHaveBeenCalled();
-  await fireEvent(screen.getByTestId("money-currency"), "valueChange", "EUR");
-  expect(changed).toHaveBeenCalledWith("EUR");
-});
 
 function PeriodStory({ initial }: { initial: PeriodChoice }) {
   const [period, onPeriodChange] = useState(initial);

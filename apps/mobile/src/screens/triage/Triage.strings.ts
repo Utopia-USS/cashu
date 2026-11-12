@@ -16,7 +16,11 @@ export const S = catalog({
   useIt: { pl: "Użyj", en: "Use it" },
   orPickAnother: { pl: "Albo wybierz inną", en: "Or pick another" },
   pickCategory: { pl: "Wybierz kategorię", en: "Pick a category" },
-  allCategories: { pl: "Wszystkie kategorie", en: "All categories" },
+  more: { pl: "Więcej", en: "More" },
+  noSuggestion: {
+    pl: "Jeszcze bez propozycji - wybierz niżej",
+    en: "No suggestion yet - pick one below",
+  },
   couldNotSave: {
     pl: "Nie udało się zapisać. Spróbuj jeszcze raz.",
     en: "Could not save. Try again.",

@@ -35,3 +35,18 @@ export const SelectedAndSuggested: Story<CategoryGridProps> = {
 };
 export const Expanded: Story<CategoryGridProps> = { args: { expanded: true, selected: "bills" } };
 export const FewOptions: Story<CategoryGridProps> = { args: { options: options.slice(0, 3) } };
+/** Two columns (the payment and cash sheets): long names get two full lines; the expand cell reads "More". */
+export const TwoColumns: Story<CategoryGridProps> = {
+  args: {
+    columns: 2,
+    expandLabel: "More",
+    options: [
+      { key: "health", label: "Health and pharmacy", swatch: "palette-3" },
+      { key: "subscriptions", label: "Subscriptions", swatch: "palette-4" },
+      { key: "utilities", label: "Utilities and telecom", swatch: "palette-7" },
+      { key: "loan", label: "Loan installments", swatch: "palette-1" },
+      { key: "groceries", label: "Groceries", swatch: "palette-2" },
+      { key: "fun", label: "Fun", swatch: "palette-5" },
+    ],
+  },
+};

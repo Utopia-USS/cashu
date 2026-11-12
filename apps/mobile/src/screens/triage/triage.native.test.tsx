@@ -341,6 +341,7 @@ it("puts the grid right under the amount when there is no suggestion", async () 
     </Env>,
   );
   expect(screen.queryByText("Use it")).toBeNull();
+  expect(screen.getByText("No suggestion yet - pick one below")).toBeOnTheScreen();
   expect(screen.getByText("Pick a category")).toBeOnTheScreen();
   expect(screen.queryByRole("switch")).toBeNull();
 });

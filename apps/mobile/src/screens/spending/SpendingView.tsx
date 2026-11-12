@@ -15,7 +15,6 @@ import {
 } from "@cashu/ui/native";
 import { FlashList } from "@shopify/flash-list";
 import { Pressable, Text, View } from "react-native";
-import { CurrencyPicker } from "../controls/CurrencyPicker";
 import type { SpendingPeriodKind, SpendingRow, SpendingViewProps } from "../money-contracts";
 import { S } from "./Spending.strings";
 
@@ -49,27 +48,40 @@ function Stepper(props: SpendingViewProps) {
   );
 }
 
+/** Month / Quarter / Year; with more than one currency, a compact currency choice at the row's end. */
+function PeriodRow(props: SpendingViewProps) {
+  const many = props.currencies.length > 1;
+  const period = (
+    <Seg<SpendingPeriodKind>
+      full={!many}
+      label={S.period}
+      items={[
+        [S.month, "month"],
+        [S.quarter, "quarter"],
+        [S.year, "year"],
+      ]}
+      value={props.kind}
+      onChange={props.onKindChange}
+    />
+  );
+  if (!many) return period;
+  return (
+    <View className="flex-row items-center justify-between gap-2">
+      {period}
+      <Seg<string>
+        label={S.currency}
+        items={props.currencies.map((code) => [code, code] as const)}
+        value={props.currency}
+        onChange={props.onCurrencyChange}
+      />
+    </View>
+  );
+}
+
 function Header(props: SpendingViewProps) {
   return (
     <View className="gap-3 p-4">
-      {props.currencies.length > 1 && (
-        <CurrencyPicker
-          currencies={props.currencies}
-          currency={props.currency}
-          onCurrencyChange={props.onCurrencyChange}
-        />
-      )}
-      <Seg<SpendingPeriodKind>
-        full
-        label={S.period}
-        items={[
-          [S.month, "month"],
-          [S.quarter, "quarter"],
-          [S.year, "year"],
-        ]}
-        value={props.kind}
-        onChange={props.onKindChange}
-      />
+      <PeriodRow {...props} />
       <Stepper {...props} />
       {props.closedMonth !== null && (
         <Pressable

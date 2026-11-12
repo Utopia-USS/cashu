@@ -40,6 +40,7 @@ export function Button({
   disabled,
   type = "button",
   className = "",
+  block,
   label,
   pressed,
   current,
@@ -69,7 +70,7 @@ export function Button({
       aria-current={current}
       aria-expanded={expanded}
       title={title}
-      className={`${variants[variant]} ${sized} ${weights[weight]} ${busy.inFlight ? "cursor-progress" : ""} ${className}`}
+      className={`${variants[variant]} ${sized} ${weights[weight]} ${busy.inFlight ? "cursor-progress" : ""} ${block ? "w-full" : ""} ${className}`}
     >
       {busy.visible ? (
         <span className="relative inline-grid place-items-center align-bottom">

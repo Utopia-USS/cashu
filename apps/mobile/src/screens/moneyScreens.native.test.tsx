@@ -212,9 +212,13 @@ describe("net worth tab with the real synchronous store", () => {
       });
     });
     expect(props?.hero.value?.amount.toString()).toBe("1200.00");
-    await fireEvent(screen.getByTestId("money-currency"), "valueChange", "EUR");
-    expect(props?.hero.value?.amount.toString()).toBe("100.00");
-    expect(props?.facts).toEqual([]);
+    // No currency choice on the phone: the hero stays the base currency with the facts beside it.
+    expect(screen.queryByTestId("money-currency")).toBeNull();
+    expect(props?.facts.map((f) => f.label)).toEqual(["Owned", "Owed", "Cash at hand"]);
+    // Axis months read like "Nov 2025", never "2025-11".
+    const xLabels = props?.chart.xLabels?.map((l) => l.text) ?? [];
+    expect(xLabels.length).toBeGreaterThan(0);
+    for (const text of xLabels) expect(text).toMatch(/^[A-Z][a-z]{2} \d{4}$/u);
     await view.rerender(
       <Frame fixture={fixture} privacy>
         <NetWorthScreen
@@ -360,6 +364,11 @@ describe("spending with the real synchronous store", () => {
     expect(props?.vsUsual).toBeNull();
     expect(props?.rows.every((r) => r.vsUsual === null)).toBe(true);
     expect(props?.total.amount.toString()).toBe("450.00");
+
+    // The vault holds PLN and EUR: the compact currency choice in the period row switches the view.
+    expect(props?.currencies).toEqual(["PLN", "EUR"]);
+    await fireEvent.press(screen.getByRole("tab", { name: "EUR" }));
+    expect(props?.currency).toBe("EUR");
   });
 
   it("updates from a native cash append and switches vaults without the previous snapshot", async () => {

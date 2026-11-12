@@ -1,9 +1,11 @@
 // The phone's controls (W2c2) under jest-expo + React Native Testing Library: every story renders, and each
 // control's interaction reaches its callback. The @expo/ui native views are stood in by a local copy of the
 // app's mock; gesture handler, worklets and Reanimated run on jest.native-setup.cjs.
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { storyCases } from "./charts/testing/csf.js";
+import { Button } from "./controls/Button.js";
+import * as buttonStories from "./controls/Button.native.stories.js";
 import { CategoryGrid } from "./controls/CategoryGrid.js";
 import * as categoryStories from "./controls/CategoryGrid.native.stories.js";
 import { applyKeypadKey, Keypad, type KeypadKey } from "./controls/Keypad.js";
@@ -14,6 +16,8 @@ import { Seg } from "./controls/Seg.js";
 import * as segStories from "./controls/Seg.stories.js";
 import { ToggleRow } from "./controls/ToggleRow.js";
 import * as toggleStories from "./controls/ToggleRow.native.stories.js";
+import { PENDING_SHOW_DELAY_MS } from "./controls/usePressPending.js";
+import { Icon } from "./icons/Icon.js";
 import * as swatchStories from "./lists/Swatch.native.stories.js";
 import { SwipeStack, swipeOutcome } from "./lists/SwipeStack.js";
 import * as swipeStories from "./lists/SwipeStack.native.stories.js";
@@ -21,6 +25,7 @@ import * as swipeStories from "./lists/SwipeStack.native.stories.js";
 jest.mock("@expo/ui", () => require("./testing/expoUiMock.native").default);
 
 const modules = {
+  buttonStories,
   categoryStories,
   keypadStories,
   searchStories,
@@ -33,6 +38,81 @@ describe.each(Object.entries(modules))("%s (native)", (_name, stories) => {
   it.each(storyCases(stories))("%s renders", async (_story, element) => {
     await render(element);
     expect(screen.root).toBeOnTheScreen();
+  });
+});
+
+describe("Button (native)", () => {
+  // Catalog strings in the app; constants here (a raw JSX text child is a lint error on React Native).
+  const PLAN = "Plan PLN 1,000";
+  const OTHER = "Other amount";
+  const MONTH = "Month";
+  const SAVE = "Save";
+  it("calls onPress with a string child as its accessible name", async () => {
+    const onPress = jest.fn();
+    await render(
+      <Button variant="primary" onPress={onPress}>
+        {PLAN}
+      </Button>,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Plan PLN 1,000" }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores presses while disabled", async () => {
+    const onPress = jest.fn();
+    await render(
+      <Button onPress={onPress} disabled>
+        {OTHER}
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "Other amount" });
+    expect(button).toBeDisabled();
+    await fireEvent.press(button);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it("names an icon button by its label", async () => {
+    const onPress = jest.fn();
+    await render(
+      <Button variant="icon" label="Add a cash expense" onPress={onPress}>
+        <Icon name="plus" size={20} />
+      </Button>,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Add a cash expense" }));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a pressed toggle selected", async () => {
+    await render(<Button pressed>{MONTH}</Button>);
+    expect(screen.getByRole("button", { name: "Month" })).toBeSelected();
+  });
+
+  it("blocks presses and shows a spinner while a returned promise runs", async () => {
+    const spinners = () =>
+      JSON.stringify(screen.toJSON()).split('"type":"ActivityIndicator"').length - 1;
+    let finish = () => {};
+    const onPress = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await render(
+      <Button variant="primary" onPress={onPress}>
+        {SAVE}
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "Save" });
+    await fireEvent.press(button);
+    await fireEvent.press(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Save" })).toBeBusy();
+    expect(spinners()).toBe(0);
+    // The spinner appears only after the short delay (a fast action never blinks).
+    await act(() => new Promise((resolve) => setTimeout(resolve, PENDING_SHOW_DELAY_MS + 50)));
+    expect(spinners()).toBe(1);
+    await act(async () => finish());
+    expect(screen.getByRole("button", { name: "Save" })).not.toBeBusy();
   });
 });
 
@@ -116,6 +196,25 @@ describe("CategoryGrid", () => {
     expect(
       screen.getByRole("button", { name: "Groceries" }).props.accessibilityHint,
     ).toBeUndefined();
+  });
+});
+
+describe("CategoryGrid columns", () => {
+  it("lays cells out in halves with columns 2 and keeps the expand label as given", async () => {
+    await render(
+      <CategoryGrid
+        options={categoryStories.default.args.options}
+        selected={null}
+        expanded={false}
+        onPick={() => {}}
+        onExpand={() => {}}
+        expandLabel="More"
+        columns={2}
+      />,
+    );
+    expect(screen.getByText("More")).toBeOnTheScreen();
+    const cell = screen.getByRole("button", { name: "Groceries" }).parent;
+    expect(String(cell?.props.className)).toContain("w-1/2");
   });
 });
 

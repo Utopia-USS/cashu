@@ -74,9 +74,8 @@ export interface NetWorthAssetRow {
 
 export interface NetWorthViewProps {
   readonly header: Omit<TabHeaderProps, "title" | "right">;
+  /** The base currency the hero, chart and facts are in. */
   readonly currency: string;
-  readonly currencies: readonly string[];
-  readonly onCurrencyPicked: (currency: string) => void;
   readonly hero: NetWorthHero;
   readonly chart: LineChartProps;
   readonly facts: readonly {

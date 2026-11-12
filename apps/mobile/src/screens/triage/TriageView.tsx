@@ -1,6 +1,7 @@
 // Pure categorize deck (prototype `triage`): the modal bar with close and Skip, the progress, the card
-// stack (date, account, payee, amount, statement and the merchant's earlier category), then the
-// category grid and the "same for every payment" toggle; the done and empty states.
+// stack (date, account, payee, amount, statement and the merchant's earlier category, or a short
+// caption and a lower card when there is none), then the category grid and the "same for every
+// payment" toggle; the done and empty states.
 import {
   Button,
   CategoryGrid,
@@ -13,7 +14,7 @@ import {
   SwipeStack,
   ToggleRow,
 } from "@cashu/ui/native";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { S } from "./Triage.strings";
 import type { TriageState } from "./useTriageScreen";
 
@@ -21,24 +22,23 @@ export type TriageViewProps = TriageState;
 
 type CardState = Extract<TriageState, { kind: "card" }>;
 
+/** Stage heights (points): the full card with the suggestion box, and the collapsed card without one
+ * (header, payee, amount, statement and the one caption line). */
+const STAGE_WITH_SUGGESTION = 300;
+const STAGE_WITHOUT_SUGGESTION = 200;
+
 function ModalBar({ onClose, onSkip }: { onClose(): void; onSkip?: () => void }) {
   return (
     <View className="min-h-11 flex-row items-center justify-between gap-3 px-4 py-2">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={S.close}
-        onPress={onClose}
-        hitSlop={4}
-        className="size-9 items-center justify-center rounded-full bg-chip active:opacity-70"
-      >
-        <Icon name="x" className="text-fg-secondary" />
-      </Pressable>
+      <Button variant="glyph" label={S.close} onPress={onClose}>
+        <Icon name="x" size={20} />
+      </Button>
       {onSkip !== undefined && (
         <>
           <Text role="heading" className="shrink text-headline font-strong text-fg">
             {S.categorize}
           </Text>
-          <Button variant="ghost" size="sm" onPress={onSkip}>
+          <Button variant="ghost" size="sm" className="self-center" onPress={onSkip}>
             {S.skip}
           </Button>
         </>
@@ -68,7 +68,9 @@ function Card(props: CardState) {
           {card.statement}
         </Text>
       )}
-      {card.suggestion !== null && (
+      {card.suggestion === null ? (
+        <Text className="mt-auto text-caption text-fg-muted">{S.noSuggestion}</Text>
+      ) : (
         <View className="mt-auto flex-row items-center gap-2 rounded-lg bg-subtle p-3">
           <View className="shrink grow gap-0.5">
             <Text className="text-caption text-fg-muted">{S.suggested}</Text>
@@ -82,6 +84,7 @@ function Card(props: CardState) {
           <Button
             variant="primary"
             size="sm"
+            className="self-center"
             disabled={props.isSaving}
             onPress={props.onUseSuggestion}
           >
@@ -110,6 +113,7 @@ function Deck(props: CardState) {
       {props.dots && <ProgressDots total={props.total} done={props.done} />}
       <SwipeStack
         enabled={false}
+        height={props.card.suggestion === null ? STAGE_WITHOUT_SUGGESTION : STAGE_WITH_SUGGESTION}
         onSwiped={() => {}}
         swipeLeftLabel={S.skip}
         swipeRightLabel={S.useIt}
@@ -135,7 +139,7 @@ function Deck(props: CardState) {
           if (!props.isSaving) props.grid.onPick(key);
         }}
         onExpand={props.grid.onExpand}
-        expandLabel={S.allCategories}
+        expandLabel={S.more}
       />
       {props.rule !== null && (
         <View className="rounded-xl bg-surface-raised px-4">

@@ -1,8 +1,8 @@
 // The profile sheet (prototype `profile` sheet): the profiles on this phone, this phone's incognito
 // switch, what waits on the Mac, the Mac-only note and the app version; Diagnostics and Bench in dev.
-import { Icon, ListRow, NoteLine, ToggleRow } from "@cashu/ui/native";
+import { Button, Icon, ListRow, NoteLine, ToggleRow } from "@cashu/ui/native";
 import type { ReactNode } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { ProfileAvatar } from "../../shell/ProfileAvatar";
 import { S } from "./Profile.strings";
 import type { ProfileSheetState } from "./useProfileSheet";
@@ -29,15 +29,9 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
         <Text role="heading" className="shrink text-headline font-strong text-fg">
           {S.title}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={S.close}
-          onPress={props.onClose}
-          hitSlop={4}
-          className="size-9 items-center justify-center rounded-full bg-chip active:opacity-70"
-        >
-          <Icon name="x" className="text-fg-secondary" />
-        </Pressable>
+        <Button variant="glyph" label={S.close} onPress={props.onClose}>
+          <Icon name="x" size={20} />
+        </Button>
       </View>
       <Section title={S.profiles}>
         {props.profiles.map((p, i) => (

@@ -22,16 +22,19 @@ export interface CategoryGridProps {
   collapsedCount?: number;
   onPick(key: string): void;
   onExpand(): void;
-  /** Translated text of the expand cell ("All categories"). */
+  /** Translated text of the expand cell, shown as given (callers pass "More"). */
   expandLabel: string;
+  /** Cells per row (default 3); 2 gives long category names room in a sheet. */
+  columns?: 2 | 3;
 }
 
-// Each cell is a third of the row; the padding of the cell wrapper is the gutter (gap-2 between cells).
-const CELL = "w-1/3 p-1";
+// Each cell is a half or a third of the row; the padding of the cell wrapper is the gutter (gap-2 between
+// cells).
+const CELL = { 2: "w-1/2 p-1", 3: "w-1/3 p-1" } as const;
 const FACE = "min-h-11 flex-row items-center gap-2 rounded-lg border p-3";
 
 /**
- * Category picker of the phone (prototype `catGrid`): three columns of cells with the category swatch,
+ * Category picker of the phone (prototype `catGrid`): three (or two) columns of cells with the category swatch,
  * the chosen one inverted, the suggestion ringed in the accent; collapsed to the first few plus an
  * expand cell until the owner asks for all.
  */
@@ -45,6 +48,7 @@ export function CategoryGrid({
   onPick,
   onExpand,
   expandLabel,
+  columns = 3,
 }: CategoryGridProps) {
   const collapsed = !expanded && options.length > collapsedCount;
   const shown = collapsed ? options.slice(0, collapsedCount) : options;
@@ -54,7 +58,7 @@ export function CategoryGrid({
         const on = option.key === selected;
         const hinted = option.key === suggested;
         return (
-          <View key={option.key} className={CELL}>
+          <View key={option.key} className={CELL[columns]}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={option.label}
@@ -75,7 +79,7 @@ export function CategoryGrid({
         );
       })}
       {collapsed && (
-        <View className={CELL}>
+        <View className={CELL[columns]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={expandLabel}

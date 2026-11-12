@@ -72,6 +72,10 @@ const meta = { title: "Mobile/Spending", component: SpendingView, args: base };
 export default meta;
 
 export const CurrentMonth = { args: base };
+/** One currency: no currency choice beside the period control. */
+export const OneCurrency = {
+  args: { ...base, currencies: ["PLN"], otherCurrencies: [] } satisfies SpendingViewProps,
+};
 export const ClosedMonth = {
   args: {
     ...base,

@@ -10,6 +10,7 @@ export const S = catalog({
   toCategorize: { pl: "Bez kategorii", en: "To categorize" },
   income: { pl: "Wpływy", en: "Income" },
   cash: { pl: "Gotówka", en: "Cash" },
+  addCash: { pl: "Dodaj wydatek gotówkowy", en: "Add a cash expense" },
   clearCategory: {
     pl: (category: string) => `Usuń filtr kategorii ${category}`,
     en: (category: string) => `Remove the ${category} filter`,

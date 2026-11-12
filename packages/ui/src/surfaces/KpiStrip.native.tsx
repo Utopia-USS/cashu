@@ -26,18 +26,18 @@ export function KpiStrip({ items }: KpiStripProps) {
           <Text numberOfLines={1} className="text-caption text-fg-muted">
             {item.label}
           </Text>
-          {typeof item.value === "string" ? (
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.8}
-              className="text-title font-heavy text-fg tabular-nums"
-            >
-              {item.value}
-            </Text>
-          ) : (
-            item.value
-          )}
+          {/* Every value, a value component included (it is a Text, so it nests), stays on one line and
+              shrinks to fit a narrow cell instead of wrapping its currency over the digits. */}
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            className={
+              typeof item.value === "string" ? "text-title font-heavy text-fg tabular-nums" : ""
+            }
+          >
+            {item.value}
+          </Text>
         </View>
       ))}
     </View>

@@ -12,7 +12,7 @@ export interface ButtonProps {
   pending?: boolean;
   /** `secondary` is the plain chip button; `ghost` the same on a transparent face; `link` an underlined
    * text action; `icon` a bare glyph for a removing action (turns red on hover); `glyph` a neutral bare glyph
-   * (copy). Both glyph variants need `label`. */
+   * (copy). Both glyph variants need `label`; on the phone their `children` is an `Icon` node. */
   variant?: "primary" | "secondary" | "danger" | "ghost" | "link" | "icon" | "glyph";
   /** Box sizes for the framed variants; for `link`: sm = widget footer, md = widget body, lg = plain text. */
   size?: "sm" | "md" | "lg";
@@ -20,6 +20,8 @@ export interface ButtonProps {
   weight?: "regular" | "strong";
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
+  /** Full width of the parent (sheet and footer actions on the phone). */
+  block?: boolean;
   /** Layout only (margin, width, alignment); identity comes from `variant`. */
   className?: string;
   /** Accessible name when the visible content does not name the action (an arrow, a truncated title). */

@@ -2,6 +2,7 @@
 // category grid with the rule for the payee, the details and the payee's earlier payments (or the note
 // that this is the first one). Inflows and own transfers have no category section.
 import {
+  Button,
   CategoryGrid,
   EmptyState,
   Figure,
@@ -12,7 +13,7 @@ import {
   ToggleRow,
 } from "@cashu/ui/native";
 import type { ReactNode } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { S } from "./Payment.strings";
 import type { PaymentSheetState } from "./usePaymentSheet";
 
@@ -49,15 +50,9 @@ function Group({ children }: { children: ReactNode }) {
 
 function CloseButton({ onClose }: { onClose(): void }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={S.close}
-      onPress={onClose}
-      hitSlop={4}
-      className="size-9 items-center justify-center rounded-full bg-chip active:opacity-70"
-    >
-      <Icon name="x" className="text-fg-secondary" />
-    </Pressable>
+    <Button variant="glyph" label={S.close} onPress={onClose}>
+      <Icon name="x" size={20} />
+    </Button>
   );
 }
 
@@ -78,7 +73,8 @@ function Category({ props }: { props: Ready }) {
         collapsedCount={category.collapsedCount}
         onPick={category.onPick}
         onExpand={category.onExpand}
-        expandLabel={S.allCategories}
+        expandLabel={S.more}
+        columns={2}
       />
       {props.error !== null && (
         <Text accessibilityLiveRegion="polite" className="px-1 text-caption text-negative">

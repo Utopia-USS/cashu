@@ -1,4 +1,4 @@
-// Pure Activity tab (prototype `activity` and `search`): the tab header with the Cash button, the
+// Pure Activity tab (prototype `activity` and `search`): the tab header with the add-cash plus, the
 // search field, the filter chips with the account picker, and the day list; while searching, the payee
 // summary and the hit count lead and the hits follow by day. One FlashList of day headers and rows.
 
@@ -113,8 +113,8 @@ function Header(props: ActivityViewProps) {
         {...(props.canAddCash
           ? {
               right: (
-                <Button variant="secondary" size="sm" onPress={props.onCashPressed}>
-                  {S.cash}
+                <Button variant="glyph" label={S.addCash} onPress={props.onCashPressed}>
+                  <Icon name="plus" size={20} />
                 </Button>
               ),
             }

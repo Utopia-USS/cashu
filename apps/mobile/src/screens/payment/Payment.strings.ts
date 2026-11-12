@@ -22,7 +22,7 @@ export const S = catalog({
     en: (category: string) => `suggested: ${category}`,
   },
   suggestedHint: { pl: "Propozycja", en: "Suggested" },
-  allCategories: { pl: "Wszystkie kategorie", en: "All categories" },
+  more: { pl: "Więcej", en: "More" },
   couldNotSave: {
     pl: "Nie udało się zapisać. Spróbuj jeszcze raz.",
     en: "Could not save. Try again.",
