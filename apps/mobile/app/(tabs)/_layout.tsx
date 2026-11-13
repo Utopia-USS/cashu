@@ -1,6 +1,7 @@
 // The tab bar (NativeTabs): Today, Activity, Investments (only with the investments module; a dot while
 // an action signal waits for a decision) and Net worth, each a stack of its own. Switching profile
-// re-renders the triggers with the new modules.
+// re-renders the triggers with the new modules. The dot is the accent colour, selected or not: it means
+// "waiting for your decision", not an error (its size is the system's).
 import { NativeTabs } from "expo-router/native-tabs";
 import {
   decisionsWaiting,
@@ -15,7 +16,7 @@ export default function TabsLayout() {
   const { tabs, tint } = useTabs();
   const waiting = decisionsWaiting(useInvestmentSignals());
   return (
-    <NativeTabs {...(tint === undefined ? {} : { tintColor: tint })}>
+    <NativeTabs {...(tint === undefined ? {} : { tintColor: tint, badgeBackgroundColor: tint })}>
       <NativeTabs.Trigger name="today">
         <NativeTabs.Trigger.Icon sf="calendar" md="calendar_today" />
         <NativeTabs.Trigger.Label>{S.tabToday}</NativeTabs.Trigger.Label>
@@ -27,7 +28,10 @@ export default function TabsLayout() {
       <NativeTabs.Trigger name="investments" hidden={!tabs.includes("investments")}>
         <NativeTabs.Trigger.Icon sf="chart.line.uptrend.xyaxis" md="trending_up" />
         <NativeTabs.Trigger.Label>{S.tabInvestments}</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Badge hidden={waiting === 0} />
+        <NativeTabs.Trigger.Badge
+          hidden={waiting === 0}
+          {...(tint === undefined ? {} : { selectedBackgroundColor: tint })}
+        />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="networth">
         <NativeTabs.Trigger.Icon sf="building.columns" md="account_balance" />
