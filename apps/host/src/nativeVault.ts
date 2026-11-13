@@ -14,6 +14,11 @@ import {
   vaultSalt,
 } from "@cashu/store";
 import {
+  assertReplayedDeviceAuthority,
+  metaClockGuardStore,
+  SqlProvenanceStore,
+} from "@cashu/store/sync";
+import {
   createOwnLogCodec,
   createSyncEngine,
   crypto,
@@ -23,7 +28,6 @@ import {
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { leaseAttempts } from "./devices/leaseAttempts.js";
 import type { WriterLease } from "./lease.js";
-import { nativeClockGuard } from "./market/clockGuard.js";
 import { scrubIncompleteNativeCheckpoints } from "./nativeCheckpoint.js";
 import { sessionBindings } from "./nativeVault/bindings.js";
 import { carrierEndpoint } from "./nativeVault/carrier.js";
@@ -45,11 +49,9 @@ import { PairingJournal } from "./pairing/journal.js";
 import { pairingReadCapability } from "./pairing/readCapability.js";
 import { WriteQueue } from "./queue.js";
 import {
-  assertReplayedDeviceAuthority,
   loadDeviceAuthority,
   type NativeVaultInventoryEntry,
 } from "./sync/keys/deviceAuthority.js";
-import { SqlProvenanceStore } from "./sync/keys/sqlProvenance.js";
 
 export type {
   NativeDeviceRevokeDraft,
@@ -152,7 +154,7 @@ export async function openNativeVault(
       gate: candidate.gate,
       sink: store.sink(),
       clockStore: metaClockStore(store.driver, entry.deviceId),
-      clockGuard: nativeClockGuard(store.driver, entry.deviceId),
+      clockGuard: metaClockGuardStore(store.driver, entry.deviceId),
       physicalClock: { now },
       gateState: metaGateStateStore(store.driver, entry.deviceId),
       gossipEid: () => mintUlid(now()),

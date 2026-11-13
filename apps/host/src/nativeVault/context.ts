@@ -1,6 +1,7 @@
 // What every part of one open native vault session shares: the opened resources and the session's
 // mutable authority state. Built once by openNativeVault after recovery succeeded.
 import type { SqlDriver, Store } from "@cashu/store";
+import type { SqlProvenanceStore } from "@cashu/store/sync";
 import type { FolderTransport, SyncEngine } from "@cashu/sync";
 import type { SqlAttemptJournal } from "../attemptJournal.js";
 import type { WriterLease } from "../lease.js";
@@ -11,7 +12,6 @@ import type {
   DeviceAuthorityCandidate,
   NativeVaultInventoryEntry,
 } from "../sync/keys/deviceAuthority.js";
-import type { SqlProvenanceStore } from "../sync/keys/sqlProvenance.js";
 import type { NativeVaultSource } from "./types.js";
 
 /** Mutable session authority. `current` only ever goes from true to false. */

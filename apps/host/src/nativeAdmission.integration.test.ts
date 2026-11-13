@@ -12,6 +12,11 @@ import {
   Store,
   vaultSalt,
 } from "@cashu/store";
+import {
+  initializeMetaClockGuard,
+  metaClockGuardStore,
+  SqlProvenanceStore,
+} from "@cashu/store/sync";
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import {
   InMemoryKeyStore,
@@ -23,10 +28,8 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { takeWriterLease } from "./lease.js";
-import { initializeNativeClockGuard, nativeClockGuard } from "./market/clockGuard.js";
 import { openNativeVault } from "./nativeVault.js";
 import { loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
-import { SqlProvenanceStore } from "./sync/keys/sqlProvenance.js";
 import { type NativeVaultFixture, nativeVaultFixture } from "./testing/nativeVaultFixture.js";
 
 const fixtures: NativeVaultFixture[] = [];
@@ -76,7 +79,7 @@ describe("native admission and durability", () => {
       clockStore: new MemoryClockStore(),
     });
     const view = openNodeSqlite(join(entry.vaultRoot, "view.db"));
-    nativeClockGuard(view, entry.deviceId).save({ [peer]: Date.now() + 20 * 60_000 });
+    metaClockGuardStore(view, entry.deviceId).save({ [peer]: Date.now() + 20 * 60_000 });
     view.close();
     const { lock, lease } = openWithLock(value);
     const opened = await openNativeVault(
@@ -386,7 +389,7 @@ describe("native admission and durability", () => {
       salt: vaultSalt(peerSalt.expose().slice()),
       modules: builtinModules(),
     });
-    initializeNativeClockGuard(peerStore.driver, peerEntry.deviceId);
+    initializeMetaClockGuard(peerStore.driver, peerEntry.deviceId);
     peerSalt.wipe();
     peerStore.close();
     cpSync(join(creatorEntry.vaultRoot, "log"), join(peerRoot, "log"), { recursive: true });

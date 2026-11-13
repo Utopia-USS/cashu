@@ -1,6 +1,10 @@
-import { createHash } from "node:crypto";
-import type { SqlDriver } from "@cashu/store";
+// Device-local key provenance (which device sent each vault key, to whom, how). Portable: the binding
+// digest is sha256 over the ring's gid salt through @noble/hashes, byte-identical to the node:crypto
+// digest the host wrote before this store moved here (pinned by provenance.vector.test.ts).
 import type { crypto, devices } from "@cashu/sync";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import type { SqlDriver } from "../sql/driver.js";
 
 const KID = /^[0-9a-f]{32}$/;
 const DEVICE = /^[0-9a-f]{32}$/;
@@ -22,6 +26,11 @@ type Row = {
   source: string;
   received_at: number;
 };
+
+/** Hex sha256 of the gid salt: ties the store to one vault's keyring without holding the salt. */
+function ringBinding(salt: crypto.Secret): string {
+  return bytesToHex(sha256(salt.expose()));
+}
 
 function validRecord(value: devices.KeyProvenance): boolean {
   return (
@@ -77,7 +86,7 @@ export class SqlProvenanceStore implements devices.ProvenanceStore {
     const salt = ring.gidSalt();
     let binding: string;
     try {
-      binding = createHash("sha256").update(salt.expose()).digest("hex");
+      binding = ringBinding(salt);
     } finally {
       salt.wipe();
     }
@@ -131,7 +140,7 @@ export class SqlProvenanceStore implements devices.ProvenanceStore {
   assertRing(ring: crypto.Keyring): void {
     const salt = ring.gidSalt();
     try {
-      const binding = `${ring.vaultId}:${createHash("sha256").update(salt.expose()).digest("hex")}`;
+      const binding = `${ring.vaultId}:${ringBinding(salt)}`;
       if (binding !== this.#binding) throw new ProvenanceRefusal("provenance_mismatch");
     } finally {
       salt.wipe();

@@ -25,6 +25,7 @@ import {
   toUnstampedEvent,
   vaultSalt,
 } from "@cashu/store";
+import { initializeMetaClockGuard, SqlProvenanceStore } from "@cashu/store/sync";
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import {
   InMemoryKeyStore,
@@ -37,10 +38,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { startLocalHost } from "./host.js";
 import { takeWriterLease } from "./lease.js";
-import { initializeNativeClockGuard } from "./market/clockGuard.js";
 import { openNativeVault } from "./nativeVault.js";
 import { loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
-import { SqlProvenanceStore } from "./sync/keys/sqlProvenance.js";
 import { storeClient } from "./testing/harness.js";
 import { createProductionWorkspaceProvider } from "./workspace/production.js";
 
@@ -165,7 +164,7 @@ describe("native vault session", () => {
       salt,
       modules: builtinModules(),
     });
-    initializeNativeClockGuard(store.driver, entry.deviceId);
+    initializeMetaClockGuard(store.driver, entry.deviceId);
     const candidate = await loadDeviceAuthority({
       entry,
       dataDir,

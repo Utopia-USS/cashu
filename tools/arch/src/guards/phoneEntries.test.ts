@@ -18,6 +18,7 @@ const PHONE_ENTRIES = [
   "./investments/prices",
   "./budget/companion",
   "./overview/companion",
+  "./sync",
 ] as const;
 
 /** Desktop-only modules a phone entry must never reach. */
@@ -126,6 +127,28 @@ describe("guard: phone entries stay off the import pipeline and proposals", () =
       )
       .map(([, chain]) => chain.map((f) => relative(".", f)).join(" -> "));
     expect(bad, `${subpath} reaches a desktop-only module; cut the barrel import`).toEqual([]);
+  });
+
+  it("@cashu/store/sync stays a leaf entry: no root barrel, no materializer, no module registry", () => {
+    const entry = exportTarget("@cashu/store", "./sync");
+    expect(entry).not.toBeNull();
+    const graph = importGraph(entry as string);
+    expect(graph.size).toBeGreaterThan(1);
+    const barrels = new Set([
+      "packages/store/src/index.ts",
+      "packages/store/src/materialize.ts",
+      "packages/store/src/modules.ts",
+    ]);
+    const bad = [...graph]
+      .filter(
+        ([file]) =>
+          barrels.has(file) ||
+          /^packages\/store\/src\/(budget|assets|loans|investments|core|overview)\/index\.ts$/u.test(
+            file,
+          ),
+      )
+      .map(([, chain]) => chain.map((f) => relative(".", f)).join(" -> "));
+    expect(bad, "@cashu/store/sync reaches a barrel; import the leaf module instead").toEqual([]);
   });
 
   it("catches a drag: the walk reaches csvMapping from the importing barrel and proposals from the services barrel", () => {

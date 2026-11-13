@@ -14,15 +14,18 @@ import {
   toUnstampedEvent,
   vaultSalt,
 } from "@cashu/store";
+import {
+  initializeMetaClockGuard,
+  metaClockGuardStore,
+  SqlProvenanceStore,
+} from "@cashu/store/sync";
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import { InMemoryKeyStore } from "@cashu/sync/testing";
 import { SqlAttemptJournal } from "../attemptJournal.js";
-import { initializeNativeClockGuard, nativeClockGuard } from "../market/clockGuard.js";
 import {
   loadDeviceAuthority,
   type NativeVaultInventoryEntry,
 } from "../sync/keys/deviceAuthority.js";
-import { SqlProvenanceStore } from "../sync/keys/sqlProvenance.js";
 
 export interface NativeVaultFixture {
   readonly dataDir: string;
@@ -131,7 +134,7 @@ export async function nativeVaultFixture(
       salt,
       modules: builtinModules(),
     });
-    initializeNativeClockGuard(store.driver, identity.deviceId);
+    initializeMetaClockGuard(store.driver, identity.deviceId);
     candidate = await loadDeviceAuthority({
       entry,
       dataDir,
@@ -154,7 +157,7 @@ export async function nativeVaultFixture(
       gate: candidate.gate,
       sink: store.sink(),
       clockStore: metaClockStore(store.driver, entry.deviceId),
-      clockGuard: nativeClockGuard(store.driver, entry.deviceId),
+      clockGuard: metaClockGuardStore(store.driver, entry.deviceId),
       gateState: metaGateStateStore(store.driver, entry.deviceId),
       physicalClock: { now },
     });

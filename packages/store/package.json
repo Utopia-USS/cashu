@@ -35,6 +35,7 @@
     "./investments/local": "./src/investments/local/index.ts",
     "./device": "./src/device/index.ts",
     "./gid": "./src/gid.ts",
+    "./sync": "./src/sync/index.ts",
     "./overview": "./src/overview/index.ts",
     "./overview/networth": "./src/overview/networth.ts",
     "./overview/companion": "./src/overview/companion.ts",

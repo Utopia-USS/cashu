@@ -3,9 +3,10 @@
 // exception is a pass this device ran only to refresh its fetch-lease pull evidence: when the pass
 // itself or the keyring save failed, but a fresh authenticated replay of the local log shows the
 // same device authority, the session stays current (the refresh just produced no evidence).
+
+import { assertReplayedDeviceAuthority } from "@cashu/store/sync";
 import { crypto, type SyncResult } from "@cashu/sync";
 import type { leaseAttempts } from "../devices/leaseAttempts.js";
-import { assertReplayedDeviceAuthority } from "../sync/keys/deviceAuthority.js";
 import { failClosed, type NativeVaultContext, profileGid } from "./context.js";
 import { warnCause } from "./diagnostics.js";
 import type { SessionGuards } from "./guards.js";

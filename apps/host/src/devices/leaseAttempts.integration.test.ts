@@ -3,13 +3,16 @@ import { join } from "node:path";
 import { connectHost, NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, metaClockStore, metaGateStateStore, Store, vaultSalt } from "@cashu/store";
+import {
+  initializeMetaClockGuard,
+  metaClockGuardStore,
+  SqlProvenanceStore,
+} from "@cashu/store/sync";
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import { InMemoryKeyStore, MemoryTransport } from "@cashu/sync/testing";
 import { expect, it, vi } from "vitest";
 import { startLocalHost } from "../host.js";
-import { initializeNativeClockGuard, nativeClockGuard } from "../market/clockGuard.js";
 import { loadDeviceAuthority } from "../sync/keys/deviceAuthority.js";
-import { SqlProvenanceStore } from "../sync/keys/sqlProvenance.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
 
 it("records a checked native fetch as an authenticated durable lease event", async () => {
@@ -181,7 +184,7 @@ it("keeps a remote non-force pin pending until the old leader's fetch drains and
     salt,
     modules: builtinModules(),
   });
-  initializeNativeClockGuard(peerStore.driver, fixture.peerIdentity.deviceId);
+  initializeMetaClockGuard(peerStore.driver, fixture.peerIdentity.deviceId);
   const creator = fixture.vaultSource.provider.inventory[0];
   if (!creator) throw new Error("creator unavailable");
   const creatorCertificate = (await fixture.vaultSource.provider.bootstrapCertificates())[0];
@@ -211,7 +214,7 @@ it("keeps a remote non-force pin pending until the old leader's fetch drains and
     gate: peerAuthority.gate,
     sink: peerStore.sink(),
     clockStore: metaClockStore(peerStore.driver, fixture.peerIdentity.deviceId),
-    clockGuard: nativeClockGuard(peerStore.driver, fixture.peerIdentity.deviceId),
+    clockGuard: metaClockGuardStore(peerStore.driver, fixture.peerIdentity.deviceId),
     gateState: metaGateStateStore(peerStore.driver, fixture.peerIdentity.deviceId),
   });
   const host = await startLocalHost({

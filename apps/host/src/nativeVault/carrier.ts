@@ -6,8 +6,8 @@ import {
   lanAuthBody,
   lanBytesDigest,
 } from "@cashu/host-protocol/pairing-lan";
+import { assertReplayedDeviceAuthority } from "@cashu/store/sync";
 import { crypto } from "@cashu/sync";
-import { assertReplayedDeviceAuthority } from "../sync/keys/deviceAuthority.js";
 import { type NativeVaultContext, profileGid } from "./context.js";
 import { warnCause } from "./diagnostics.js";
 import type { SessionGuards } from "./guards.js";

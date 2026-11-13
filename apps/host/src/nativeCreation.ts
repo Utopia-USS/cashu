@@ -40,10 +40,15 @@ import {
   toUnstampedEvent,
   vaultSalt,
 } from "@cashu/store";
+import {
+  assertReplayedDeviceAuthority,
+  initializeMetaClockGuard,
+  metaClockGuardStore,
+  SqlProvenanceStore,
+} from "@cashu/store/sync";
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { takeWriterLease } from "./lease.js";
-import { initializeNativeClockGuard, nativeClockGuard } from "./market/clockGuard.js";
 import { readNativeRecoveryWrap } from "./nativeCreationArtifacts.js";
 import {
   type CreationStage,
@@ -63,8 +68,7 @@ import {
 } from "./nativeInventory.js";
 import { type NativeVaultSource, openNativeVault } from "./nativeVault.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
-import { assertReplayedDeviceAuthority, loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
-import { SqlProvenanceStore } from "./sync/keys/sqlProvenance.js";
+import { loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
 
 const PREPARE_TTL_MS = 10 * 60 * 1000;
 const MAX_ARTIFACT = 32 * 1024;
@@ -517,7 +521,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           salt,
           modules: builtinModules(),
         });
-        initializeNativeClockGuard(store.driver, deviceId);
+        initializeMetaClockGuard(store.driver, deviceId);
         const openKeyStore = makeKeyStore({
           dataDir,
           purpose: "open",
@@ -552,7 +556,7 @@ export function createNativeCreationService(options: NativeCreationOptions) {
           gate: candidate.gate,
           sink: store.sink(),
           clockStore: metaClockStore(store.driver, deviceId),
-          clockGuard: nativeClockGuard(store.driver, deviceId),
+          clockGuard: metaClockGuardStore(store.driver, deviceId),
           gateState: metaGateStateStore(store.driver, deviceId),
           gossipEid: () => mintUlid(now(), (n) => sodium.randomBytes(n)),
         });

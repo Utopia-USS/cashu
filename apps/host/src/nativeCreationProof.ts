@@ -5,6 +5,7 @@ import type { NativeCreationPrepareParams } from "@cashu/host-protocol";
 import { type HostLock, NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, metaClockStore, metaGateStateStore, Store, vaultSalt } from "@cashu/store";
+import { assertReplayedDeviceAuthority, SqlProvenanceStore } from "@cashu/store/sync";
 import {
   createOwnLogCodec,
   createSyncEngine,
@@ -15,8 +16,7 @@ import {
 import { readNativeRecoveryWrap } from "./nativeCreationArtifacts.js";
 import type { CompletedCreation } from "./nativeCreationJournal.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
-import { assertReplayedDeviceAuthority, loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
-import { SqlProvenanceStore } from "./sync/keys/sqlProvenance.js";
+import { loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 

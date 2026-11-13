@@ -1,7 +1,8 @@
 // The admission predicates of a native vault session: whether it is still the current authority,
 // may run side effects (writes, workspace files, external effects) or may fetch public market data.
+
+import { assertReplayedDeviceAuthority } from "@cashu/store/sync";
 import { devices } from "@cashu/sync";
-import { assertReplayedDeviceAuthority } from "../sync/keys/deviceAuthority.js";
 import { type NativeVaultContext, profileGid } from "./context.js";
 import { onceWarner } from "./diagnostics.js";
 import { REVOKE_COMMAND } from "./revokeIntent.js";
