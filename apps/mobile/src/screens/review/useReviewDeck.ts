@@ -421,6 +421,9 @@ export function useReviewDeck(args: {
     const name = instrument?.name || instrument?.symbol || row.instrumentLabel || "";
     return signalText(row, { name, currency: instrument?.currency ?? null }, locale);
   };
+  /** A decide item's title with the instrument's display name in place of the ticker. */
+  const titleOf = (item: ReviewDecideItem): string =>
+    instruments.find((i) => i.id === item.instrument)?.name || item.title;
   // The deck starts from the frozen result on the first render that has one (and at `step`, if given).
   const initial = (): DeckState => {
     const { cards, skipped } = deckCardsOf(result);
@@ -570,7 +573,7 @@ export function useReviewDeck(args: {
         eyebrow: S.eyebrowDecide(decideItems.length),
         title:
           decideItems.length === 1
-            ? S.decideOne(decideItems[0]?.title ?? "")
+            ? S.decideOne(decideItems[0] === undefined ? "" : titleOf(decideItems[0]))
             : S.decideMany(decideItems.length),
         body: {
           kind: "decide",

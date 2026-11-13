@@ -19,6 +19,7 @@ import { useUiEnv } from "@cashu/ui/native";
 import { useRef, useState } from "react";
 import { deviceTimeZone } from "../../services/investments";
 import { useServices } from "../../services/ServicesProvider";
+import { signalText } from "../investments/signalText";
 import type { DisplayEnv } from "../today/display";
 import { ACTION, RELATION, S } from "./Alert.strings";
 import {
@@ -119,9 +120,9 @@ const num = (value: unknown): number | null =>
       ? Number(value)
       : null;
 
-/** The fired fact in words ("CD Projekt fell 9.4% in 5 sessions"), else the store's own message. */
+/** The fired fact in words ("CD Projekt fell 9.4% in 5 sessions"), else the signal sentence. */
 export function signalTitle(
-  signal: Pick<Signal, "messageCode" | "messageParams" | "message">,
+  signal: Pick<Signal, "messageCode" | "messageParams" | "message" | "kind" | "payload">,
   name: string,
   currency: string | null,
   locale: string,
@@ -139,7 +140,7 @@ export function signalTitle(
     if (signal.messageCode === "alert.price_below") return S.below(name, text);
     if (signal.messageCode === "alert.price_above") return S.above(name, text);
   }
-  return signal.message;
+  return signalText(signal, { name, currency }, locale);
 }
 
 function tagOf(signal: Signal): { text: string; tone: Tone } {

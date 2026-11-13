@@ -135,7 +135,7 @@ describe("weekly review deck with the real synchronous store", () => {
     expect(card.card.id).toBe("decide");
     expect(card.canKeep).toBe(false);
     expect(card.keepLabel).toBe("Save and next");
-    expect(card.card.title).toBe("CDR: what do you do?");
+    expect(card.card.title).toBe("CD Projekt: what do you do?");
     const body = card.card.body;
     if (body.kind !== "decide") throw new Error("expected the decide body");
     expect(body.rows.map((r) => [r.mode, r.choice, r.saved])).toEqual([["choose", null, false]]);
