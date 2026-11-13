@@ -69,7 +69,7 @@ export const S = catalog({
   },
   neverSent: {
     pl: (agent: boolean) =>
-      `Nigdy nie przychodzą: pojedyncze płatności, dzienne zmiany portfela, wiadomości z rynku, ${agent ? "propozycje agenta, " : ""}serie.`,
+      `Nigdy nie przychodzą: pojedyncze płatności, dzienne zmiany portfela, wiadomości z rynku, ${agent ? "propozycje agenta, " : ""}serie dni z rzędu.`,
     en: (agent: boolean) =>
       `Never sent: single payments, daily portfolio moves, market news, ${agent ? "agent suggestions, " : ""}streaks.`,
   },
