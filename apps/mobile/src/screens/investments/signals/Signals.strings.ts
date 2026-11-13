@@ -32,7 +32,7 @@ export const S = catalog({
     en: (name: string) => `${name} - noted`,
   },
   decideLater: {
-    pl: "Decyzja później, wróci w przeglądzie",
+    pl: "Zdecydujesz później - wróci w przeglądzie",
     en: "Decide later - back in your review",
   },
   openAlert: {

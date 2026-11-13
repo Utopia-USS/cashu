@@ -7,7 +7,7 @@ export const S = catalog({
   close: { pl: "Zamknij", en: "Close" },
   missing: { pl: "Tego alertu już nie ma", en: "This alert is gone" },
   tagRisk: { pl: "Twój alert · ryzyko", en: "Your alert · risk" },
-  tagOpportunity: { pl: "Twój alert · okazja", en: "Your alert · opportunity" },
+  tagOpportunity: { pl: "Twój alert · szansa", en: "Your alert · opportunity" },
   tagAlert: { pl: "Twój alert", en: "Your alert" },
   tagRule: { pl: "Twoja reguła", en: "Your rule" },
   fell: {
