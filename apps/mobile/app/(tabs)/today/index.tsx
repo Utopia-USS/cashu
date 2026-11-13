@@ -1,7 +1,7 @@
 // The Today tab root: the running month (or, in its first days, the month just closed). The day and
 // the moment come from the shell's `useNow` (they move on at midnight and on return to the app);
-// navigation to triage (scoped to the month and currency Today counts), Spending, a closed month and
-// the profile sheet stays here.
+// navigation to triage (scoped to the month and currency Today counts), Spending, a closed month, the
+// profile sheet and a position row's alert sheet (or position page) stays here.
 import { useRouter } from "expo-router";
 import { TodayView } from "../../../src/screens/today/TodayView";
 import { useTodayScreen } from "../../../src/screens/today/useTodayScreen";
@@ -19,6 +19,9 @@ export default function TodayRoute() {
     openSpending: (month) => router.push({ pathname: "/(tabs)/today/spending", params: { month } }),
     openProfile: () => router.push("/sheet/profile"),
     openClosed: (month) => router.push({ pathname: "/(tabs)/today/closed", params: { month } }),
+    openAlert: (gid) => router.push({ pathname: "/sheet/alert/[gid]", params: { gid } }),
+    openPosition: (gid) =>
+      router.push({ pathname: "/(tabs)/investments/position/[gid]", params: { gid } }),
   });
   return <TodayView state={state} />;
 }

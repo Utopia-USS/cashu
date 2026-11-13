@@ -50,6 +50,10 @@ export function useTodayScreen(args: {
   readonly openSpending: (month: string) => void;
   readonly openProfile: () => void;
   readonly openClosed: (month: string) => void;
+  /** The alert sheet of a position row's open signal. */
+  readonly openAlert?: (signal: string) => void;
+  /** The position page of a position row without an open alert. */
+  readonly openPosition?: (instrument: string) => void;
 }): TodayState {
   const ui = useUiEnv();
   const env: DisplayEnv = { locale: ui.locale, privacy: ui.privacy, bananas: ui.bananas ?? null };
@@ -158,7 +162,19 @@ export function useTodayScreen(args: {
         { label: S.billsStillDue, value: new Money(month.billsDue, currency) },
       ],
     },
-    attention: attention.rows.map((item) => attentionRowOf(item, currency, env, { openTriage })),
+    attention: attention.rows.map((item) =>
+      attentionRowOf(
+        item,
+        currency,
+        env,
+        {
+          openTriage,
+          ...(args.openAlert === undefined ? {} : { openAlert: args.openAlert }),
+          ...(args.openPosition === undefined ? {} : { openPosition: args.openPosition }),
+        },
+        attention.positions,
+      ),
+    ),
     upcoming: upcoming.rows.map((row) => ({
       key: row.key,
       date: row.when,

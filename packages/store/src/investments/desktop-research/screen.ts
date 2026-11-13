@@ -173,6 +173,19 @@ export function researchScreenQueries(sources: ResearchScreenSources = {}) {
         };
       },
     }),
+    /** Every note (dismissed and expired included) without the strategy, market or valuation: the
+     * phone's research list filters it itself. */
+    notes: defineQuery({
+      id: "investments.research.notes",
+      changes,
+      run(read, args: ResearchScreenArgs) {
+        if (!enabledModuleIds(read).has("investments"))
+          return { status: "unavailable" as const, reason: "module_disabled" };
+        const common = base(read, sources, args);
+        if (common.status !== "current") return common;
+        return { status: "current" as const, notes: common.notes };
+      },
+    }),
     note: defineQuery({
       id: "investments.research.note",
       changes,

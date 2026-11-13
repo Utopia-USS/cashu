@@ -3,7 +3,7 @@
 // remembered importer and generic CSV mapping, `invAccount.settingsSet`, LWW per field).
 import { pyCasefold, pyStrip, pyUpper } from "@cashu/domain";
 import { builtinRegistry, MANUAL_INSTITUTION } from "@cashu/domain/core";
-import { GENERIC_CSV_BROKER_ID } from "@cashu/domain/investments/importing";
+import { GENERIC_CSV_BROKER_ID } from "@cashu/domain/investments/importing/names";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
 import { ensureAccount } from "../../core/commands.js";

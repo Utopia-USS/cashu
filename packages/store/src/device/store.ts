@@ -54,6 +54,7 @@ export type DeviceSettingKey =
   | "theme"
   | "incognito"
   | "lastOpenedAt"
+  | "pricesFetchedAt"
   | "monthClosedSeen";
 
 export interface DeviceCommandContext {

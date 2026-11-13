@@ -271,3 +271,4 @@ export {
   updateUiWatchNote,
 } from "./commands.js";
 export * from "./running.js";
+export * from "./strategyReader.js";

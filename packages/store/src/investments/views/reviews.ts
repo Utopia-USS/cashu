@@ -24,7 +24,7 @@ import type { Read } from "../../core/queries.js";
 import type { ResearchInputs } from "../desktop-research/inputs.js";
 import { type MarketInput, resolveMarketInput } from "../marketInput.js";
 import type { PerformanceService } from "../performance/service.js";
-import { importBatches } from "../queries/import-preview.js";
+import { importBatches } from "../queries/importBatches.js";
 import { loadInstruments } from "../queries/instruments.js";
 import { decisionSignalGids, decisions } from "../queries/journal.js";
 import { lastReview } from "../queries/reviews.js";

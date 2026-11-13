@@ -15,6 +15,7 @@ import {
   COMPANION_VAULTS,
   type CompanionBuild,
   companionVaultComplete,
+  seedCompanionDemoPrices,
 } from "../fixture/companionDemo";
 import { appendBenchLog } from "../platform/benchLog";
 import { createMobileKeyStore } from "../platform/keystore";
@@ -28,6 +29,7 @@ import {
 import { localToday } from "../screens/screenContext";
 import { type CryptoSelfTest, runCryptoSelfTest } from "../selftest/cryptoSelfTest";
 import { SCAFFOLD_DEVICE } from "./device";
+import { phoneInvestmentSources } from "./investments";
 import { createMoneyQueries, type MoneyQueries } from "./moneyQueries";
 
 interface ServicesProfile {
@@ -41,7 +43,7 @@ interface ServicesProfile {
 export interface Services {
   /** The store client of every screen (`StoreProvider`). */
   readonly client: StoreClient;
-  /** Vault queries over this device's price cache (nothing fetches prices yet: last trade). */
+  /** Vault queries over this device's price cache and the phone's investments sources. */
   readonly moneyQueries: MoneyQueries;
   /** Anna's store (the default vault), for the debug screen's engine-level status and rebuild. */
   readonly store: Store;
@@ -133,6 +135,10 @@ export function bootServices(): Services {
     return handle.store;
   };
   const prices = openPriceCache();
+  // TRANSITIONAL(S44): a freshly built Anna comes with her demo prices (the phone's own refresh skips
+  // the demo vaults, so they stay).
+  if (firstLoad.some((b) => b.vault === COMPANION_VAULTS.anna.vault))
+    seedCompanionDemoPrices(prices, today);
   const cryptoSelfTest = new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() =>
     runCryptoSelfTest({ lib: nativeLibsodium, keyStore: createMobileKeyStore }),
   );
@@ -142,7 +148,10 @@ export function bootServices(): Services {
     storeOf,
     profiles,
     prices,
-    moneyQueries: createMoneyQueries({ prices, changes: prices }),
+    moneyQueries: createMoneyQueries(
+      { prices, changes: prices },
+      phoneInvestmentSources({ prices, now: () => new Date().toISOString() }),
+    ),
     openMs,
     firstLoad,
     cryptoSelfTest,

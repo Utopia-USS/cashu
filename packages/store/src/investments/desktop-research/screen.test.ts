@@ -150,3 +150,24 @@ it("labels tracked held and watched earnings from the same current calendar feed
     h.v.store.close();
   }
 });
+
+it("lists the notes without a strategy or market source, and needs only the clock", () => {
+  const h = investor();
+  try {
+    h.v.value(createProfile, { slug: "synthetic", name: "Synthetic", modules: ["investments"] });
+    const args = { today: TODAY, lang: "en" } as const;
+    expect(researchScreenQueries().notes.run(h.read, args)).toEqual({
+      status: "unavailable",
+      reason: "clock_unavailable",
+    });
+    const clock = {
+      current: () => ({ now: parseDateTime(`${TODAY}T12:00:00Z`), timeZone: "Europe/Warsaw" }),
+    };
+    const listed = runQuery(h.v.store, researchScreenQueries({ clock }).notes, args);
+    expect(listed.value.status).toBe("current");
+    if (listed.value.status === "current") expect(Array.isArray(listed.value.notes)).toBe(true);
+    expect(listed.tables.has("research_notes")).toBe(true);
+  } finally {
+    h.v.store.close();
+  }
+});

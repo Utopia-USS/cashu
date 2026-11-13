@@ -2,10 +2,10 @@
 // passes `openProfile` (navigation stays in the route) and adds the title and any action.
 import { dataFreshness } from "@cashu/store/budget/freshness";
 import { profileIdentity } from "@cashu/store/core/profile";
-import { useQuery } from "@cashu/store-react";
+import { pricesFetchedAt } from "@cashu/store/device";
+import { useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
-import { bankFresh } from "./fresh";
-import { S } from "./Shell.strings";
+import { bankFresh, pricesFresh } from "./fresh";
 import type { TabFresh, TabHeaderProps } from "./TabHeader";
 import { initialOf } from "./tabs";
 import { useIncognito } from "./useAppEnv";
@@ -18,6 +18,7 @@ export function useTabChrome(args: {
   const { locale } = useUiEnv();
   const identity = useQuery(profileIdentity);
   const freshness = useQuery(dataFreshness);
+  const fetchedAt = useQuery(pricesFetchedAt, { vault: useProfile() });
   const incognito = useIncognito();
   const { now } = useNow();
   const name = identity?.name ?? "";
@@ -25,7 +26,7 @@ export function useTabChrome(args: {
     args.fresh === "bank"
       ? bankFresh(freshness.bankDataAt, new Date(now), locale)
       : args.fresh === "prices"
-        ? { tone: "muted", text: S.pricesLater }
+        ? pricesFresh(fetchedAt, new Date(now), locale)
         : null;
   return {
     profile: { initial: initialOf(name), name },

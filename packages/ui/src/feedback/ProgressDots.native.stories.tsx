@@ -10,3 +10,4 @@ export default meta;
 export const Default: Story<ProgressDotsProps> = {};
 export const None: Story<ProgressDotsProps> = { args: { done: 0 } };
 export const All: Story<ProgressDotsProps> = { args: { done: 5 } };
+export const Flagged: Story<ProgressDotsProps> = { args: { total: 7, done: 4, flagged: [1, 3] } };

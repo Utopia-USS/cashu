@@ -14,9 +14,18 @@ import {
   type IsoDate,
   loans,
   monthEnd,
+  parseDateTime,
+  utcIso,
 } from "@cashu/domain";
-import { rankAttention } from "@cashu/domain/core/attention";
+import {
+  type AttentionList,
+  type AttentionPosition,
+  type ResearchVerdict,
+  rankAttention,
+} from "@cashu/domain/core/attention";
+import { asProfileId } from "@cashu/domain/investments";
 import { strategyStatus, usableConfig } from "@cashu/domain/investments/strategy";
+import { hiddenFromOwner } from "@cashu/domain/investments/views";
 import { budgetCliCushionEnv, budgetCliSettings } from "../budget/cli-queries.js";
 import {
   accountBalances,
@@ -31,11 +40,25 @@ import {
 import { dataFreshness } from "../budget/freshness.js";
 import { budgetBook } from "../budget/read-models.js";
 import { enabledModuleIds } from "../core/queries.js";
+import {
+  type CurrentStrategySource,
+  combinedChanges,
+  type InvestmentMarketSource,
+  type InvestmentScreenClock,
+} from "../investments/desktop/sources.js";
+import { alertByGid } from "../investments/queries/alerts.js";
+import { loadInstruments } from "../investments/queries/instruments.js";
+import { decisionSignalGids, decisions } from "../investments/queries/journal.js";
 import { openPlannedDeposits } from "../investments/queries/planned.js";
+import { instrumentGid } from "../investments/queries/shared.js";
+import { openSignals } from "../investments/queries/signals.js";
 import { latestStrategyVersion } from "../investments/queries/strategy.js";
+import { notes } from "../investments/research/queries.js";
+import { eventInstant } from "../investments/research/rows.js";
+import { readPositions } from "../investments/views/positions.js";
 import { mcpLoanRows } from "../loans/mcp-queries.js";
 import { loanPayingAccount } from "../loans/screen.js";
-import { defineQuery, type Query, type Read } from "../query.js";
+import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
 import { type OverviewSources, registryOf, vaultPaymentPatterns } from "./networth.js";
 
 // --------------------------------------------------------------------------- upcoming
@@ -176,12 +199,167 @@ function ageHours(at: string | null, now: string): number | null {
   return Number.isFinite(ms) ? Math.max(0, Math.floor(ms / HOUR_MS)) : null;
 }
 
-/** The ranked attention list of the running month in one currency (positions come with M2). */
+/**
+ * The investments sources the attention list reads its positions with (the phone binds its own: the
+ * synced strategy, the device's price cache, the device clock). Without the strategy and the market
+ * the positions carry no weight, so only a fired action alert can rank.
+ */
+export interface CompanionInvestmentSources {
+  readonly strategy?: CurrentStrategySource;
+  readonly market?: InvestmentMarketSource;
+  readonly clock?: InvestmentScreenClock & { readonly changes?: ChangeSource };
+}
+
+/** What Today's tier-2 row says and opens beyond the ranked reason, per instrument gid. */
+export interface CompanionAttentionPosition {
+  /** The newest open action signal without a decision (the alert sheet opens on it); null without one. */
+  readonly signal: string | null;
+  /** The week's move as a share (-0.094 = -9.4 %): the last close against the close a week before. */
+  readonly week: number | null;
+}
+
+export type CompanionAttention = AttentionList & {
+  readonly positions: Readonly<Record<string, CompanionAttentionPosition>>;
+};
+
+/** Research of the last this-many days counts as a fresh verdict on a position. */
+const RESEARCH_DAYS = 14;
+const DAY_MS = 86_400_000;
+const VERDICT_RANK: Readonly<Record<string, number>> = { invalidates: 2, weakens: 1 };
+
+/** The day's and the week's move from a position's recent closes (oldest first); null when too short. */
+function movesOf(closes: readonly { readonly date: string; readonly close: Decimal }[]): {
+  readonly day: number | null;
+  readonly week: number | null;
+} {
+  const last = closes.at(-1);
+  if (last === undefined || last.close.isZero()) return { day: null, week: null };
+  const change = (from: Decimal | undefined) =>
+    from === undefined || from.isZero() ? null : last.close.div(from).toFloat() - 1;
+  const weekAgo = addDays(last.date as IsoDate, -7);
+  const base = closes.filter((c) => c.date <= weekAgo).at(-1);
+  return { day: change(closes.at(-2)?.close), week: change(base?.close) };
+}
+
+/**
+ * The attention list's positions: every open action signal without a decision (not snoozed) per
+ * instrument, a research verdict that weakens or breaks the thesis in the last `RESEARCH_DAYS` days,
+ * and, when the strategy and the market are bound, each holding's portfolio weight and day move. The
+ * domain list decides which of them rank (a fired alert always; otherwise weight and verdict or move).
+ */
+function companionPositions(
+  read: Read,
+  args: CompanionAttentionArgs,
+  investments: CompanionInvestmentSources,
+): {
+  readonly rows: AttentionPosition[];
+  readonly details: Record<string, CompanionAttentionPosition>;
+} {
+  const empty = { rows: [], details: {} };
+  if (!enabledModuleIds(read).has("investments")) return empty;
+  const nowMs = Date.parse(args.now);
+  if (!Number.isFinite(nowMs)) return empty;
+  const canonical = (gid: string | null) => (gid === null ? undefined : instrumentGid(read, gid));
+
+  // Open action signals the owner has not decided on, newest per instrument.
+  const decided = new Set(
+    [
+      ...decisionSignalGids(
+        read,
+        decisions(read).map((row) => row.gid),
+      ).values(),
+    ].flat(),
+  );
+  const alerts = new Map<string, { gid: string; lastSeenAt: string; title: string | null }>();
+  for (const signal of openSignals(read)) {
+    if (signal.severity !== "action" || decided.has(signal.gid) || hiddenFromOwner(signal))
+      continue;
+    if (signal.snoozedUntil !== null && Date.parse(utcIso(signal.snoozedUntil)) > nowMs) continue;
+    const id = canonical(signal.instrument);
+    if (id === undefined) continue;
+    const seen = alerts.get(id);
+    if (seen !== undefined && seen.lastSeenAt >= signal.lastSeenAt) continue;
+    const alertId = signal.ruleId.startsWith("alert:") ? signal.ruleId.slice(6) : null;
+    const title = alertId === null ? null : (alertByGid(read, alertId, args.now)?.title ?? null);
+    alerts.set(id, { gid: signal.gid, lastSeenAt: signal.lastSeenAt, title });
+  }
+
+  // The strongest fresh research verdict against the thesis per instrument.
+  const verdicts = new Map<string, ResearchVerdict>();
+  const since = eventInstant(new Date(nowMs - RESEARCH_DAYS * DAY_MS).toISOString());
+  for (const note of notes(read, eventInstant(new Date(nowMs).toISOString()))) {
+    const rank = VERDICT_RANK[note.thesisRelation] ?? 0;
+    const id = canonical(note.instrument);
+    if (rank === 0 || id === undefined || note.observedAt < since) continue;
+    if ((VERDICT_RANK[verdicts.get(id) ?? ""] ?? 0) < rank)
+      verdicts.set(id, note.thesisRelation as ResearchVerdict);
+  }
+
+  // Weights and moves of the holdings, when the strategy and the market are bound.
+  const held = new Map<
+    string,
+    { name: string; weight: number; day: number | null; week: number | null }
+  >();
+  const strategy = investments.strategy?.current(read);
+  const market = investments.market?.current(read);
+  if (strategy?.status === "current" && market) {
+    const positions = readPositions(read, {
+      ...market,
+      vault: asProfileId(strategy.vault),
+      asOf: args.today,
+      strategy: strategy.state,
+      clock: {
+        today: args.today,
+        now: parseDateTime(args.now),
+        timeZone: investments.clock?.current().timeZone ?? "UTC",
+      },
+      lang: "en",
+      forOwner: true,
+      accounts: null,
+    });
+    if (positions.ok)
+      for (const row of positions.value.positions) {
+        const moves = movesOf(row.closes_30d);
+        held.set(row.instrument.id, {
+          name: row.instrument.name || row.instrument.label,
+          weight: row.weight ?? 0,
+          ...moves,
+        });
+      }
+  }
+
+  const ids = new Set([...held.keys(), ...alerts.keys(), ...verdicts.keys()]);
+  const others = loadInstruments(
+    read,
+    [...ids].filter((id) => !held.has(id)),
+  );
+  const rows: AttentionPosition[] = [];
+  const details: Record<string, CompanionAttentionPosition> = {};
+  for (const id of ids) {
+    const position = held.get(id);
+    const instrument = others.get(id);
+    const name = position?.name ?? (instrument?.name || instrument?.symbol || id);
+    const alert = alerts.get(id);
+    const verdict = verdicts.get(id);
+    rows.push({
+      instrument: { id, name },
+      weight: position?.weight ?? 0,
+      alert: alert === undefined ? null : { severity: "action", title: alert.title },
+      research: verdict === undefined ? null : { verdict },
+      move: position === undefined ? null : { day: position.day, weekSigma: null },
+    });
+    details[id] = { signal: alert?.gid ?? null, week: position?.week ?? null };
+  }
+  return { rows, details };
+}
+
+/** The ranked attention list of the running month in one currency, with the positions' details. */
 export function companionAttention(
   read: Read,
   args: CompanionAttentionArgs,
   sources: OverviewSources = {},
-): ReturnType<typeof rankAttention> {
+  investments: CompanionInvestmentSources = {},
+): CompanionAttention {
   const book = budgetBook(read);
   const currency = args.currency || book.baseCurrency;
   const ctx = recurringContext(read, sources, book);
@@ -191,7 +369,8 @@ export function companionAttention(
   const usualMonth = month.norm?.expense ?? null;
   const largest = month.uncategorized.largest;
   const freshness = dataFreshness.run(read, undefined);
-  return rankAttention({
+  const positions = companionPositions(read, args, investments);
+  const list = rankAttention({
     today: args.today,
     currency,
     month: { spentSoFar: month.spent, usualMonth },
@@ -204,7 +383,7 @@ export function companionAttention(
           : { payee: largest.payee, date: largest.date, amount: largest.amount },
     },
     bills: upcoming.rows,
-    positions: [],
+    positions: positions.rows,
     // Every rise: whether it is worth a look against the usual month is the attention list's call.
     payeeChanges: budget.payeeChanges({ today: args.today, currency, payees }),
     freshness: {
@@ -212,6 +391,13 @@ export function companionAttention(
       consentEndsInDays: null,
     },
   });
+  // Only the ranked positions' details travel.
+  const shown: Record<string, CompanionAttentionPosition> = {};
+  for (const row of list.rows) {
+    const detail = row.subject.kind === "position" ? positions.details[row.subject.id] : undefined;
+    if (detail !== undefined) shown[row.subject.id] = detail;
+  }
+  return { ...list, positions: shown };
 }
 
 // --------------------------------------------------------------------------- month close
@@ -284,15 +470,18 @@ export function companionMonthClose(
 export interface CompanionQueries {
   readonly upcoming: Query<CompanionUpcomingArgs, budget.Upcoming>;
   readonly month: Query<CompanionMonthArgs, CompanionMonth>;
-  readonly attention: Query<CompanionAttentionArgs, ReturnType<typeof rankAttention>>;
+  readonly attention: Query<CompanionAttentionArgs, CompanionAttention>;
   readonly monthClose: Query<CompanionMonthCloseArgs, CompanionMonthClose>;
 }
 
 /**
- * The companion's overview queries. No companion read values prices yet, so none takes the device's
- * price cache (M2 binds it with the positions).
+ * The companion's overview queries. Only the attention list values prices (its positions' weights and
+ * moves), through the optional investments sources; it re-runs when they change.
  */
-export function companionQueries(sources: OverviewSources = {}): CompanionQueries {
+export function companionQueries(
+  sources: OverviewSources = {},
+  investments: CompanionInvestmentSources = {},
+): CompanionQueries {
   return {
     upcoming: defineQuery({
       id: "core.companionUpcoming",
@@ -304,7 +493,15 @@ export function companionQueries(sources: OverviewSources = {}): CompanionQuerie
     }),
     attention: defineQuery({
       id: "core.attention",
-      run: (read, args: CompanionAttentionArgs) => companionAttention(read, args, sources),
+      changes: combinedChanges(
+        ...[
+          investments.strategy?.changes,
+          investments.market?.changes,
+          investments.clock?.changes,
+        ].filter((source) => source !== undefined),
+      ),
+      run: (read, args: CompanionAttentionArgs) =>
+        companionAttention(read, args, sources, investments),
     }),
     monthClose: defineQuery({
       id: "core.companionMonthClose",

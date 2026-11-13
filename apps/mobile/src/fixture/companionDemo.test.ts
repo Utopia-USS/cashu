@@ -1,13 +1,27 @@
 // The companion demo on the real store over better-sqlite3 (Node): both vaults build through the
 // real commands, the engine derives what the companion screens need (uncategorized rows, llm rows,
 // matched own transfers, the loan, assets, Open Banking freshness), and the build is deterministic.
-import { budget, D } from "@cashu/domain";
-import { betterSqlite3Driver, builtinModules, Store } from "@cashu/store";
+import { budget, D, parseDateTime } from "@cashu/domain";
+import {
+  betterSqlite3Driver,
+  builtinModules,
+  investmentsQueries,
+  investmentsResearch,
+  Store,
+} from "@cashu/store";
 import { budgetScreenCashflow } from "@cashu/store/budget/screen";
+import { SqlPriceCache } from "@cashu/store/investments/local";
 import { runQuery } from "@cashu/store/query";
 import { viewHash } from "@cashu/store/runtime";
 import Database from "better-sqlite3";
-import { buildCompanionVault, COMPANION_VAULTS, companionVaultComplete } from "./companionDemo";
+import { phoneInvestmentSources } from "../services/investments";
+import { createMoneyQueries } from "../services/moneyQueries";
+import {
+  buildCompanionVault,
+  COMPANION_VAULTS,
+  companionVaultComplete,
+  seedCompanionDemoPrices,
+} from "./companionDemo";
 
 const TODAY = "2026-11-12";
 const MONTH = TODAY.slice(0, 7);
@@ -139,6 +153,65 @@ describe("companion demo", () => {
       expect(count(store, "SELECT COUNT(*) AS n FROM inv_strategy_versions")).toBe(1);
     } finally {
       store.close();
+    }
+  });
+
+  it("builds Anna's portfolio: accounts, instruments, deposits, the fired alert, research, strategy", () => {
+    const { store } = build("anna");
+    const cacheDb = new Database(":memory:");
+    try {
+      const read = store.read.bind(store);
+      expect(investmentsQueries.brokerageAccounts(read).map((a) => a.name)).toEqual([
+        "IKE",
+        "Brokerage",
+      ]);
+      // Six held or watched instruments, plus the research candidate the vault knows.
+      expect(investmentsQueries.watchlist(read).length).toBe(6);
+      expect(investmentsQueries.vaultInstrumentGids(read).size).toBe(7);
+      expect(
+        count(store, "SELECT COUNT(*) AS n FROM inv_transactions WHERE type = 'deposit'"),
+      ).toBeGreaterThanOrEqual(36);
+      const open = investmentsQueries.openSignals(read);
+      const alertSignals = open.filter((s) => s.ruleId.startsWith("alert:"));
+      expect(alertSignals).toHaveLength(1);
+      expect(alertSignals[0]?.severity).toBe("action");
+      const [alert] = investmentsQueries.alerts(read, parseDateTime(`${TODAY}T07:00:00Z`));
+      expect(alert?.title).toBe("CDR -8% in 5 sessions");
+      expect(alert?.lastTriggeredAt).not.toBeNull();
+      const notes = investmentsResearch.noteRows(read, "1 = 1", []);
+      expect(notes.filter((n) => n.thesisRelation === "weakens")).toHaveLength(1);
+      const version = investmentsQueries.latestStrategyVersion(read);
+      expect(version?.yamlText).toContain("monthly_amount: 2500");
+
+      const prices = new SqlPriceCache(betterSqlite3Driver(cacheDb));
+      seedCompanionDemoPrices(prices, TODAY);
+      const sources = phoneInvestmentSources({ prices, now: () => `${TODAY}T07:00:00.000Z` });
+      const state = sources.strategy.current(read);
+      if (state.status !== "current") throw new Error(state.reason);
+      expect(state.state.config?.review.every).toBe("week");
+      expect(state.state.config?.contributions?.monthlyAmount.toString()).toBe("2500");
+      const portfolio = runQuery(
+        store,
+        createMoneyQueries({ prices }, sources).investments.portfolio,
+        {
+          today: TODAY,
+          lang: "en",
+        },
+      ).value;
+      if (portfolio.status !== "ready") throw new Error(portfolio.reason);
+      // CD Projekt about 7.4% of the portfolio at its last close; its alert fired today.
+      const cdr = portfolio.positions.positions.find((p) => p.instrument.symbol === "CDR");
+      expect(cdr?.value?.toString()).toBe("9657.00");
+      expect(cdr?.weight).toBeGreaterThan(0.07);
+      expect(cdr?.weight).toBeLessThan(0.08);
+      // What the daily evaluation opened on this portfolio: the alert and the concentration rule.
+      expect(open.map((s) => s.ruleId.replace(/^alert:.*/u, "alert:<gid>")).sort()).toEqual([
+        "alert:<gid>",
+        "single_stock_limit",
+      ]);
+    } finally {
+      store.close();
+      cacheDb.close();
     }
   });
 

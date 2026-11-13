@@ -43,11 +43,19 @@ export default function RootLayout() {
                     options={{ ...sheet, sheetAllowedDetents: [0.6, 1] }}
                   />
                   <Stack.Screen
+                    name="sheet/alert/[gid]"
+                    options={{ ...sheet, sheetAllowedDetents: [0.75, 1] }}
+                  />
+                  <Stack.Screen
                     name="sheet/cash"
                     options={{ ...sheet, sheetAllowedDetents: [1] }}
                   />
                   <Stack.Screen
                     name="modal/triage"
+                    options={{ presentation: "fullScreenModal", headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="modal/review"
                     options={{ presentation: "fullScreenModal", headerShown: false }}
                   />
                   <Stack.Protected guard={__DEV__}>

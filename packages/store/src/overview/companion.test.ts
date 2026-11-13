@@ -1,16 +1,21 @@
 // The phone companion's cross-module reads over real in-memory vaults: upcoming charges against the
 // paying accounts, the month with its bills, the attention list and the month close with a synced
 // strategy. Every row is invented.
-import { D } from "@cashu/domain";
+import { D, parseDateTime } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
+import { strategyTemplate } from "@cashu/domain/investments/strategy";
 import { describe, expect, it } from "vitest";
 import { importStatement, setTransactionCategory } from "../budget/commands.js";
 import { createProfile, recordBalance, setModules } from "../core/commands.js";
 import { createPlannedDeposit } from "../investments/commands/planned.js";
 import { saveStrategyVersion } from "../investments/commands/strategy.js";
+import { applyRaw, raw, rawGid } from "../investments/commands/testing/fixtures.js";
+import { strategySnapshot } from "../investments/desktop/sources.js";
+import { signalsOwnerCommands } from "../investments/desktop-signals/commands.js";
+import { movingPortfolio } from "../investments/research/testing/fixtures.js";
 import { addLoan } from "../loans/commands.js";
 import type { Store } from "../materialize.js";
-import { runQuery } from "../query.js";
+import { type Read, runQuery } from "../query.js";
 import { run, type TestEnv, testEnv } from "../testing/commands.js";
 import { openTestStore } from "../testing/store.js";
 import { companionQueries } from "./companion.js";
@@ -331,6 +336,103 @@ describe("core.companionMonthClose", () => {
       expect(close("2026-02").plannedDeposit).toBeNull();
     } finally {
       store.close();
+    }
+  });
+});
+
+describe("core.attention positions (tier 2)", () => {
+  // The investments research fixture's moving portfolio (ABC +10 % in the week, WRLD, a bond, XMPL)
+  // on 2026-10-31, with the passive starter strategy as the synced strategy and its own price cache.
+  function investing() {
+    const fixture = movingPortfolio();
+    const { v, abc, wrld, edox, xmpl, cache } = fixture;
+    v.value(createProfile, {
+      slug: "synthetic-investor",
+      name: "Synthetic investor",
+      baseCurrency: "PLN",
+      modules: ["budget", "investments"],
+    });
+    const template = strategyTemplate("passive_etf");
+    if (!template) throw new Error("missing passive_etf template");
+    const changes = { subscribe: () => () => {} };
+    const sources = {
+      strategy: {
+        changes,
+        current: (read: Read) =>
+          strategySnapshot(read, {
+            vault: v.store.vault,
+            generation: "test",
+            revision: "one",
+            files: { yaml: template.yaml, md: template.markdown, readError: null },
+          }),
+      },
+      market: { changes, current: () => ({ prices: cache }), newestRateDate: () => null },
+      clock: {
+        changes,
+        current: () => ({ now: parseDateTime(INV_NOW), timeZone: "Europe/Warsaw" }),
+      },
+    };
+    const alert = rawGid(9101);
+    const fired = rawGid(9102);
+    const decided = rawGid(9103);
+    applyRaw(v, [
+      raw.alertCreated(alert, abc, { severity: "action", title: "ABC below 52" }),
+      raw.signalOpened(fired, `alert:${alert}|abc`, { severity: "action", instrument: abc }),
+      raw.signalOpened(decided, "drop|edox", { severity: "action", instrument: edox }),
+      raw.noteAdded(rawGid(9104), wrld, {
+        thesisRelation: "weakens",
+        observedAt: "2026-10-27T08:00:00.000Z",
+      }),
+      // Three weeks old: no longer a fresh verdict.
+      raw.noteAdded(rawGid(9105), xmpl, {
+        thesisRelation: "invalidates",
+        observedAt: "2026-10-10T08:00:00.000Z",
+      }),
+    ]);
+    v.value(signalsOwnerCommands.acknowledge, { signal: decided });
+    return { ...fixture, sources, fired };
+  }
+  const INV_NOW = "2026-10-31T12:00:00.000Z";
+  const args = { today: "2026-10-31", currency: "PLN", now: INV_NOW };
+
+  it("ranks a fired alert and a fresh weakening verdict with their weights; decided and old ones stay out", () => {
+    const { v, abc, wrld, sources, fired } = investing();
+    try {
+      const attention = runQuery(v.store, companionQueries({}, sources).attention, args).value;
+      const tier2 = attention.rows.filter((r) => r.tier === 2);
+      expect(tier2.map((r) => r.subject.id).sort()).toEqual([abc, wrld].sort());
+      const byId = new Map(tier2.map((r) => [r.subject.id, r]));
+      const abcRow = byId.get(abc);
+      if (abcRow?.reason.kind !== "position") throw new Error("expected the ABC position");
+      expect(abcRow.reason).toMatchObject({
+        instrument: { id: abc, name: "ABC SA" },
+        alertFired: true,
+        researchVerdict: null,
+        dayMove: 0,
+      });
+      expect(abcRow.magnitude.kind).toBe("percent");
+      if (abcRow.magnitude.kind === "percent") expect(abcRow.magnitude.value).toBeGreaterThan(0.2);
+      expect(byId.get(wrld)?.reason).toMatchObject({
+        alertFired: false,
+        researchVerdict: "weakens",
+      });
+      expect(attention.positions[abc]?.signal).toBe(fired);
+      expect(attention.positions[abc]?.week).toBeCloseTo(0.1, 6);
+      expect(attention.positions[wrld]?.signal).toBeNull();
+      expect(Object.keys(attention.positions).sort()).toEqual([abc, wrld].sort());
+    } finally {
+      v.store.close();
+    }
+  });
+
+  it("without the investments sources only the fired alert ranks (no weights)", () => {
+    const { v, abc } = investing();
+    try {
+      const attention = runQuery(v.store, companionQueries().attention, args).value;
+      expect(attention.rows.filter((r) => r.tier === 2).map((r) => r.subject.id)).toEqual([abc]);
+      expect(attention.positions[abc]?.week).toBeNull();
+    } finally {
+      v.store.close();
     }
   });
 });

@@ -19,7 +19,7 @@ import * as toggleStories from "./controls/ToggleRow.native.stories.js";
 import { PENDING_SHOW_DELAY_MS } from "./controls/usePressPending.js";
 import { Icon } from "./icons/Icon.js";
 import * as swatchStories from "./lists/Swatch.native.stories.js";
-import { SwipeStack, swipeOutcome } from "./lists/SwipeStack.js";
+import { allowedSwipe, SwipeStack, swipeOutcome } from "./lists/SwipeStack.js";
 import * as swipeStories from "./lists/SwipeStack.native.stories.js";
 
 jest.mock("@expo/ui", () => require("./testing/expoUiMock.native").default);
@@ -377,12 +377,17 @@ describe("swipeOutcome", () => {
 });
 
 describe("SwipeStack", () => {
-  const stack = (onSwiped: (direction: "left" | "right") => void, enabled = true) => (
+  const stack = (
+    onSwiped: (direction: "left" | "right") => void,
+    enabled = true,
+    canSwipeRight = true,
+  ) => (
     <GestureHandlerRootView>
       <SwipeStack
         behind={swipeStories.default.args.behind}
         onSwiped={onSwiped}
         enabled={enabled}
+        canSwipeRight={canSwipeRight}
         swipeLeftLabel="Come back to this"
         swipeRightLabel="Next"
       >
@@ -405,6 +410,21 @@ describe("SwipeStack", () => {
     expect(onSwiped).toHaveBeenLastCalledWith("right");
     await fireEvent(top, "accessibilityAction", { nativeEvent: { actionName: "swipeLeft" } });
     expect(onSwiped).toHaveBeenLastCalledWith("left");
+  });
+
+  it("refuses only the right swipe when it is not allowed", async () => {
+    const onSwiped = jest.fn();
+    await render(stack(onSwiped, true, false));
+    const top = screen.getByText("Farmers market");
+    await fireEvent(top, "accessibilityAction", { nativeEvent: { actionName: "swipeRight" } });
+    expect(onSwiped).not.toHaveBeenCalled();
+    await fireEvent(top, "accessibilityAction", { nativeEvent: { actionName: "swipeLeft" } });
+    expect(onSwiped).toHaveBeenCalledTimes(1);
+    expect(onSwiped).toHaveBeenLastCalledWith("left");
+    // A drag past the threshold to the refused side springs back; the allowed side still leaves.
+    expect(allowedSwipe(swipeOutcome(200, 0, false), true, false)).toBeNull();
+    expect(allowedSwipe(swipeOutcome(-200, 0, false), true, false)).toBe("left");
+    expect(allowedSwipe(swipeOutcome(0, -900, false), false, true)).toBeNull();
   });
 
   it("offers no swipe while disabled", async () => {

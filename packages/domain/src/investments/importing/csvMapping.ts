@@ -14,10 +14,10 @@ import { pyLen, pyLower, pyStrip } from "../../text.js";
 import { isTxnType, TXN_TYPES, type TxnType, withDefaults } from "../domain/index.js";
 import { type DecimalFormat, decimalFormat, parseDatePattern } from "./csvValues.js";
 import { didYouMean } from "./didYouMean.js";
+import { GENERIC_CSV_BROKER_ID } from "./names.js";
 import { ImportTextEncoding, parseEncoding } from "./text.js";
 
-/** Broker id (and alias namespace) of the generic CSV importer when a mapping sets no `broker_id`. */
-export const GENERIC_CSV_BROKER_ID = "generic_csv";
+export { GENERIC_CSV_BROKER_ID };
 
 export const MAPPING_VERSION = 1;
 /** Largest mapping file accepted, in characters (a real one is a few kB). */

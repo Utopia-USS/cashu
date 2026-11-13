@@ -12,6 +12,8 @@ import { latestStrategyVersion } from "../queries/strategy.js";
 import type { StrategyState } from "../services/strategy.js";
 
 export { gid as investmentEntityIdSchema } from "../../events/v1/primitives.js";
+/** The synced main strategy version (the phone binds its strategy source to it). */
+export { latestStrategyVersion };
 
 export interface CurrentStrategyImage {
   readonly vault: string;

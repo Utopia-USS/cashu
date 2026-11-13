@@ -12,6 +12,8 @@ export interface AccountPickerProps {
   readonly options: readonly { readonly gid: string; readonly name: string }[];
   readonly selected: string | null;
   readonly onPicked: (gid: string | null) => void;
+  /** The "any account" option's label (default "Account"). */
+  readonly anyLabel?: string;
   readonly testID?: string;
 }
 
@@ -19,6 +21,7 @@ export function AccountPicker({
   options,
   selected,
   onPicked,
+  anyLabel = S.account,
   testID = "activity-account",
 }: AccountPickerProps) {
   return (
@@ -32,7 +35,7 @@ export function AccountPicker({
             if (gid !== selected) onPicked(gid);
           }}
         >
-          <Picker.Item value={ANY_ACCOUNT} label={S.account} />
+          <Picker.Item value={ANY_ACCOUNT} label={anyLabel} />
           {options.map((option) => (
             <Picker.Item key={option.gid} value={option.gid} label={option.name} />
           ))}

@@ -138,7 +138,7 @@ describe("attentionRowOf", () => {
         icon: "bell",
         tone: "neg",
         title: "CD Projekt needs a look",
-        sub: "",
+        sub: "your alert fired · research: weakens your thesis",
         magnitude: "7%",
         magnitudeLabel: "of portfolio",
       },
@@ -175,6 +175,46 @@ describe("attentionRowOf", () => {
     expect(plain(second?.sub)).toBe("płatne 18 listopada z konta Erste Account");
     expect(plain(fourth?.sub)).toBe("z 49,00 zł na 60,00 zł, od 13 listopada");
     expect(fourth?.magnitudeLabel).toBe("rocznie");
+  });
+
+  it("a position row names the week's move and its reasons, and opens the alert sheet or the position", () => {
+    setLanguageForTests("en");
+    const openAlert = jest.fn();
+    const openPosition = jest.fn();
+    const actions = { openTriage, openAlert, openPosition };
+    const row = attentionRowOf(position, "PLN", EN, actions, {
+      cdr: { signal: "sig-cdr", week: -0.094 },
+    });
+    expect(plain(row.title)).toBe("CD Projekt: -9.4% this week");
+    expect(row.sub).toBe("your alert fired · research: weakens your thesis");
+    row.onPress?.();
+    expect(openAlert).toHaveBeenCalledWith("sig-cdr");
+
+    const researchOnly: AttentionItem = {
+      ...position,
+      reason: { ...position.reason, alertFired: false, researchVerdict: "invalidates" } as never,
+    };
+    const quiet = attentionRowOf(researchOnly, "PLN", EN, actions, {
+      cdr: { signal: null, week: null },
+    });
+    expect(quiet.title).toBe("CD Projekt needs a look");
+    expect(quiet.sub).toBe("research: invalidates your thesis");
+    quiet.onPress?.();
+    expect(openPosition).toHaveBeenCalledWith("cdr");
+
+    const moved: AttentionItem = {
+      ...position,
+      reason: { ...position.reason, alertFired: false, researchVerdict: null } as never,
+    };
+    expect(plain(attentionRowOf(moved, "PLN", EN, { openTriage }).sub)).toBe("-9.4% today");
+    expect(attentionRowOf(moved, "PLN", EN, { openTriage }).onPress).toBeNull();
+
+    setLanguageForTests("pl");
+    const pl = attentionRowOf(position, "PLN", PL, actions, {
+      cdr: { signal: "sig-cdr", week: -0.094 },
+    });
+    expect(plain(pl.title)).toBe("CD Projekt: -9,4% w tym tygodniu");
+    expect(pl.sub).toBe("Twój alert zadziałał · research: osłabia Twoją tezę");
   });
 
   it("hides amounts in privacy mode: bananas with a scale, dots without", () => {

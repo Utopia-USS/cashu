@@ -29,6 +29,17 @@ export function showsClosed(
 /** What an attention row can lead to. */
 export interface AttentionActions {
   openTriage(): void;
+  /** The alert sheet of an open signal (a position row with a fired alert). */
+  openAlert?(signal: string): void;
+  /** The position page (a position row without an open alert). */
+  openPosition?(instrument: string): void;
+}
+
+/** The attention query's details of a ranked position (`CompanionAttention.positions`). */
+export interface AttentionPositionDetail {
+  readonly signal: string | null;
+  /** The week's move as a share; null when unknown. */
+  readonly week: number | null;
 }
 
 /** One ranked attention item as a "Worth a look" row; `currency` is the month's (the list's own). */
@@ -37,6 +48,7 @@ export function attentionRowOf(
   currency: string,
   env: DisplayEnv,
   actions: AttentionActions,
+  positions: Readonly<Record<string, AttentionPositionDetail>> = {},
 ): TodayAttentionRow {
   const key = `${item.subject.kind}:${item.subject.id}`;
   const money = (value: Decimal, options: { signed?: boolean; fractionDigits?: number } = {}) =>
@@ -72,17 +84,41 @@ export function attentionRowOf(
         magnitudeLabel: S.short,
         onPress: null,
       };
-    case "position":
+    case "position": {
+      const detail = positions[reason.instrument.id];
+      const move = (share: number) =>
+        percentText(D(String(share)), env.locale, { fractionDigits: 1, signed: true });
+      const why = [
+        reason.alertFired ? S.alertFired : null,
+        reason.researchVerdict === "invalidates"
+          ? S.researchInvalidates
+          : reason.researchVerdict === "weakens"
+            ? S.researchWeakens
+            : null,
+      ].filter((part) => part !== null);
+      if (why.length === 0 && reason.dayMove !== null)
+        why.push(S.bigMoveToday(move(reason.dayMove)));
+      const signal = detail?.signal ?? null;
+      const { openAlert, openPosition } = actions;
       return {
         key,
         icon: "bell",
         tone: "neg",
-        title: S.positionMoved(reason.instrument.name),
-        sub: "",
+        title: S.positionMoved(
+          reason.instrument.name,
+          detail?.week == null ? null : move(detail.week),
+        ),
+        sub: why.join(" · "),
         magnitude: shareText,
         magnitudeLabel: S.ofPortfolio,
-        onPress: null,
+        onPress:
+          signal !== null && openAlert !== undefined
+            ? () => openAlert(signal)
+            : openPosition !== undefined
+              ? () => openPosition(reason.instrument.id)
+              : null,
       };
+    }
     case "payee_price_up":
       return {
         key,

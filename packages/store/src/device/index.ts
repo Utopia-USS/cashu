@@ -20,10 +20,12 @@ export {
   devicePhoneState,
   devicePreferences,
   monthClosedSeen,
+  pricesFetchedAt,
   setCurrentVault,
   setDevicePhoneState,
   setDevicePreferences,
   setMonthClosedSeen,
+  setPricesFetchedAt,
 } from "./settings.js";
 export {
   DEVICE_TABLES,

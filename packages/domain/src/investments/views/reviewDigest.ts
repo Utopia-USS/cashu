@@ -11,7 +11,7 @@ import {
   type PriceBar,
   warningMessage,
 } from "../domain/index.js";
-import { canonicalImporterId } from "../importing/index.js";
+import { canonicalImporterId } from "../importing/names.js";
 import { driftBucketGeneric, withBucketGeneric } from "../rules/index.js";
 import type { LastReviewFact, ReviewClock } from "./reviewSchedule.js";
 import { reviewPolicyView } from "./reviewSchedule.js";

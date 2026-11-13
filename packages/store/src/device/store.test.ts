@@ -10,9 +10,11 @@ import {
   currentVault,
   devicePhoneState,
   monthClosedSeen,
+  pricesFetchedAt,
   setCurrentVault,
   setDevicePhoneState,
   setMonthClosedSeen,
+  setPricesFetchedAt,
 } from "./settings.js";
 import { DeviceStore, defineDeviceCommand } from "./store.js";
 
@@ -113,6 +115,43 @@ describe("DeviceStore", () => {
     ).run();
     db.prepare("INSERT INTO device_settings (key, value) VALUES ('lastOpenedAt', 'x')").run();
     expect(read()).toEqual({ incognito: false, lastOpenedAt: null });
+  });
+
+  it("keeps when this phone last fetched prices per vault, apart from the other phone state", () => {
+    const db = new Database(":memory:");
+    const device = openDevice(db);
+    const OTHER = "6a1b2c3d4e5f60718293a4b5c6d7e8f9";
+    const read = (vault = VAULT) =>
+      pricesFetchedAt.run((sql, ...p) => device.read(sql, ...p), { vault });
+    expect(pricesFetchedAt.scope).toBe("device");
+    expect(read()).toBeNull();
+    const fetched = "2026-11-12T06:31:00.000Z";
+    expect(device.run(setPricesFetchedAt, { vault: VAULT, at: fetched })).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(read()).toBe(fetched);
+    // A run fetches only its own vault's tickers: the other vault was not fetched.
+    expect(read(OTHER)).toBeNull();
+    const later = "2026-11-12T08:00:00.000Z";
+    device.run(setPricesFetchedAt, { vault: OTHER, at: later });
+    expect(read()).toBe(fetched);
+    expect(read(OTHER)).toBe(later);
+    device.run(setDevicePhoneState, { incognito: true, lastOpenedAt: "2026-11-12T07:00:00Z" });
+    expect(read()).toBe(fetched);
+    expect(device.run(setPricesFetchedAt, { vault: VAULT, at: "07:31" })).toEqual({
+      ok: false,
+      reason: "invalid_input",
+    });
+    expect(read()).toBe(fetched);
+    let notified = 0;
+    device.subscribe(["device_settings"], () => {
+      notified += 1;
+    });
+    device.run(setPricesFetchedAt, { vault: VAULT, at: fetched });
+    expect(notified).toBe(0);
+    db.prepare("UPDATE device_settings SET value = 'x' WHERE key = 'pricesFetchedAt'").run();
+    expect(read()).toBeNull();
   });
 
   it("does not notify readers when the phone state does not change", () => {

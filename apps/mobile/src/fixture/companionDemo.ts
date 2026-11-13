@@ -4,13 +4,13 @@
 // months of history ending today. Every name, IBAN, merchant and amount is invented (IBANs are
 // mostly zeros with a valid checksum, so own transfers match by IBAN). Built by running the real
 // store commands (statement imports as Open Banking batches, cash expenses, rules, balances, assets,
-// the loan, the strategy), so the view is what the engine derives, never written by hand.
+// the loan, the strategy, Anna's portfolio in `companionInvestments.ts`), so the view is what the
+// engine derives, never written by hand.
 // Deterministic: seeded PRNG, seeded ULID randomness and a clock that follows the history (a row's
 // command runs at its date 12:00 local, a month's import batch on the 1st of the next month 06:40,
 // the newest batch today 06:40), relative to `today`. Runtime free: the caller opens the store.
 import { D, type IsoDate } from "@cashu/domain";
 import { merchantKey, type RawTransaction } from "@cashu/domain/budget";
-import { strategyTemplate } from "@cashu/domain/investments/strategy";
 // Type only (erased from the bundle): no narrow entry exports the command type.
 import type { Command } from "@cashu/store";
 import { addManualPosition, setVehicle } from "@cashu/store/assets/commands";
@@ -24,7 +24,7 @@ import {
 } from "@cashu/store/budget/commands";
 import { createProfile, openAccount, recordBalance } from "@cashu/store/core/commands";
 import { type VaultSalt, vaultSalt } from "@cashu/store/gid";
-// The strategy command alone: the investments commands barrel adds ~0.55 MB of Hermes bytecode.
+import type { SqlPriceCache } from "@cashu/store/investments/local";
 import { saveStrategyVersion } from "@cashu/store/investments/strategy";
 import { addLoan, setPaymentMatching } from "@cashu/store/loans/commands";
 import {
@@ -36,6 +36,11 @@ import {
   storeWriter,
 } from "@cashu/store/runtime";
 import { SCAFFOLD_DEVICE } from "../services/device";
+import {
+  companionStrategy,
+  planAnnaInvestments,
+  seedCompanionPrices,
+} from "./companionInvestments";
 
 export interface CompanionVaultSpec {
   readonly vault: string;
@@ -550,16 +555,22 @@ function seededBytes(seed: number): (n: number) => Uint8Array {
 const BANK_ACCOUNTS = { anna: 3, home: 2 } as const;
 
 /**
- * Whether `store` holds a finished build of `which`: its last step records today's month's balances,
- * so every bank account holds one balance per month of the history. False for an empty vault and for
- * a build that stopped halfway (a refused command, the process killed during the first launch).
+ * Whether `store` holds a finished build of `which`: its last steps record today's month's balances,
+ * so every bank account holds one balance per month of the history, and (Anna) run the daily
+ * evaluation of the portfolio. False for an empty vault and for a build that stopped halfway (a
+ * refused command, the process killed during the first launch).
  */
 export function companionVaultComplete(store: Store, which: "anna" | "home"): boolean {
   const rows = store.read<{ n: number }>(
     `SELECT COUNT(b.date) AS n FROM accounts a LEFT JOIN balances b ON b.account_id = a.id
      WHERE a.type IN ('checking', 'savings') AND a.removed_at IS NULL GROUP BY a.id`,
   );
-  return rows.length === BANK_ACCOUNTS[which] && rows.every((r) => r.n >= MONTHS);
+  if (rows.length !== BANK_ACCOUNTS[which] || !rows.every((r) => r.n >= MONTHS)) return false;
+  // Anna's build ends with the daily evaluation (a vault built before the portfolio is rebuilt).
+  return (
+    which !== "anna" ||
+    (store.read<{ n: number }>("SELECT COUNT(*) AS n FROM inv_rule_runs")[0]?.n ?? 0) > 0
+  );
 }
 
 /**
@@ -696,15 +707,19 @@ export function buildCompanionVault(
         asOf: valued,
       }),
     );
-    // The strategy text the desktop demo starts from (investments: nothing else until M2).
-    const template = strategyTemplate("passive_etf");
-    if (template !== null)
-      step(start, () =>
-        apply(saveStrategyVersion, {
-          yamlText: template.yaml,
-          mdText: template.markdown,
-        }),
-      );
+    // The passive starter with a weekly review and a PLN 2,500 monthly plan, then the portfolio.
+    const strategy = companionStrategy();
+    step(start, () =>
+      apply(saveStrategyVersion, { yamlText: strategy.yaml, mdText: strategy.markdown }),
+    );
+    planAnnaInvestments({
+      today,
+      historyStart: first.start,
+      apply,
+      step,
+      at,
+      read: (sql, ...params) => store.read(sql, ...params),
+    });
   } else {
     step(start, () => {
       const loan = apply(addLoan, {
@@ -747,6 +762,14 @@ export function buildCompanionVault(
     months: all.length,
     ms: now() - t0,
   };
+}
+
+/**
+ * Anna's demo prices and NBP rates into this device's price cache: called after her vault was built on
+ * this launch (the series follows the same `today` as the build).
+ */
+export function seedCompanionDemoPrices(prices: SqlPriceCache, today: IsoDate): void {
+  seedCompanionPrices(prices, today, (months(today)[0] as Month).start);
 }
 
 /** The account's balance at the end of `day` (cents): today's closing minus every later row. */

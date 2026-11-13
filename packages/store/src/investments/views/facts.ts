@@ -15,11 +15,11 @@ import {
   type ValuedHolding,
   type views,
 } from "@cashu/domain/investments";
-import { canonicalImporterId } from "@cashu/domain/investments/importing";
+import { canonicalImporterId } from "@cashu/domain/investments/importing/names";
 import * as research from "@cashu/domain/investments/research";
 import type { SignalPolarity } from "@cashu/domain/investments/rules";
 import { alerts, watchlist } from "../queries/alerts.js";
-import { importBatches } from "../queries/import-preview.js";
+import { importBatches } from "../queries/importBatches.js";
 import { marks, type Read, storedTime } from "../queries/shared.js";
 import {
   allSignals,

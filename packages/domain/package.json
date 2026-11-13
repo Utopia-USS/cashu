@@ -15,6 +15,7 @@
     "./investments/review-deck": "./src/investments/views/reviewDeck.ts",
     "./investments/alerts": "./src/investments/alerts/index.ts",
     "./investments/importing": "./src/investments/importing/index.ts",
+    "./investments/importing/names": "./src/investments/importing/names.ts",
     "./investments/macro": "./src/investments/macro/index.ts",
     "./investments/performance": "./src/investments/performance/index.ts",
     "./investments/plan": "./src/investments/plan/index.ts",

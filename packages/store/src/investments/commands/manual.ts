@@ -12,7 +12,7 @@ import {
   isTxnType,
   TxnType,
 } from "@cashu/domain/investments";
-import { deriveAmounts, exchangeForHint } from "@cashu/domain/investments/importing";
+import { deriveAmounts, exchangeForHint } from "@cashu/domain/investments/importing/names";
 import { z } from "zod";
 import { type CommandContext, defineCommand, ok, refuse } from "../../command.js";
 import { decimalInput } from "../../core/commands.js";

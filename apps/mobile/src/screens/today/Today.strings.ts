@@ -101,9 +101,22 @@ export const S = catalog({
       account === null ? `due ${date}` : `due ${date} from ${account}`,
   },
   short: { pl: "brakuje", en: "short" },
+  /** A position's tier-2 row; `week` is the week's move, already formatted ("-9.4%"), or null. */
   positionMoved: {
-    pl: (name: string) => `${name}: warto sprawdzić`,
-    en: (name: string) => `${name} needs a look`,
+    pl: (name: string, week: string | null = null) =>
+      week === null ? `${name}: warto sprawdzić` : `${name}: ${week} w tym tygodniu`,
+    en: (name: string, week: string | null = null) =>
+      week === null ? `${name} needs a look` : `${name}: ${week} this week`,
+  },
+  alertFired: { pl: "Twój alert zadziałał", en: "your alert fired" },
+  researchWeakens: { pl: "research: osłabia Twoją tezę", en: "research: weakens your thesis" },
+  researchInvalidates: {
+    pl: "research: podważa Twoją tezę",
+    en: "research: invalidates your thesis",
+  },
+  bigMoveToday: {
+    pl: (move: string) => `${move} dzisiaj`,
+    en: (move: string) => `${move} today`,
   },
   ofPortfolio: { pl: "portfela", en: "of portfolio" },
   payeeCostsMore: {

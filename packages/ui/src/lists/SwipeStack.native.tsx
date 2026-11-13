@@ -25,8 +25,12 @@ export interface SwipeStackProps {
   behind?: ReactNode;
   /** Called once the top card has left the stage (gesture or accessibility action). */
   onSwiped(direction: SwipeDirection): void;
-  /** Swiping (and the two accessibility actions) allowed; default true. */
+  /** Swiping (and the two accessibility actions) allowed at all; default true. */
   enabled?: boolean;
+  /** The left swipe (and its accessibility action) allowed while `enabled`; default true. */
+  canSwipeLeft?: boolean;
+  /** The right swipe (and its accessibility action) allowed while `enabled`; default true. */
+  canSwipeRight?: boolean;
   /** Stage height in points (default 300, the prototype's triage stage). */
   height?: number;
   /** Translated name of the left swipe, offered to VoiceOver as an action. */
@@ -62,6 +66,21 @@ export function swipeOutcome(
   return (fling ? velocityX : translationX) > 0 ? "right" : "left";
 }
 
+/**
+ * A released drag's outcome kept only when that direction is allowed: a refused direction returns
+ * (null), so the card springs back. A worklet, like `swipeOutcome`.
+ */
+export function allowedSwipe(
+  direction: SwipeDirection | null,
+  canSwipeLeft: boolean,
+  canSwipeRight: boolean,
+): SwipeDirection | null {
+  "worklet";
+  if (direction === "left" && !canSwipeLeft) return null;
+  if (direction === "right" && !canSwipeRight) return null;
+  return direction;
+}
+
 /** Reduce Motion, live: the system setting at mount and every change after. */
 function useReduceMotion(): boolean {
   const [reduce, setReduce] = useState(false);
@@ -84,13 +103,16 @@ function useReduceMotion(): boolean {
  * horizontal drag (translate and a slight tilt, transform only), leaves past the threshold or on a fling
  * and reports the direction, else springs back; the next card waits behind it and brightens as the top
  * one moves. Reduce Motion drops the tilt and uses a short linear exit. VoiceOver gets both directions as
- * actions on the card.
+ * actions on the card. `enabled` switches swiping off as a whole; `canSwipeLeft` / `canSwipeRight` refuse
+ * one direction only (the drag springs back, the action is not offered).
  */
 export function SwipeStack({
   children,
   behind,
   onSwiped,
   enabled = true,
+  canSwipeLeft = true,
+  canSwipeRight = true,
   height = 300,
   swipeLeftLabel,
   swipeRightLabel,
@@ -99,6 +121,8 @@ export function SwipeStack({
   const reduce = useReduceMotion();
   const x = useSharedValue(0);
   const left = useRef(false);
+  const canLeft = enabled && canSwipeLeft;
+  const canRight = enabled && canSwipeRight;
 
   // The card that left stays off stage until the parent renders the next one; then the stack settles.
   useLayoutEffect(() => {
@@ -113,7 +137,7 @@ export function SwipeStack({
   };
 
   const pan = usePanGesture({
-    enabled,
+    enabled: canLeft || canRight,
     activeOffsetX: [-10, 10],
     failOffsetY: [-20, 20],
     onUpdate: (event) => {
@@ -122,7 +146,11 @@ export function SwipeStack({
     },
     onDeactivate: (event) => {
       "worklet";
-      const direction = swipeOutcome(event.translationX, event.velocityX, event.canceled);
+      const direction = allowedSwipe(
+        swipeOutcome(event.translationX, event.velocityX, event.canceled),
+        canLeft,
+        canRight,
+      );
       if (direction !== null) {
         x.set(
           withTiming(
@@ -170,18 +198,13 @@ export function SwipeStack({
           style={topStyle}
           className="absolute inset-0"
           accessible
-          accessibilityActions={
-            enabled
-              ? [
-                  { name: "swipeLeft", label: swipeLeftLabel },
-                  { name: "swipeRight", label: swipeRightLabel },
-                ]
-              : []
-          }
+          accessibilityActions={[
+            ...(canLeft ? [{ name: "swipeLeft", label: swipeLeftLabel }] : []),
+            ...(canRight ? [{ name: "swipeRight", label: swipeRightLabel }] : []),
+          ]}
           onAccessibilityAction={(event: AccessibilityActionEvent) => {
-            if (!enabled) return;
-            if (event.nativeEvent.actionName === "swipeLeft") onSwiped("left");
-            if (event.nativeEvent.actionName === "swipeRight") onSwiped("right");
+            if (canLeft && event.nativeEvent.actionName === "swipeLeft") onSwiped("left");
+            if (canRight && event.nativeEvent.actionName === "swipeRight") onSwiped("right");
           }}
         >
           {children}

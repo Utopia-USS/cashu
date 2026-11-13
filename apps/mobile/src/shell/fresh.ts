@@ -21,6 +21,13 @@ function whenLabel(at: Date, now: Date, locale: string): string {
   return formatCalendarDate(day, locale);
 }
 
+/** The prices line of the vault's `pricesFetchedAt` (when this phone last fetched its prices itself,
+ * an ISO instant), muted before the first fetch. */
+export function pricesFresh(fetchedAt: string | null, now: Date, locale: string): TabFresh {
+  if (fetchedAt === null) return { tone: "muted", text: S.pricesNotYet };
+  return { tone: "ok", text: S.pricesFrom(whenLabel(new Date(fetchedAt), now, locale)) };
+}
+
 /** The bank line of `dataFreshness().bankDataAt` (an ISO instant, or null before the first import). */
 export function bankFresh(bankDataAt: string | null, now: Date, locale: string): TabFresh {
   if (bankDataAt === null) return { tone: "muted", text: S.noBankData };

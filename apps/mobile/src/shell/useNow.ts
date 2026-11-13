@@ -6,6 +6,7 @@ import type { IsoDate } from "@cashu/domain";
 import { useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { localToday } from "../screens/screenContext";
+import { emitNowTick } from "../services/nowTicks";
 
 export interface Now {
   /** The device-local calendar day. */
@@ -34,6 +35,7 @@ let stop: (() => void) | null = null;
 function tick(): void {
   current = read();
   for (const listener of listeners) listener();
+  emitNowTick();
 }
 
 function start(): () => void {

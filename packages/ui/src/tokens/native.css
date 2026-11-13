@@ -42,6 +42,8 @@
 @source "../controls/SearchField.native.tsx";
 @source "../controls/Seg.native.tsx";
 @source "../controls/Seg.types.ts";
+@source "../controls/TextField.native.tsx";
+@source "../controls/TextField.types.ts";
 @source "../controls/ToggleRow.native.tsx";
 @source "../lists/Swatch.native.tsx";
 @source "../lists/SwipeStack.native.tsx";
@@ -68,3 +70,5 @@
 @source "../values/Amount.tsx";
 @source "../values/Delta.tsx";
 @source "../values/Percent.tsx";
+@source "../instruments/TickerTile.native.tsx";
+@source "../text/Markdown.native.tsx";

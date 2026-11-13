@@ -3,7 +3,7 @@
 // the line shows them.
 import { setLanguageForTests } from "@cashu/i18n";
 import { formatCalendarDate } from "@cashu/i18n/values";
-import { bankFresh } from "./fresh";
+import { bankFresh, pricesFresh } from "./fresh";
 
 const local = (day: number, hour: number, minute = 0) =>
   new Date(2026, 10, day, hour, minute).toISOString();
@@ -61,5 +61,30 @@ describe("bankFresh", () => {
       text: `Bank data from ${formatCalendarDate("2026-11-02", "en-GB")} · 10 days old`,
     });
     expect(bankFresh(null, now, "en-GB")).toEqual({ tone: "muted", text: "No bank data yet" });
+  });
+});
+
+describe("pricesFresh", () => {
+  const now = new Date(2026, 10, 12, 9, 15);
+
+  it("names this phone's own fetch time, never live", () => {
+    setLanguageForTests("en");
+    expect(pricesFresh(local(12, 7, 31), now, "en-GB")).toEqual({
+      tone: "ok",
+      text: "Prices from 07:31 · fetched by this phone",
+    });
+    setLanguageForTests("pl");
+    expect(pricesFresh(local(12, 7, 31), now, "pl-PL")).toEqual({
+      tone: "ok",
+      text: "Notowania z 07:31 · pobrane przez ten telefon",
+    });
+  });
+
+  it("is muted before the phone's first fetch", () => {
+    setLanguageForTests("en");
+    expect(pricesFresh(null, now, "en-GB")).toEqual({
+      tone: "muted",
+      text: "Prices not fetched yet",
+    });
   });
 });

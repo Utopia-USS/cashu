@@ -76,7 +76,10 @@ const incognitoFlag = z.enum(["1", "0"]);
 export const devicePhoneState = defineQuery({
   id: "device.phoneState",
   scope: "device",
-  run(read): { readonly incognito: boolean; readonly lastOpenedAt: string | null } {
+  run(read): {
+    readonly incognito: boolean;
+    readonly lastOpenedAt: string | null;
+  } {
     const incognito = incognitoFlag.safeParse(setting(read, "incognito"));
     const opened = timestamp.safeParse(setting(read, "lastOpenedAt"));
     return {
@@ -98,12 +101,9 @@ export const setDevicePhoneState = defineDeviceCommand({
       const value = input.incognito ? "1" : "0";
       if (setting(ctx.read, "incognito") !== value) ctx.setSetting("incognito", value);
     }
-    if (
-      input.lastOpenedAt !== undefined &&
-      setting(ctx.read, "lastOpenedAt") !== input.lastOpenedAt
-    ) {
-      ctx.setSetting("lastOpenedAt", input.lastOpenedAt);
-    }
+    const opened = input.lastOpenedAt;
+    if (opened !== undefined && setting(ctx.read, "lastOpenedAt") !== opened)
+      ctx.setSetting("lastOpenedAt", opened);
     return { ok: true, value: null } as const;
   },
 });
@@ -143,6 +143,44 @@ export const setMonthClosedSeen = defineDeviceCommand({
     const months = readClosedMonths(ctx.read);
     if (months[input.vault] !== input.month) {
       ctx.setSetting("monthClosedSeen", JSON.stringify({ ...months, [input.vault]: input.month }));
+    }
+    return { ok: true, value: null } as const;
+  },
+});
+
+/** When this phone last fetched market prices itself, per vault: a run fetches only that vault's tickers. */
+const fetchTimes = z.record(vaultId, timestamp);
+
+function readFetchTimes(read: Read): Record<string, string> {
+  const raw = setting(read, "pricesFetchedAt");
+  if (raw === null) return {};
+  try {
+    const parsed = fetchTimes.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * When this phone last fetched the market prices of one vault itself (the Investments header's "fetched
+ * by this phone"); null when it never did. Another vault's fetch never shows here (rule 7).
+ */
+export const pricesFetchedAt = defineQuery({
+  id: "device.pricesFetchedAt",
+  scope: "device",
+  run(read, args: { vault: string }): string | null {
+    return readFetchTimes(read)[args.vault] ?? null;
+  },
+});
+
+export const setPricesFetchedAt = defineDeviceCommand({
+  id: "device.setPricesFetchedAt",
+  input: z.object({ vault: vaultId, at: timestamp }),
+  run(ctx, input) {
+    const times = readFetchTimes(ctx.read);
+    if (times[input.vault] !== input.at) {
+      ctx.setSetting("pricesFetchedAt", JSON.stringify({ ...times, [input.vault]: input.at }));
     }
     return { ok: true, value: null } as const;
   },

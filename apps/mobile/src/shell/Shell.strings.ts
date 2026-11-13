@@ -1,5 +1,5 @@
-// The app shell: tab labels, the tab header (profile pill, eye button, freshness line), the
-// app-switcher cover and the placeholder of the Investments tab until its screens arrive. PL + EN.
+// The app shell: tab labels, the tab header (profile pill, eye button, freshness line) and the
+// app-switcher cover. PL + EN.
 import { catalog, enForm, plForm } from "@cashu/i18n";
 
 export const S = catalog({
@@ -30,7 +30,10 @@ export const S = catalog({
     },
   },
   noBankData: { pl: "Brak danych z banku", en: "No bank data yet" },
-  pricesLater: { pl: "Brak notowań", en: "Prices not fetched yet" },
-  // TRANSITIONAL(S42b): the Investments tab's placeholder until its screens arrive.
-  investmentsSoon: { pl: "Inwestycje już wkrótce", en: "Investments are coming soon" },
+  // The phone's own fetch of market prices (never "live": the time is when this phone fetched them).
+  pricesFrom: {
+    pl: (when: string) => `Notowania z ${when} · pobrane przez ten telefon`,
+    en: (when: string) => `Prices from ${when} · fetched by this phone`,
+  },
+  pricesNotYet: { pl: "Notowania jeszcze nie pobrane", en: "Prices not fetched yet" },
 });
