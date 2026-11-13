@@ -389,7 +389,7 @@ test("decideItems: the same week right after a review is quiet; decideSubjects n
     ["fix"],
   );
   assert.deepEqual(
-    decideSubjects(WEEK, SINCE).sort((a, b) => a - b),
+    decideSubjects(WEEK, SINCE, null, NOW).sort((a, b) => a - b),
     [3, 19, 20, 40],
   );
 });
@@ -415,16 +415,19 @@ test("weekEvents and openIdeas: what matters, no dismissed, accepted or expired"
     ev.map((e) => e.note.id),
     [3, 2],
   );
-  const ideas = openIdeas([
-    n({ id: 5, kind: "candidate", expires_at: "2099-01-01T00:00:00Z" }),
-    n({
-      id: 6,
-      kind: "candidate",
-      candidate: { accepted_at: "2026-10-01" },
-      expires_at: "2099-01-01T00:00:00Z",
-    }),
-    n({ id: 7, kind: "candidate", expires_at: "2000-01-01T00:00:00Z" }),
-  ]);
+  const ideas = openIdeas(
+    [
+      n({ id: 5, kind: "candidate", expires_at: "2099-01-01T00:00:00Z" }),
+      n({
+        id: 6,
+        kind: "candidate",
+        candidate: { accepted_at: "2026-10-01" },
+        expires_at: "2099-01-01T00:00:00Z",
+      }),
+      n({ id: 7, kind: "candidate", expires_at: "2000-01-01T00:00:00Z" }),
+    ],
+    NOW,
+  );
   assert.deepEqual(
     ideas.map((x) => x.id),
     [5],
@@ -465,7 +468,7 @@ test("decideItems: a week's thesis change gives an instrument's unchanged signal
   assert.equal(items[0].why, "Research znalazł fakty przeciw tezie.");
   assert.deepEqual(items[0].signalIds, [1]);
   assert.deepEqual(rest, { review: 0, research: 0 });
-  assert.deepEqual(decideSubjects([dd(1, 5, 0.2, 0.3)], SINCE, research), [5]);
+  assert.deepEqual(decideSubjects([dd(1, 5, 0.2, 0.3)], SINCE, research, NOW), [5]);
 });
 
 test("decideItems: only an exit plan changed after the signals means in progress, not any thesis edit", () => {
