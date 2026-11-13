@@ -71,3 +71,8 @@ CLAUDE.local.md
 # --- TypeScript monorepo (pnpm + turbo) -------------------------------------
 node_modules/
 .turbo/
+
+# Firebase emulator logs (written into the cwd by `firebase emulators:exec`)
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

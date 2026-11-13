@@ -1,0 +1,172 @@
+rules_version = '2';
+
+// Security rules of the cashU sync relay (Firestore, Spark plan). Firebase sees only opaque ids
+// (32-hex vault and device ids, anonymous uids), sizes, counters, timestamps and ciphertext.
+// Layout and rationale: packages/sync/src/transports/firestore (layout.ts) and the M4 transport spec.
+// Every rule is exercised against the emulator by
+// packages/sync/src/transports/firestore/rules.emulator.test.ts (allowed and denied cases).
+//
+// Who may write what: the member document members/{uid} (written only by an admin, the Mac) is what binds
+// an anonymous uid to a device. Segment metas and chunks are authorised by the CALLER'S member device,
+// never by the uid stored in a meta, so a device that lost its anonymous identity and was re-granted under
+// a new uid keeps writing its own segments (the meta's `writer` moves to the new uid).
+//
+// Document access budget (Firestore: 10 distinct documents per evaluation, 20 distinct documents per
+// request; repeated accesses to one document are cached across all writes of a commit, measured on the
+// emulator). get / exists / getAfter / existsAfter calls per evaluation, worst case:
+//   /vaults/{v}                     create 1 (member after), read 1, update 1, delete 0 (never)
+//   .../members/{uid}               read 1, create 3 (vault before + after, caller's member), update 1, delete 1
+//   .../segments/{segId}            read 1, create 1, update 1, delete 1 (all: the caller's member doc)
+//   .../segments/{segId}/chunks/{s} read 1, create / update 2 (caller's member, segment after), delete 1
+//   .../pairings/{sid}              create 1, read 0, update 0, delete 1
+//   .../pairings/{sid}/messages/{n} read 1, create 1 (the pairing), update 0, delete 1
+// Distinct documents per request: an append commit (meta + N chunks of one segment) touches 2 (the
+// caller's member doc, the segment meta); a purge batch touches 1 (the admin's member doc). Counting
+// every call without the cache, an append of meta + 9 chunks is 1 + 2 x 9 = 19 (the transport's cap).
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function hex32(id) {
+      return id is string && id.matches('^[0-9a-f]{32}$');
+    }
+    function vaultPath(v) {
+      return /databases/$(db)/documents/vaults/$(v);
+    }
+    function memberPath(v) {
+      return /databases/$(db)/documents/vaults/$(v)/members/$(request.auth.uid);
+    }
+    // The caller's member document (one access); an error (no member doc) denies.
+    function me(v) {
+      return get(memberPath(v)).data;
+    }
+    function member(v) {
+      return signedIn() && exists(memberPath(v));
+    }
+    function admin(v) {
+      return signedIn() && me(v).role == 'admin';
+    }
+    function data() {
+      return request.resource.data;
+    }
+
+    match /vaults/{v} {
+      // The creating device becomes the first admin in the same commit (members/{uid} create below).
+      allow create: if signedIn() && hex32(v)
+        && data().keys().hasOnly(['createdAt', 'admins'])
+        && data().admins == [request.auth.uid]
+        && data().createdAt is timestamp
+        && existsAfter(memberPath(v));
+      allow read: if member(v);
+      allow update: if admin(v);
+      // Never deleted: a missing vault doc would reopen the first-admin bootstrap below to anyone who knows
+      // the id. A purge removes segments and chunks only; the vault doc stays as a tombstone.
+      allow delete: if false;
+
+      match /members/{uid} {
+        function validMember() {
+          return data().keys().hasOnly(['device', 'role', 'addedAt'])
+            && hex32(data().device)
+            && data().role in ['admin', 'member']
+            && data().addedAt is timestamp;
+        }
+        allow read: if member(v);
+        allow create: if signedIn() && hex32(v) && validMember() && (
+          // Vault creation: the vault does not exist yet and is created in the same commit by this uid.
+          (uid == request.auth.uid && data().role == 'admin'
+            && !exists(vaultPath(v))
+            && getAfter(vaultPath(v)).data.admins == [request.auth.uid])
+          // An admin (the Mac) adds a device.
+          || admin(v));
+        allow update: if admin(v) && validMember();
+        allow delete: if admin(v);
+      }
+
+      match /segments/{segId} {
+        // `rev` counts the commits of the segment (1 on create, +1 on every commit), so every commit of an
+        // append changes the meta and its updateTime (the transport's precondition chain).
+        function validMeta() {
+          return data().keys().hasOnly(['device', 'seg', 'size', 'updatedAt', 'writer', 'rev'])
+            && data().writer == request.auth.uid
+            && data().seg is int && data().seg >= 0
+            && data().size is int && data().size >= 0
+            && data().rev is int
+            && data().updatedAt is timestamp;
+        }
+        allow read: if member(v);
+        // Only the member bound to the segment's device may create or grow it.
+        allow create: if signedIn() && validMeta()
+          && data().rev == 1
+          && segId.matches('^[0-9a-f]{32}_[0-9]{10}$')
+          && segId.split('_')[0] == data().device
+          && int(segId.split('_')[1]) == data().seg
+          && me(v).device == data().device;
+        // Size never shrinks; device and seg never change; the writer becomes the caller.
+        allow update: if signedIn() && validMeta()
+          && data().device == resource.data.device
+          && data().seg == resource.data.seg
+          && data().size >= resource.data.size
+          && data().rev == resource.data.rev + 1
+          && me(v).device == resource.data.device;
+        allow delete: if admin(v);
+
+        match /chunks/{start} {
+          // Written only together with (or after) the segment's meta, by the member bound to the device the
+          // segment id names.
+          allow read: if member(v);
+          allow create, update: if signedIn()
+            && data().keys().hasOnly(['start', 'end', 'bytes'])
+            && segId.matches('^[0-9a-f]{32}_[0-9]{10}$')
+            && start.matches('^[0-9]{12}$')
+            && data().start is int && data().start == int(start)
+            && data().end is int
+            && data().bytes is bytes && data().bytes.size() <= 716800
+            && data().end - data().start == data().bytes.size()
+            && me(v).device == segId.split('_')[0]
+            && existsAfter(/databases/$(db)/documents/vaults/$(v)/segments/$(segId));
+          allow delete: if admin(v);
+        }
+      }
+
+      match /pairings/{sid} {
+        allow create: if admin(v)
+          && data().keys().hasOnly(['inviter', 'joiner', 'expiresAt', 'createdAt'])
+          && data().inviter == request.auth.uid && data().joiner == null
+          && data().expiresAt is timestamp && data().createdAt is timestamp;
+        allow read: if signedIn() && (resource.data.inviter == request.auth.uid
+          || resource.data.joiner == request.auth.uid || resource.data.joiner == null);
+        // Claim: any signed-in device may set joiner from null to itself once, before expiry (first hello wins).
+        allow update: if signedIn() && resource.data.joiner == null
+          && data().joiner == request.auth.uid
+          && data().diff(resource.data).affectedKeys().hasOnly(['joiner'])
+          && request.time < resource.data.expiresAt;
+        allow delete: if admin(v);
+
+        match /messages/{n} {
+          function pairing() {
+            return get(/databases/$(db)/documents/vaults/$(v)/pairings/$(sid)).data;
+          }
+          function party(p) {
+            return p.inviter == request.auth.uid || p.joiner == request.auth.uid;
+          }
+          // Messages are written while the pairing is open, by one of its two parties as itself.
+          function validMessage(p) {
+            return party(p) && request.time < p.expiresAt
+              && data().keys().hasOnly(['from', 'n', 'box', 'part', 'parts', 'createdAt'])
+              && data().from == request.auth.uid
+              && n.matches('^[0-9]{4}$') && data().n == int(n)
+              && data().box is bytes && data().box.size() <= 716800
+              && data().parts is int && data().part is int
+              && data().part >= 0 && data().part < data().parts
+              && data().createdAt is timestamp;
+          }
+          allow read: if signedIn() && party(pairing());
+          allow create: if signedIn() && validMessage(pairing());
+          allow update: if false;
+          allow delete: if admin(v);
+        }
+      }
+    }
+  }
+}

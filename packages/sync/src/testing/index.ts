@@ -10,6 +10,12 @@ export {
   describeCarrierContract,
 } from "./contract.js";
 export { FaultInjector, ManualClock } from "./faults.js";
+export {
+  createFakeFirebase,
+  type FakeFaults,
+  type FakeFirebase,
+  MemoryAuthStore,
+} from "./firestore-fake.js";
 export { MemoryClockStore, MemoryTransport } from "./memory.js";
 export { memoryCarrier } from "./memory-carrier.js";
 export {
