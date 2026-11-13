@@ -24,7 +24,11 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { mintUlid } from "../gid.js";
 import { betterSqlite3Driver } from "../sql/better-sqlite3.js";
-import { assertReplayedDeviceAuthority, loadDeviceAuthority } from "./deviceAuthority.js";
+import {
+  assertReplayedDeviceAuthority,
+  type DeviceAuthorityInput,
+  loadDeviceAuthority,
+} from "./deviceAuthority.js";
 import { ProvenanceRefusal, SqlProvenanceStore } from "./provenance.js";
 
 const sodium = await crypto.loadNodeSodium();
@@ -418,7 +422,8 @@ describe("portable device authority", () => {
       delete: (name) => c.store.delete(name),
     };
     const certificate = c.created.creatorCertificate.slice();
-    const mutable: { deviceId: string; vaultId: string } & typeof c.input = {
+    type MutableInput = { -readonly [K in keyof DeviceAuthorityInput]: DeviceAuthorityInput[K] };
+    const mutable: MutableInput = {
       ...c.input,
       keyStore: delayed,
       bootstrapCertificates: [certificate],
