@@ -9,7 +9,8 @@
 //   `manual_txn` one); a claim may address the cash leg of any member
 //   (`DET(transactions)["cashleg", member]`), and a cash expense by its gid.
 //
-// This materializer writes the rows, the claim registers and `fold_txn_keys`; the derived parts
+// This materializer writes the rows (with their `merchant_key`), the claim registers and
+// `fold_txn_keys`; the derived parts
 // (cash mirror legs, the effective `category` / `category_source`, transfer groups) are written by
 // the budget derivers (`derive/`), never here.
 import { budget, D } from "@cashu/domain";
@@ -45,6 +46,12 @@ const table: TableDef = {
     { name: "raw", type: "TEXT", notNull: true, json: true },
     { name: "import_batch_id", type: "INTEGER", ref: "import_batches" },
     { name: "created_at", type: "TEXT", notNull: true },
+    /**
+     * Python `merchant_key(counterparty_name, reference, description)` of the row's own text (a cash
+     * expense: of its title), written with the row; null on a derived cash leg. The payee every
+     * merchant rule, recurring group and payee read keys on.
+     */
+    { name: "merchant_key", type: "TEXT" },
   ],
   indexes: [
     { columns: ["account_id", "dedup_hash", "occurrence"], unique: true },
@@ -54,6 +61,7 @@ const table: TableDef = {
     { columns: ["transfer_group_id"], where: "transfer_group_id IS NOT NULL" },
     // The uncategorized rows (the phone's triage and its count): a small slice of the table.
     { columns: ["category_source", "booking_date"], where: "category_source = 'default'" },
+    { columns: ["merchant_key"] },
   ],
 };
 
@@ -76,8 +84,8 @@ const claims: TableDef = {
 /**
  * Per-row keys the derivers group by (written at insert, CREATE with the row): `anchor_ord` = fold
  * order of the anchor (Python's id order stand-in, D-24.2), `amount_key` = `budget.transferAmountKey`
- * (the S08 grouping of internal transfers, D-08.2; `""` for a zero amount, which never matches),
- * `merchant_key` = Python `merchant_key(counterparty_name, reference, description)`.
+ * (the S08 grouping of internal transfers, D-08.2; `""` for a zero amount, which never matches). The
+ * merchant key is a `transactions` column (v4).
  */
 const keys: TableDef = {
   name: "fold_txn_keys",
@@ -88,9 +96,8 @@ const keys: TableDef = {
     { name: "row", type: "TEXT", notNull: true },
     { name: "anchor_ord", type: "TEXT", notNull: true },
     { name: "amount_key", type: "TEXT", notNull: true },
-    { name: "merchant_key", type: "TEXT", notNull: true },
   ],
-  indexes: [{ columns: ["amount_key"] }, { columns: ["merchant_key"] }],
+  indexes: [{ columns: ["amount_key"] }],
 };
 
 /** Cash expenses ended by `txn.deleted` (TOMB): later events for the gid are no-ops. */
@@ -174,15 +181,14 @@ export function splitKey(key: string): [string, string, number] {
 
 const amountKey = (amount: string) => budget.transferAmountKey(D(amount)) ?? "";
 
-function insertKeys(ctx: FoldContext, row: string, e: FoldEvent, merchant: string): void {
+function insertKeys(ctx: FoldContext, row: string, e: FoldEvent): void {
   ctx.sql.insert(
     keys.name,
-    "INSERT OR IGNORE INTO fold_txn_keys (row, anchor_ord, amount_key, merchant_key)",
-    "(?, ?, ?, ?)",
+    "INSERT OR IGNORE INTO fold_txn_keys (row, anchor_ord, amount_key)",
+    "(?, ?, ?)",
     row,
     ord(e),
     amountKey(String(e.data.amount)),
-    merchant,
   );
 }
 
@@ -223,8 +229,8 @@ function applyImport(e: FoldEvent, ctx: FoldContext): void {
     table.name,
     `INSERT OR IGNORE INTO transactions (id, gid, account_id, booking_date, value_date, amount, currency,
        counterparty_name, counterparty_iban, description, reference, bank_transaction_id, source,
-       dedup_hash, occurrence, raw, import_batch_id, created_at)`,
-    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+       dedup_hash, occurrence, raw, import_batch_id, created_at, merchant_key)`,
+    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ctx.id(e.gid),
     e.gid,
     accountId,
@@ -243,8 +249,9 @@ function applyImport(e: FoldEvent, ctx: FoldContext): void {
     sqlJson(restoreFloats(d.raw ?? {}, d.rawFloats)), // events.md 4.3
     typeof d.batch === "string" ? ctx.id(d.batch) : null,
     ctx.time(e, "created_at"),
+    merchantKey(name, reference, description),
   );
-  insertKeys(ctx, rowKey(e, ctx), e, merchantKey(name, reference, description));
+  insertKeys(ctx, rowKey(e, ctx), e);
 }
 
 function isTomb(ctx: FoldContext, key: string): boolean {
@@ -260,8 +267,8 @@ function applyCashExpense(e: FoldEvent, ctx: FoldContext): void {
     table.name,
     `INSERT OR IGNORE INTO transactions (id, gid, account_id, booking_date, value_date, amount, currency,
        counterparty_name, counterparty_iban, description, reference, bank_transaction_id, source,
-       dedup_hash, occurrence, raw, import_batch_id, created_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?, ?, NULL, 'manual', ?, 0, ?, NULL, ?)`,
+       dedup_hash, occurrence, raw, import_batch_id, created_at, merchant_key)
+     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, NULL, ?, ?, NULL, 'manual', ?, 0, ?, NULL, ?, ?)`,
     ctx.id(e.gid),
     e.gid,
     ctx.id(ctx.resolve(ACCOUNTS, String(d.account))),
@@ -274,6 +281,7 @@ function applyCashExpense(e: FoldEvent, ctx: FoldContext): void {
     key,
     sqlJson({ cash_expense: true }),
     ctx.time(e, "created_at"),
+    merchantKey(title, title, title),
   );
   if (r.changes === 0) return; // CREATE: the first applied add stands
   saveClaims(ctx, key, {
@@ -283,7 +291,7 @@ function applyCashExpense(e: FoldEvent, ctx: FoldContext): void {
     leg_claim_by: null,
     leg_on: null,
   });
-  insertKeys(ctx, key, e, merchantKey(title, title, title));
+  insertKeys(ctx, key, e);
 }
 
 function applyDelete(e: FoldEvent, ctx: FoldContext): void {
@@ -326,7 +334,9 @@ function applyClaim(e: FoldEvent, ctx: FoldContext): void {
 
 export const transactionsMaterializer: Materializer = {
   id: "budget.transactions",
-  version: 3,
+  // 4: the `merchant_key` column (and its index) on `transactions`, out of `fold_txn_keys`. It indexes
+  // refs, so the upgrade rebuilds the whole view (rebuild.ts; ~2-2.5 s at 60k rows, events.md 9).
+  version: 4,
   tables: [table, claims, keys, tombs],
   handles: [IMPORTED, CASH_EXPENSE, DELETED, "txn.categorySet", "txn.categoryCleared"],
   identity: [ACCOUNTS],

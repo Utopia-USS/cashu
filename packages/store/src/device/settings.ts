@@ -1,9 +1,15 @@
 // Device settings as typed queries and device commands. Values on disk are read back through zod
 // (settings on disk are a trust boundary): a value that does not decode reads as unset.
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  EMPTY_NOTIFICATION_LEDGER,
+  type NotificationLedger,
+  type NotificationPrefs,
+} from "@cashu/domain/core/notifications";
 import { z } from "zod";
-import { timestamp, vaultId } from "../events/v1/primitives.js";
+import { calendarDate, gid, timestamp, vaultId } from "../events/v1/primitives.js";
 import { defineQuery, type Read } from "../query.js";
-import { defineDeviceCommand } from "./store.js";
+import { type DeviceSettingKey, defineDeviceCommand } from "./store.js";
 
 function setting(read: Read, key: string): string | null {
   return (
@@ -182,6 +188,161 @@ export const setPricesFetchedAt = defineDeviceCommand({
     if (times[input.vault] !== input.at) {
       ctx.setSetting("pricesFetchedAt", JSON.stringify({ ...times, [input.vault]: input.at }));
     }
+    return { ok: true, value: null } as const;
+  },
+});
+
+/** One JSON record of per-vault values under one setting key; undecodable reads as empty. */
+function readVaultRecord<T>(
+  read: Read,
+  key: DeviceSettingKey,
+  schema: z.ZodType<Record<string, T>>,
+): Record<string, T> {
+  const raw = setting(read, key);
+  if (raw === null) return {};
+  try {
+    const parsed = schema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The editable notification choices; `deviceChanges` is always on and not settable. */
+const notificationPrefsPatch = z.object({
+  alertsFired: z.boolean().optional(),
+  weekly: z.boolean().optional(),
+  monthClosed: z.boolean().optional(),
+  evening: z.boolean().optional(),
+  staleData: z.boolean().optional(),
+  consentEnding: z.boolean().optional(),
+});
+/** Per vault, only the choices the user made: the defaults fill the rest when read. */
+const storedNotificationPrefs = z.record(vaultId, notificationPrefsPatch);
+
+function effectivePrefs(
+  stored: z.infer<typeof notificationPrefsPatch> | undefined,
+): NotificationPrefs {
+  const set = Object.fromEntries(Object.entries(stored ?? {}).filter(([, v]) => v !== undefined));
+  return { ...DEFAULT_NOTIFICATION_PREFS, ...set, deviceChanges: true };
+}
+
+/** The notification choices for one vault on this phone (defaults for what the user never set). */
+export const notificationPrefs = defineQuery({
+  id: "device.notificationPrefs",
+  scope: "device",
+  run(read, args: { vault: string }): NotificationPrefs {
+    return effectivePrefs(
+      readVaultRecord(read, "notificationPrefs", storedNotificationPrefs)[args.vault],
+    );
+  },
+});
+
+/** Change some notification choices of one vault; writes only when the effective choices change. */
+export const setNotificationPrefs = defineDeviceCommand({
+  id: "device.setNotificationPrefs",
+  input: z.object({ vault: vaultId, prefs: notificationPrefsPatch.strict() }),
+  run(ctx, input) {
+    const all = readVaultRecord(ctx.read, "notificationPrefs", storedNotificationPrefs);
+    const before = all[input.vault];
+    const after = { ...before, ...input.prefs };
+    const changed = (Object.keys(input.prefs) as (keyof typeof input.prefs)[]).some(
+      (k) => effectivePrefs(before)[k] !== effectivePrefs(after)[k],
+    );
+    if (changed)
+      ctx.setSetting("notificationPrefs", JSON.stringify({ ...all, [input.vault]: after }));
+    return { ok: true, value: null } as const;
+  },
+});
+
+const rung = z.number().int().nonnegative().nullable();
+const notificationLedgerSchema = z.object({
+  lastPlannedAt: timestamp.nullable(),
+  alertsSentOn: z.record(calendarDate, z.number().int().nonnegative()),
+  // Signal gid -> the day a plan first saw it; ledgers written before it existed read as empty.
+  notifiedAlerts: z.record(gid, calendarDate).default({}),
+  staleRung: rung,
+  consentRung: rung,
+  monthClosedSentFor: closedMonth.nullable(),
+  weeklySentFor: calendarDate.nullable(),
+  eveningSentFor: calendarDate.nullable(),
+});
+const storedLedgers = z.record(vaultId, notificationLedgerSchema);
+
+/** What the notification planner already sent for one vault (empty before its first run). */
+export const notificationLedger = defineQuery({
+  id: "device.notificationLedger",
+  scope: "device",
+  run(read, args: { vault: string }): NotificationLedger {
+    return (
+      readVaultRecord(read, "notificationLedger", storedLedgers)[args.vault] ??
+      EMPTY_NOTIFICATION_LEDGER
+    );
+  },
+});
+
+/** Replace one vault's ledger (the planner, after scheduling succeeded); writes only on change. */
+export const setNotificationLedger = defineDeviceCommand({
+  id: "device.setNotificationLedger",
+  input: z.object({ vault: vaultId, ledger: notificationLedgerSchema }),
+  run(ctx, input) {
+    const all = readVaultRecord(ctx.read, "notificationLedger", storedLedgers);
+    const before = all[input.vault];
+    if (before === undefined || JSON.stringify(before) !== JSON.stringify(input.ledger))
+      ctx.setSetting("notificationLedger", JSON.stringify({ ...all, [input.vault]: input.ledger }));
+    return { ok: true, value: null } as const;
+  },
+});
+
+const storedMarkedAlerts = z.record(vaultId, z.array(gid));
+
+/** The alerts of one vault marked "tell my phone" on this phone, as alert gids (sorted). */
+export const markedAlerts = defineQuery({
+  id: "device.markedAlerts",
+  scope: "device",
+  run(read, args: { vault: string }): readonly string[] {
+    return readVaultRecord(read, "markedAlerts", storedMarkedAlerts)[args.vault] ?? [];
+  },
+});
+
+/** Mark or unmark one alert of one vault; writes only on change. */
+export const setAlertMarked = defineDeviceCommand({
+  id: "device.setAlertMarked",
+  input: z.object({ vault: vaultId, alert: gid, marked: z.boolean() }),
+  run(ctx, input) {
+    const all = readVaultRecord(ctx.read, "markedAlerts", storedMarkedAlerts);
+    const before = all[input.vault] ?? [];
+    if (before.includes(input.alert) === input.marked) return { ok: true, value: null } as const;
+    const after = input.marked
+      ? [...before, input.alert].sort()
+      : before.filter((a) => a !== input.alert);
+    const { [input.vault]: _, ...others } = all;
+    ctx.setSetting(
+      "markedAlerts",
+      JSON.stringify(after.length === 0 ? others : { ...others, [input.vault]: after }),
+    );
+    return { ok: true, value: null } as const;
+  },
+});
+
+const lockFlag = z.enum(["1", "0"]);
+
+/** Whether the app locks behind Face ID on this phone (device-wide); null before the user chose. */
+export const deviceLock = defineQuery({
+  id: "device.lock",
+  scope: "device",
+  run(read): { readonly appLock: boolean | null } {
+    const flag = lockFlag.safeParse(setting(read, "appLock"));
+    return { appLock: flag.success ? flag.data === "1" : null };
+  },
+});
+
+export const setDeviceLock = defineDeviceCommand({
+  id: "device.setLock",
+  input: z.object({ appLock: z.boolean() }),
+  run(ctx, input) {
+    const value = input.appLock ? "1" : "0";
+    if (setting(ctx.read, "appLock") !== value) ctx.setSetting("appLock", value);
     return { ok: true, value: null } as const;
   },
 });

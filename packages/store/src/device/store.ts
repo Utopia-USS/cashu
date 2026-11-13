@@ -55,7 +55,11 @@ export type DeviceSettingKey =
   | "incognito"
   | "lastOpenedAt"
   | "pricesFetchedAt"
-  | "monthClosedSeen";
+  | "monthClosedSeen"
+  | "notificationPrefs"
+  | "notificationLedger"
+  | "markedAlerts"
+  | "appLock";
 
 export interface DeviceCommandContext {
   /** Read-only SQL on the device tables. */

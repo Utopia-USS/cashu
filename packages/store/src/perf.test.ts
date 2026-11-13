@@ -5,7 +5,9 @@
 // fast tests). Budgets are generous ceilings for CI machines; measured numbers (wall and CPU, same
 // run as the spike's own benchmark) are in the cashu-ts-architecture performance reference. With
 // CASHU_PERF_DB=<path> the store runs on a database file with the spike's pragmas (WAL, synchronous
-// NORMAL); otherwise in memory. One `S23B_PERF {...}` line reports every phase.
+// NORMAL); otherwise in memory. CASHU_PERF_BATCH=<n> sets the bulk apply's batch size (default 1,000;
+// 25,000 is a sync pull's chunk, `EventSink.applyBatches`). One `S23B_PERF {...}` line reports every
+// phase.
 import { sha1 } from "@noble/hashes/legacy.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import Database from "better-sqlite3";
@@ -237,8 +239,11 @@ describe("perf: 64k events (announced benchmark)", () => {
       const perf = perfStore();
       const mode = perf.mode;
       let store = perf.store;
+      const batch = Number(process.env.CASHU_PERF_BATCH ?? 1000);
       let t0 = now();
-      for (let i = 0; i < events.length; i += 1000) store.applyEnvelopes(events.slice(i, i + 1000));
+      for (let i = 0; i < events.length; i += batch) {
+        store.applyEnvelopes(events.slice(i, i + batch));
+      }
       const bulk = since(t0);
       // 60k imports + 300 cash expenses + the legs of the 133 manual cash_withdrawal claims on the
       // two PLN accounts (the EUR account has no cash pool)
@@ -286,6 +291,21 @@ describe("perf: 64k events (announced benchmark)", () => {
         ),
       );
       const edits10 = since(t0);
+
+      // one merchant rule edit: a payee-wide re-derive (the phone's "learn merchant" decision)
+      const payee = store.read<{ k: string }>(
+        "SELECT merchant_key AS k FROM transactions WHERE counterparty_name = 'SKLEP 7' LIMIT 1",
+      )[0]?.k as string;
+      t0 = now();
+      store.applyEnvelopes([
+        f.make(
+          "categoryRule.set",
+          detGid(TEST_SALT, "category_rules", ["SKLEP 7"]),
+          { merchantKey: payee, category: "health", source: "manual", locked: true },
+          { wall: next() },
+        ),
+      ]);
+      const ruleEdit = since(t0);
 
       // a day's events (performance.md budget: <= 100 ms): 200 imports and a few claims
       const day = Array.from({ length: 200 }, (_, n) => {
@@ -358,6 +378,7 @@ describe("perf: 64k events (announced benchmark)", () => {
       const report = {
         events: events.length,
         mode,
+        batch,
         bulkWall: bulk.wall,
         bulkCpu: bulk.cpu,
         rebuildWall: rebuild.wall,
@@ -367,6 +388,7 @@ describe("perf: 64k events (announced benchmark)", () => {
         upgradeRulesCpu: upgradeRules.cpu,
         upgradeTxnsCpu: upgradeTxns.cpu,
         edits10Wall: edits10.wall,
+        ruleEditWall: ruleEdit.wall,
         dayBatchWall: dayBatch.wall,
         dayBatchCpu: dayBatch.cpu,
         lateRefoldWall: lateRefold.wall,

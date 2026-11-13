@@ -4,29 +4,49 @@
 // entry so the phone, whose bundler (Metro) does not tree-shake, reads it without the budget barrel.
 // Budget only: it never reads loans, investments or assets (they meet in `overview/companion.ts`).
 //
-// Lists, search, detail and the uncategorized rows are direct SQL over `transactions` (newest first,
-// keyset pages), never the whole `budgetBook`; month figures load the book once per run and use the
-// domain analytics. Every money value stays a `Decimal` in its own currency; nothing is summed across
-// currencies.
+// Lists, detail and the uncategorized rows are direct SQL over `transactions` (newest first, keyset
+// pages), search reads the FTS5 index of the rows (`budget.search`), never the whole `budgetBook`;
+// the month figures, the uncategorized count and the cash pool balances read the month aggregates
+// (`budget.months`) through the domain's `...FromRows` analytics; the recurring charges read the
+// recurring records (`budget.recurring`). Every money value stays a `Decimal` in its own currency;
+// nothing is summed across currencies.
 //
-// Query budget (performance.md, lead decision 2026-11-12): the list reads (`budgetTransactions`, the
-// uncategorized count) hold the 8 ms budget on the 60k workload and `companion-queries.perf.test.ts`
-// asserts it; the month figures, attention and search are over it in M1 (the fixture is ~1.7k rows) and
-// are logged there. M3 moves them to derived monthly tables and FTS5.
+// Query budget (performance.md, lead decision 2026-11-12): the list reads, the uncategorized count,
+// the month figures, the account balances, search and the recurring charges (attention, the month's
+// bills, upcoming) hold the 8 ms budget on the 60k workload and `companion-queries.perf.test.ts`
+// asserts it.
 import {
+  addDays,
   addMonths,
   budget,
   core,
   D,
   type Decimal,
   type IsoDate,
+  ibanKey,
   monthEnd,
   normalizeText,
   ZERO,
 } from "@cashu/domain";
+import { profileOf } from "../core/queries.js";
 import { defineQuery, type Read } from "../query.js";
+import type { SqlValue } from "../sql/driver.js";
 import { eventTimestamp } from "../sql/values.js";
-import { budgetBook, budgetEngineContext, budgetNetWorth } from "./read-models.js";
+import {
+  bookingDay,
+  FTS_ID_MASK,
+  FTS_ROWID_SQL,
+  ftsAmountPrefix,
+  SEARCH_FTS,
+} from "./derive/search.js";
+import {
+  BOOK_ORDER,
+  compareRecords,
+  GROUP_ENTRIES_SQL,
+  type GroupEntryRow,
+  groupRecords,
+  type RecurringRecord,
+} from "./recurring-groups.js";
 
 // --------------------------------------------------------------------------- rows
 
@@ -66,7 +86,6 @@ const LIST_MAX = 300;
 const SEARCH_DEFAULT = 200;
 const UNCATEGORIZED_DEFAULT = 50;
 const EARLIER_MAX = 5;
-const HISTORY_CHARGES = 12;
 const USES_MONTHS = 12;
 
 /** The SQL form of `CompanionTxnRow.uncategorized` (table alias `t`). */
@@ -74,42 +93,15 @@ const UNCATEGORIZED_SQL = `(CAST(t.amount AS REAL) < 0 AND t.is_internal_transfe
   AND t.category_source = 'default')`;
 
 // --------------------------------------------------------------------------- merchant keys
-//
-// The one place the companion reads a row's merchant key. It lives in the fold-internal
-// `fold_txn_keys` (written with the row by `transactions.ts`, so these live queries wake with the row);
-// the reads below join it on its `row` key: `cashexp:<gid>` for a cash expense, else
-// `<account gid>|<dedup hash>|<occurrence>`. Promoting `merchant_key` to a `transactions` column (a
-// materializer version bump, events.md rule 15) and querying `t.merchant_key` directly is M3 work; until
-// then the key format is spelled only here.
-
-/** The `fold_txn_keys.row` of a transaction (aliases `t`, `a`). */
-const FOLD_ROW_KEY = `CASE WHEN t.dedup_hash LIKE 'cashexp:%' THEN t.dedup_hash
-    ELSE a.gid || '|' || t.dedup_hash || '|' || t.occurrence END`;
-
-/** The join that gives a row (aliases `t`, `a`) its merchant key as `k.merchant_key`. */
-const MERCHANT_KEY_JOIN = `LEFT JOIN fold_txn_keys k ON k.row = ${FOLD_ROW_KEY}`;
 
 /**
  * A subquery of `(gid, merchantKey)` of the visible rows whose merchant key is one of `count` bound
- * keys (bind the keys twice), through the merchant key index: an import row's key splits into its
- * account, dedup hash and occurrence (the transactions' unique index), a cash expense's carries its gid
- * (cash legs have no merchant key).
+ * keys, through the `transactions.merchant_key` index (cash legs have none).
  */
 function merchantRowsSql(count: number): string {
-  const list = marks(count);
-  return `SELECT t.gid AS gid, x.mk AS merchantKey FROM (
-       SELECT mk, root, substr(rest, 1, instr(rest, '|') - 1) AS hash,
-         CAST(substr(rest, instr(rest, '|') + 1) AS INTEGER) AS occ
-       FROM (SELECT merchant_key AS mk, substr(row, 1, instr(row, '|') - 1) AS root,
-               substr(row, instr(row, '|') + 1) AS rest
-             FROM fold_txn_keys WHERE merchant_key IN (${list}) AND row NOT LIKE 'cashexp:%')
-     ) x JOIN accounts a ON a.gid = x.root
-     JOIN transactions t ON t.account_id = a.id AND t.dedup_hash = x.hash AND t.occurrence = x.occ
-     WHERE ${VISIBLE}
-     UNION ALL
-     SELECT t.gid, k.merchant_key FROM fold_txn_keys k JOIN transactions t ON t.gid = substr(k.row, 9)
-     JOIN accounts a ON a.id = t.account_id
-     WHERE k.merchant_key IN (${list}) AND k.row LIKE 'cashexp:%' AND ${VISIBLE}`;
+  return `SELECT t.gid AS gid, t.merchant_key AS merchantKey
+     FROM transactions t JOIN accounts a ON a.id = t.account_id
+     WHERE t.merchant_key IN (${marks(count)}) AND ${VISIBLE}`;
 }
 
 // --------------------------------------------------------------------------- row SQL
@@ -117,10 +109,10 @@ function merchantRowsSql(count: number): string {
 const ROW_COLUMNS = `t.gid, t.booking_date AS date, t.amount, t.currency,
     t.counterparty_name AS name, t.description, t.reference, t.category,
     t.category_source AS source, t.is_internal_transfer AS internal,
-    a.gid AS accountGid, a.name AS accountName, a.type AS accountType, k.merchant_key AS merchantKey`;
-const ROW_FROM = `FROM transactions t JOIN accounts a ON a.id = t.account_id ${MERCHANT_KEY_JOIN}`;
+    a.gid AS accountGid, a.name AS accountName, a.type AS accountType, t.merchant_key AS merchantKey`;
+const ROW_FROM = "FROM transactions t JOIN accounts a ON a.id = t.account_id";
 
-/** The row columns over `transactions t JOIN accounts a`, with the row's merchant key (`k`). */
+/** The row columns over `transactions t JOIN accounts a`, with the row's merchant key. */
 const ROW_SELECT = `SELECT ${ROW_COLUMNS} ${ROW_FROM}`;
 
 /** Removed accounts leave the budget (as in `budgetBook`): their rows are never listed. */
@@ -215,15 +207,27 @@ function scopeSql(scope: CompanionUncategorizedScope): { sql: string; params: st
 }
 
 /**
- * The uncategorized rows of the vault in the scope (visible accounts), through the partial index on
- * `transactions(category_source, booking_date) WHERE category_source = 'default'`.
+ * The uncategorized flow outflows of the vault in the scope (visible accounts): the rows the month
+ * figures count (`budget.isFlow`, so also no own-account counterparty), summed over the month
+ * aggregates.
  */
 function uncategorizedTotal(read: Read, scope: CompanionUncategorizedScope = {}): number {
-  const { sql, params } = scopeSql(scope);
+  let sql = "";
+  const params: string[] = [];
+  if (scope.month) {
+    const parsed = budget.parseMonth(scope.month);
+    if (!parsed.ok) throw new RangeError("invalid budget month");
+    sql += " AND c.month = ?";
+    params.push(budget.monthLabel(parsed.year, parsed.month));
+  }
+  if (scope.currency) {
+    sql += " AND c.currency = ?";
+    params.push(scope.currency);
+  }
   return (
     read<{ n: number }>(
-      `SELECT count(*) AS n FROM transactions t JOIN accounts a ON a.id = t.account_id
-       WHERE ${VISIBLE} AND ${UNCATEGORIZED_SQL}${sql}`,
+      `SELECT COALESCE(sum(c.uncategorized_n), 0) AS n FROM fold_month_cat c
+       JOIN accounts a ON a.id = c.account_id WHERE ${VISIBLE}${sql}`,
       ...params,
     )[0]?.n ?? 0
   );
@@ -309,32 +313,219 @@ export function companionMonthOf(args: {
   return { label: first, year: parsed.year, month: parsed.month, ref };
 }
 
+/** The month groups of the visible accounts (`budget.MonthCatRow`), with an `ORDER BY`. */
+const MONTH_CAT_SELECT = `SELECT c.currency, c.month, c.category, c.income, c.expense, c.n,
+    c.flow_n AS flowN, c.uncategorized_n AS uncategorizedN,
+    c.uncategorized_expense AS uncategorizedExpense
+  FROM fold_month_cat c JOIN accounts a ON a.id = c.account_id WHERE ${VISIBLE}`;
+
+interface MonthCatSql {
+  readonly currency: string;
+  readonly month: string;
+  readonly category: string;
+  readonly income: string;
+  readonly expense: string;
+  readonly n: number;
+  readonly flowN: number;
+  readonly uncategorizedN: number;
+  readonly uncategorizedExpense: string;
+}
+
+const monthCatRow = (r: MonthCatSql): budget.MonthCatRow => ({
+  currency: r.currency,
+  month: r.month,
+  category: r.category === "" ? null : r.category,
+  income: D(r.income),
+  expense: D(r.expense),
+  n: r.n,
+  flowN: r.flowN,
+  uncategorizedN: r.uncategorizedN,
+  uncategorizedExpense: D(r.uncategorizedExpense),
+});
+
+/** "YYYY-MM-DD" of a month group's day. */
+const DAY_DATE = "d.month || '-' || substr('0' || d.day, -2)";
+
+/**
+ * The aggregates the month figures of `label` in `currency` read: the first bookings of the counted
+ * accounts (`cashflowCoverageStart`), the norm months chosen in SQL exactly as `normMonths` chooses
+ * them (whole, before the month, with income or spending: a sum is non-zero exactly when its text
+ * has a digit 1-9), the month groups of those months in `currency` plus every currency's groups of
+ * `label` (by account, then first outflow: `spendingByCategoryFromRows`' order), and the day groups of
+ * the norm months.
+ */
+function monthAggregatesOf(
+  read: Read,
+  currency: string,
+  label: string,
+): budget.MonthAggregates & { readonly coverage: IsoDate | null } {
+  const firsts = read<{ account: string; first: IsoDate | null }>(
+    `SELECT a.gid AS account, (SELECT ${DAY_DATE} FROM fold_month_day d
+       WHERE d.account_id = a.id AND d.currency = ? ORDER BY d.month, d.day LIMIT 1) AS first
+     FROM accounts a WHERE ${VISIBLE} AND a.type != ?`,
+    currency,
+    budget.CASH_ACCOUNT_TYPE,
+  ).flatMap((f) => (f.first === null ? [] : [{ account: f.account, currency, first: f.first }]));
+  const coverage = budget.coverageStartFromRows(firsts, currency);
+  const norm = read<{ month: string }>(
+    `SELECT DISTINCT c.month FROM fold_month_cat c JOIN accounts a ON a.id = c.account_id
+     WHERE ${VISIBLE} AND c.currency = ? AND c.month < ? AND c.month || '-01' >= ?
+       AND (c.income GLOB '*[1-9]*' OR c.expense GLOB '*[1-9]*')
+     ORDER BY c.month DESC LIMIT ?`,
+    currency,
+    label,
+    coverage ?? "",
+    budget.NORM_MONTHS,
+  ).map((r) => r.month);
+  const months = marks(norm.length);
+  const cat = read<MonthCatSql>(
+    `${MONTH_CAT_SELECT} AND (c.month = ? OR (c.currency = ? AND c.month IN (${months})))
+     ORDER BY c.account_id, c.first_outflow`,
+    label,
+    currency,
+    ...norm,
+  ).map(monthCatRow);
+  const day = read<{
+    currency: string;
+    month: string;
+    day: number;
+    n: number;
+    income: string;
+    expense: string;
+    maxIncome: string | null;
+  }>(
+    `SELECT d.currency, d.month, d.day, d.n, d.income, d.expense, d.max_income AS maxIncome
+     FROM fold_month_day d JOIN accounts a ON a.id = d.account_id
+     WHERE ${VISIBLE} AND d.currency = ? AND d.month IN (${months})`,
+    currency,
+    ...norm,
+  ).map((r) => ({
+    currency: r.currency,
+    month: r.month,
+    day: r.day,
+    n: r.n,
+    income: D(r.income),
+    expense: D(r.expense),
+    maxIncome: r.maxIncome === null ? null : D(r.maxIncome),
+  }));
+  return { cat, day, firsts, coverage };
+}
+
+/**
+ * The largest uncategorized flow outflow of the month (the rows `uncategorized.count` counts), in
+ * book order on equal amounts: the uncategorized partial index and the transfer exclusions narrow the
+ * rows in SQL, `budget.isFlow` (the predicate the month aggregates use) and the exact comparison
+ * decide in JS.
+ */
+function largestUncategorized(
+  read: Read,
+  currency: string,
+  label: string,
+  own: ReadonlySet<string>,
+): CompanionLargest | null {
+  const start = `${label}-01`;
+  let largest: CompanionLargest | null = null;
+  for (const t of read<{
+    gid: string;
+    amount: string;
+    date: IsoDate;
+    name: string | null;
+    reference: string | null;
+    description: string | null;
+    iban: string | null;
+    category: string | null;
+    internal: number;
+    accountType: string;
+  }>(
+    `SELECT t.gid, t.amount, t.booking_date AS date, t.counterparty_name AS name, t.reference,
+       t.description, t.counterparty_iban AS iban, t.category, t.is_internal_transfer AS internal,
+       a.type AS accountType
+     FROM transactions t JOIN accounts a ON a.id = t.account_id
+     WHERE t.category_source = 'default' AND t.booking_date >= ? AND t.booking_date <= ?
+       AND t.currency = ? AND ${VISIBLE} AND t.amount LIKE '-%' AND t.is_internal_transfer = 0
+       AND (t.category IS NULL OR t.category NOT IN ('transfer', 'cash_withdrawal'))
+     ORDER BY a.id, t.id`,
+    start,
+    monthEnd(start),
+    currency,
+  )) {
+    const amount = D(t.amount);
+    const flow = budget.isFlow(
+      { category: t.category, isInternalTransfer: t.internal === 1, counterpartyIban: t.iban },
+      own,
+    );
+    if (!amount.lt(ZERO) || !flow) continue;
+    if (largest === null || amount.lt(largest.amount)) {
+      const cash = t.accountType === budget.CASH_ACCOUNT_TYPE;
+      largest = {
+        gid: t.gid,
+        payee: payeeOf(t.name, t.reference, t.description, cash),
+        date: t.date,
+        amount,
+      };
+    }
+  }
+  return largest;
+}
+
+/**
+ * The month's spending in the vault's other currencies (those with spending only), in
+ * `budgetCurrencies` order: its counts over every visible row (the day groups).
+ */
+function otherCurrenciesOf(
+  read: Read,
+  cat: readonly budget.MonthCatRow[],
+  currency: string,
+  label: string,
+  baseCurrency: string,
+): { readonly currency: string; readonly spent: Decimal }[] {
+  const spent = new Map<string, Decimal>();
+  for (const r of cat) {
+    if (r.month !== label || r.currency === currency) continue;
+    spent.set(r.currency, (spent.get(r.currency) ?? D("0.00")).add(r.expense));
+  }
+  const others = [...spent].filter(([, s]) => !s.isZero()).map(([c]) => c);
+  if (others.length === 0) return [];
+  const counts = read<budget.CurrencyCountRow>(
+    `SELECT d.currency, sum(d.n) AS transactions, min(${DAY_DATE}) AS first, max(${DAY_DATE}) AS last
+     FROM fold_month_day d JOIN accounts a ON a.id = d.account_id
+     WHERE ${VISIBLE} AND d.currency IN (${marks(others.length)}) GROUP BY d.currency`,
+    ...others,
+  );
+  return budget
+    .currenciesFromRows(counts, baseCurrency)
+    .map((c) => ({ currency: c.currency, spent: spent.get(c.currency) as Decimal }));
+}
+
+/** The own IBAN keys of the vault: every account's, removed ones too (`bookOwnIbans`). */
+function ownIbanKeys(read: Read): Set<string> {
+  return core.ownIbans(read<{ iban: string | null }>("SELECT iban FROM accounts"));
+}
+
 /**
  * The month's figures in one currency: income and spending, the usual month (whole, complete months:
  * `normMonths`), the projection to its end (with `billsDue` as given, 0 by default), the uncategorized
  * rows and the categories. The phone reads it through the overview's `core.companionMonth`, which
- * supplies the bills still due; this plain function has no query of its own.
+ * supplies the bills still due; this plain function has no query of its own. Over the month
+ * aggregates (`budget.months`): a few hundred group rows and the month's uncategorized rows, never the
+ * vault's history; equal to the book-based figures (`budget.monthlyCashflow` and the rest).
  */
 export function companionMonth(
   read: Read,
   args: CompanionMonthArgs,
-  extra: { readonly book?: budget.BudgetBook; readonly billsDue?: Decimal } = {},
+  extra: { readonly billsDue?: Decimal } = {},
 ): CompanionMonth {
-  const book = extra.book ?? budgetBook(read);
-  const currency = args.currency || book.baseCurrency;
+  const baseCurrency = budget.budgetBaseCurrency(profileOf(read)?.baseCurrency);
+  const currency = args.currency || baseCurrency;
   const { label, year, month, ref } = companionMonthOf(args);
-  const rows = budget.monthlyCashflow(book, currency);
+  const agg = monthAggregatesOf(read, currency, label);
+  const rows = budget.monthlyCashflowFromRows(agg.cat, currency);
   const row = rows.find((r) => r.label === label);
   const income = row?.income ?? D("0.00");
   const spent = row?.expense ?? D("0.00");
-  const norm = budget.closedMonthNorm(
-    rows,
-    ref,
-    budget.NORM_MONTHS,
-    budget.cashflowCoverageStart(book, currency),
-  );
-  const normToDate = budget.usualToDate(book, currency, ref);
-  const usualPayDay = budget.usualPayDay(book, currency, ref);
+  const norm = budget.closedMonthNorm(rows, ref, budget.NORM_MONTHS, agg.coverage);
+  const normToDate = budget.usualToDateFromRows(agg, currency, ref);
+  const usualPayDay = budget.usualPayDayFromRows(agg, currency, ref);
   const billsDue = extra.billsDue ?? D("0.00");
   const projection = budget.monthProjection({
     today: ref,
@@ -346,9 +537,9 @@ export function companionMonth(
     normToDate,
     usualPayDay,
   });
-  const usual = budget.categoryNorm(book, currency, ref);
+  const usual = budget.categoryNormFromRows(agg, currency, ref);
   const categories = budget
-    .spendingByCategory(book, currency, { year, month }, args.lang)
+    .spendingByCategoryFromRows(agg.cat, currency, { year, month }, args.lang)
     .map((c) => ({
       category: c.category,
       label: c.label,
@@ -356,40 +547,15 @@ export function companionMonth(
       usual: usual.get(c.category) ?? null,
       share: spent.isZero() ? 0 : c.amount.div(spent).toFloat(),
     }));
-  const cashAccounts = new Set(
-    book.accounts.filter((a) => a.type === budget.CASH_ACCOUNT_TYPE).map((a) => a.id),
-  );
-  const own = budget.bookOwnIbans(book);
   let count = 0;
   let sum = D("0.00");
-  let largest: CompanionLargest | null = null;
-  // One pass over the month's flow outflows (`isFlow`: the rows `spent` counts): this currency's
-  // uncategorized ones, and every other currency's spending.
-  const otherSpent = new Map<string, Decimal>();
-  for (const t of book.transactions) {
-    if (t.bookingDate.slice(0, 7) !== label || !t.amount.lt(ZERO) || !budget.isFlow(t, own))
-      continue;
-    if (t.currency !== currency) {
-      otherSpent.set(t.currency, (otherSpent.get(t.currency) ?? D("0.00")).add(t.amount.neg()));
-      continue;
-    }
-    if (t.categorySource !== "default") continue;
-    count += 1;
-    sum = sum.add(t.amount.neg());
-    if (largest === null || t.amount.lt(largest.amount)) {
-      const cash = cashAccounts.has(t.account);
-      largest = {
-        gid: t.key,
-        payee: payeeOf(t.counterpartyName, t.reference, t.description, cash),
-        date: t.bookingDate,
-        amount: t.amount,
-      };
-    }
+  for (const r of agg.cat) {
+    if (r.month !== label || r.currency !== currency) continue;
+    count += r.uncategorizedN;
+    sum = sum.add(r.uncategorizedExpense);
   }
-  const otherCurrencies = budget.budgetCurrencies(book).flatMap((c) => {
-    const other = otherSpent.get(c.currency);
-    return other === undefined || other.isZero() ? [] : [{ currency: c.currency, spent: other }];
-  });
+  const largest =
+    count === 0 ? null : largestUncategorized(read, currency, label, ownIbanKeys(read));
   return {
     month: label,
     currency,
@@ -405,7 +571,7 @@ export function companionMonth(
     projection,
     uncategorized: { count, sum, largest },
     categories,
-    otherCurrencies,
+    otherCurrencies: otherCurrenciesOf(read, agg.cat, currency, label, baseCurrency),
   };
 }
 
@@ -508,44 +674,97 @@ export interface CompanionSearch {
 }
 
 const NUMBER_TOKEN = /^\d+(?:[.,]\d+)?$/;
-const likeEscape = (s: string): string => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+/** A token the index can match: it holds a letter or a digit (the tokenizer drops everything else). */
+const INDEXABLE = /[\p{L}\p{N}]/u;
 
-/** The category keys whose label (Polish or English) contains the normalized token. */
+/** The category keys with a label word (Polish or English, normalized) that starts with the token. */
 function categoryKeysMatching(token: string): string[] {
-  return budget.CATEGORIES.filter(
-    (c) => normalizeText(c.label).includes(token) || normalizeText(c.labelEn).includes(token),
+  const words = (label: string) => normalizeText(label).split(/[^\p{L}\p{N}]+/u);
+  return budget.CATEGORIES.filter((c) =>
+    [...words(c.label), ...words(c.labelEn)].some((w) => w.startsWith(token)),
   ).map((c) => c.key);
 }
 
-/**
- * One token's condition: the statement texts (lower case, as typed), the merchant key (normalized,
- * so Polish diacritics match), a category label, and for a number the amount.
- */
-function tokenSql(raw: string): { sql: string; params: string[] } | null {
-  const token = normalizeText(raw);
-  if (!token) return null;
-  const text = `%${likeEscape(raw.toLowerCase())}%`;
-  const key = `%${likeEscape(token)}%`;
-  const parts = [
-    "LOWER(t.counterparty_name) LIKE ? ESCAPE '\\'",
-    "LOWER(t.description) LIKE ? ESCAPE '\\'",
-    "LOWER(t.reference) LIKE ? ESCAPE '\\'",
-    "k.merchant_key LIKE ? ESCAPE '\\'",
-  ];
-  const params = [text, text, text, key];
-  const categories = categoryKeysMatching(token);
-  if (categories.length > 0) {
-    parts.push(`(t.category IN (${marks(categories.length)}) AND NOT ${UNCATEGORIZED_SQL})`);
-    params.push(...categories);
-  }
-  if (NUMBER_TOKEN.test(token)) {
-    const number = token.replace(",", ".");
-    parts.push("ABS(CAST(t.amount AS REAL)) = CAST(? AS REAL)");
-    parts.push("ltrim(t.amount, '-') LIKE ? ESCAPE '\\'");
-    params.push(number, `${likeEscape(number)}%`);
-  }
-  return { sql: `(${parts.join(" OR ")})`, params };
+/** One search token: its FTS5 expression and the categories whose label it names. */
+interface SearchToken {
+  readonly match: string;
+  readonly categories: readonly string[];
 }
+
+/**
+ * One token (whitespace-separated, through `normalizeText`): a prefix match of the row's indexed text
+ * (`budget.search`: statement texts and merchant key, case and diacritics folded both ways), for a
+ * number also of the amount (`ftsAmountPrefix`), and the categories whose label word it starts.
+ * Null for a token with no letter or digit (nothing to match).
+ */
+function searchToken(raw: string): SearchToken | null {
+  const token = normalizeText(raw);
+  if (!INDEXABLE.test(token)) return null;
+  // A quoted phrase: FTS syntax characters are literal inside; `"` doubles.
+  const text = `text : "${token.replaceAll('"', '""')}"*`;
+  const match = NUMBER_TOKEN.test(token)
+    ? `(${text} OR amount : "${ftsAmountPrefix(token)}"*)`
+    : text;
+  return { match, categories: categoryKeysMatching(token) };
+}
+
+/** A SQL condition with its parameters. */
+interface Cond {
+  readonly sql: string;
+  readonly params: readonly SqlValue[];
+}
+
+/** The `transactions.id` of an index row (its rowid: booking day * 2^32 + id). */
+const FTS_TXN = `(${SEARCH_FTS}.rowid & ${FTS_ID_MASK})`;
+
+/** The index's hits (visible rows only) as `transactions t` rows, newest booking day first. */
+const FTS_FROM = `FROM ${SEARCH_FTS} CROSS JOIN transactions t ON t.id = ${FTS_TXN}`;
+
+/**
+ * A row of a category the token names that is not uncategorized (a NULL source is not uncategorized,
+ * as in `CompanionTxnRow.uncategorized`). An uncategorized row (an outflow with source `default`)
+ * holds the engine's default category `other` (domain `categorize`, its last step), so the check
+ * reads the row only for a token naming `other`. `plus` keeps the category index out of a
+ * date-ordered walk.
+ */
+function categoryHit(t: SearchToken, plus = false): Cond {
+  const unc = t.categories.includes("other") ? ` AND COALESCE(NOT ${UNCATEGORIZED_SQL}, 1)` : "";
+  return {
+    sql: `(${plus ? "+" : ""}t.category IN (${marks(t.categories.length)})${unc})`,
+    params: t.categories,
+  };
+}
+
+/** A row the token hits: its text (the index) or, for a token naming categories, its category. */
+function tokenHit(t: SearchToken, plus = false): Cond {
+  const text = `t.id IN (SELECT ${FTS_TXN} FROM ${SEARCH_FTS} WHERE ${SEARCH_FTS} MATCH ?)`;
+  if (t.categories.length === 0) return { sql: text, params: [t.match] };
+  const cat = categoryHit(t, plus);
+  return { sql: `(${cat.sql} OR ${text})`, params: [...cat.params, t.match] };
+}
+
+const and = (conds: readonly Cond[]): Cond => ({
+  sql: conds.map((c) => ` AND ${c.sql}`).join(""),
+  params: conds.flatMap((c) => c.params),
+});
+
+/** A hit as the page reads it. */
+interface HitKey {
+  readonly id: number;
+  readonly date: IsoDate;
+  readonly gid: string;
+  readonly mk: string | null;
+}
+
+const HIT_KEY = "t.id, t.booking_date AS date, t.gid, t.merchant_key AS mk";
+
+/** `NEWEST_FIRST` in JS (booking date, then gid, both descending). */
+const newestFirst = (a: HitKey, b: HitKey): number =>
+  a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.gid < b.gid ? 1 : a.gid > b.gid ? -1 : 0;
+
+/** The summary columns of a hit (one payee's rows, beyond the page). */
+const SEARCH_HIT = `t.gid, t.booking_date AS date, t.amount, t.currency, t.counterparty_name AS name,
+  t.reference, t.description, a.type AS accountType`;
 
 /** The columns a payee summary reads of a search hit. */
 type SearchHit = Pick<
@@ -553,51 +772,252 @@ type SearchHit = Pick<
   "gid" | "date" | "amount" | "currency" | "name" | "reference" | "description" | "accountType"
 >;
 
+/**
+ * Where the hits come from: the page (newest first, `limit`), the total, whether some hit has another
+ * merchant key than `mk` (`otherMerchant`), and every hit's summary columns.
+ */
+interface HitSource {
+  page(limit: number): { rows: readonly HitKey[]; complete: boolean };
+  count(): number;
+  otherMerchant(mk: string): boolean;
+  all(): readonly SearchHit[];
+}
+
+/**
+ * Hits driven by the index: a match (`match`) filtered by `filter`. The index iterates newest booking
+ * day first, so the page reads twice the limit with an early exit and cuts it exactly by gid inside
+ * the last day; with no filter the total is the index's count of the match (it holds visible rows
+ * only), never a read of every hit's row.
+ */
+function indexHits(read: Read, match: string, filter: Cond): HitSource {
+  const where = `WHERE ${SEARCH_FTS} MATCH ?${filter.sql}`;
+  const params = [match, ...filter.params];
+  return {
+    page(limit) {
+      const fetch = 2 * limit;
+      const got = read<HitKey>(
+        `SELECT ${HIT_KEY} ${FTS_FROM} ${where} ORDER BY ${SEARCH_FTS}.rowid DESC LIMIT ?`,
+        ...params,
+        fetch,
+      );
+      if (got.length < fetch) return { rows: [...got].sort(newestFirst), complete: true };
+      // Every hit of a later day is in `got`; the last day's hits too unless `got` ends inside it.
+      const cut = (got[limit - 1] as HitKey).date;
+      let rows: readonly HitKey[] = got;
+      if ((got.at(-1) as HitKey).date === cut) {
+        const day = bookingDay(cut);
+        rows = [
+          ...got.filter((r) => r.date > cut),
+          ...read<HitKey>(
+            `SELECT ${HIT_KEY} ${FTS_FROM} ${where}
+               AND ${SEARCH_FTS}.rowid >= ${FTS_ROWID_SQL} AND ${SEARCH_FTS}.rowid < ${FTS_ROWID_SQL}`,
+            ...params,
+            day,
+            0,
+            day + 1,
+            0,
+          ),
+        ];
+      }
+      return { rows: [...rows].sort(newestFirst), complete: false };
+    },
+    count: () =>
+      read<{ n: number }>(
+        filter.sql === ""
+          ? `SELECT count(*) AS n FROM ${SEARCH_FTS} ${where}`
+          : `SELECT count(*) AS n ${FTS_FROM} ${where}`,
+        ...params,
+      )[0]?.n ?? 0,
+    otherMerchant: (mk) =>
+      read(
+        `SELECT 1 AS x ${FTS_FROM} ${where} AND COALESCE(t.merchant_key, '') <> ? LIMIT 1`,
+        ...params,
+        mk,
+      ).length > 0,
+    all: () =>
+      read<SearchHit>(
+        `SELECT ${SEARCH_HIT} ${FTS_FROM} JOIN accounts a ON a.id = t.account_id ${where}`,
+        ...params,
+      ),
+  };
+}
+
+/** Hits at or above this many page by walking the booking-date index (measured at 60k rows). */
+const WALK_MIN_HITS = 2000;
+
+/**
+ * The visible rows of the token's categories (`others`: the other tokens' filter). Without a filter
+ * the count reads the category index alone (`categoryHit` reads a row only for `other`), less the rows
+ * of accounts that are not visible (removed, or not arrived yet). The page walks the booking-date index
+ * newest first with an early exit for a large category, else sorts the category's rows.
+ */
+function categoryRows(read: Read, t: SearchToken, others: Cond): HitSource {
+  const cat = categoryHit(t);
+  const from = `FROM transactions t JOIN accounts a ON a.id = t.account_id
+    WHERE ${VISIBLE} AND ${cat.sql}${others.sql}`;
+  const params = [...cat.params, ...others.params];
+  let total: number | undefined;
+  const count = (): number => {
+    if (total !== undefined) return total;
+    if (others.sql !== "") {
+      total = read<{ n: number }>(`SELECT count(*) AS n ${from}`, ...params)[0]?.n ?? 0;
+      return total;
+    }
+    const all = read<{ n: number }>(
+      `SELECT count(*) AS n FROM transactions t WHERE ${cat.sql}`,
+      ...cat.params,
+    )[0]?.n;
+    const hidden = read<{ id: number }>(
+      `SELECT account_id AS id FROM (SELECT DISTINCT account_id FROM transactions)
+       WHERE account_id NOT IN (SELECT id FROM accounts WHERE removed_at IS NULL)`,
+    ).map((r) => r.id);
+    const off =
+      hidden.length === 0
+        ? 0
+        : (read<{ n: number }>(
+            `SELECT count(*) AS n FROM transactions t
+             WHERE t.account_id IN (${marks(hidden.length)}) AND ${cat.sql}`,
+            ...hidden,
+            ...cat.params,
+          )[0]?.n ?? 0);
+    total = (all ?? 0) - off;
+    return total;
+  };
+  return {
+    page(limit) {
+      const order = `${NEWEST_FIRST} LIMIT ?`;
+      const rows =
+        count() >= WALK_MIN_HITS
+          ? read<HitKey>(
+              `SELECT ${HIT_KEY} FROM transactions t JOIN accounts a ON a.id = t.account_id
+               WHERE ${VISIBLE} AND ${categoryHit(t, true).sql}${others.sql} ${order}`,
+              ...params,
+              limit,
+            )
+          : read<HitKey>(`SELECT ${HIT_KEY} ${from} ${order}`, ...params, limit);
+      return { rows, complete: rows.length < limit };
+    },
+    count,
+    otherMerchant: (mk) =>
+      read(`SELECT 1 AS x ${from} AND COALESCE(t.merchant_key, '') <> ? LIMIT 1`, ...params, mk)
+        .length > 0,
+    all: () => read<SearchHit>(`SELECT ${SEARCH_HIT} ${from}`, ...params),
+  };
+}
+
+/**
+ * Two disjoint hit sources as one: the page merges both pages (each the exact newest of its part,
+ * so the newest of the union are among them), the total adds both counts.
+ */
+function unionHits(parts: readonly HitSource[]): HitSource {
+  return {
+    page(limit) {
+      const pages = parts.map((p) => p.page(limit));
+      return {
+        rows: pages.flatMap((p) => p.rows).sort(newestFirst),
+        complete: pages.every((p) => p.complete),
+      };
+    },
+    count: () => parts.reduce((n, p) => n + p.count(), 0),
+    otherMerchant: (mk) => parts.some((p) => p.otherMerchant(mk)),
+    all: () => parts.flatMap((p) => p.all()),
+  };
+}
+
+/**
+ * Hits of category-naming tokens only: the first token's hits split into two disjoint parts, the
+ * visible rows of its categories (the category index) and its index hits outside them, each filtered
+ * by the other tokens. For a single token the second part counts as the index's count of the match
+ * less its hits inside the categories (the index iterated against the category index), never a read
+ * of every hit's row. A token in nearly every row's text that also starts a category label ("zakup":
+ * "Zakupy") still pays that intersection over every hit: see `companion-queries.perf.test.ts`.
+ */
+function categoryHits(read: Read, named: readonly SearchToken[]): HitSource {
+  const [first, ...rest] = named as [SearchToken, ...SearchToken[]];
+  const others = and(rest.map((t) => tokenHit(t)));
+  const cat = categoryHit(first);
+  const outside = indexHits(read, first.match, {
+    sql: ` AND NOT COALESCE(${cat.sql}, 0)${others.sql}`,
+    params: [...cat.params, ...others.params],
+  });
+  const count = (sql: string, ...params: SqlValue[]) =>
+    read<{ n: number }>(sql, ...params)[0]?.n ?? 0;
+  return unionHits([
+    categoryRows(read, first, others),
+    rest.length > 0
+      ? outside
+      : {
+          ...outside,
+          count: () =>
+            count(
+              `SELECT count(*) AS n FROM ${SEARCH_FTS} WHERE ${SEARCH_FTS} MATCH ?`,
+              first.match,
+            ) -
+            count(
+              `SELECT count(*) AS n FROM ${SEARCH_FTS} WHERE ${SEARCH_FTS} MATCH ?
+                 AND ${FTS_TXN} IN (SELECT t.id FROM transactions t WHERE ${cat.sql})`,
+              first.match,
+              ...cat.params,
+            ),
+        },
+  ]);
+}
+
+/**
+ * Search the visible rows, newest first. Prefix-token semantics over the `budget.search` index
+ * (dev-feedback #22.9): every token must match; a token matches a word of the row's statement texts
+ * or merchant key that starts with it, case and diacritics folded both ways ("orl" and "orlen" find
+ * ORLEN, "zabka" finds ŻABKA, "Łódź" finds LODZ; "rlen" finds nothing), a number also an amount that
+ * starts with it ("1284" finds 1284.00, "12,5" finds 12.50), a label word also its category's rows.
+ *
+ * Cost (performance.md, <= 8 ms at 60k rows): the text tokens drive the index in booking-date order,
+ * so a word in every row ("zakup", "sk") reads the newest page with an early exit plus the index's
+ * count, never every hit's row; a category label ("paliwo") reads its category's rows through the
+ * category index for the count and walks the booking-date index for the page.
+ */
 export const budgetSearch = defineQuery({
   id: "budget.companionSearch",
   run(read, args: CompanionSearchArgs): CompanionSearch {
-    const conditions = args.q
+    const tokens = args.q
       .split(/\s+/)
-      .map(tokenSql)
-      .filter((c) => c !== null);
-    if (conditions.length === 0) return { rows: [], total: 0, summary: null };
+      .map(searchToken)
+      .filter((t) => t !== null);
+    if (tokens.length === 0) return { rows: [], total: 0, summary: null };
     const limit = clampLimit(args.limit, SEARCH_DEFAULT);
-    const where = `WHERE ${VISIBLE} AND ${conditions.map((c) => c.sql).join(" AND ")}`;
-    const params = conditions.flatMap((c) => c.params);
-    // `limit + 1` rows: when they are every hit, the total and the shared merchant come from them (one
-    // scan); otherwise from one aggregate over the same condition, never by reading every hit.
-    const found = read<SqlRow>(
-      `${ROW_SELECT} ${where} ${NEWEST_FIRST} LIMIT ?`,
-      ...params,
-      limit + 1,
-    );
-    const complete = found.length <= limit;
-    let total = found.length;
-    let shared: string | null = null;
-    if (complete) {
-      const first = found[0]?.merchantKey;
-      shared = first && found.every((h) => h.merchantKey === first) ? first : null;
-    } else {
-      const stats = read<{ n: number; keys: number; key: string | null }>(
-        `SELECT count(*) AS n, count(DISTINCT COALESCE(k.merchant_key, '')) AS keys,
-           min(k.merchant_key) AS key ${ROW_FROM} ${where}`,
-        ...params,
-      )[0];
-      total = stats?.n ?? 0;
-      shared = stats !== undefined && stats.keys === 1 && stats.key ? stats.key : null;
-    }
+    const plain = tokens.filter((t) => t.categories.length === 0);
+    const named = tokens.filter((t) => t.categories.length > 0);
+    const source =
+      plain.length > 0
+        ? indexHits(
+            read,
+            plain.map((t) => t.match).join(" AND "),
+            and(named.map((t) => tokenHit(t))),
+          )
+        : categoryHits(read, named);
+    const page = source.page(limit);
+    const total = page.complete ? page.rows.length : source.count();
+    const ids = page.rows.slice(0, limit).map((r) => r.id);
+    // One merchant key across every hit (a key seen on the page, no other key among the rest).
+    const keys = new Set(page.rows.map((r) => r.mk ?? ""));
+    const [mk] = keys;
+    const shared =
+      total >= 2 &&
+      keys.size === 1 &&
+      mk !== undefined &&
+      mk !== "" &&
+      (page.complete || !source.otherMerchant(mk))
+        ? mk
+        : null;
+    const found =
+      ids.length === 0
+        ? []
+        : read<SqlRow>(
+            `${ROW_SELECT} WHERE t.id IN (${marks(ids.length)}) ${NEWEST_FIRST}`,
+            ...ids,
+          );
     // One merchant: its year-by-year summary over every hit (beyond the page: one payee's rows, slim).
     const hits: readonly SearchHit[] =
-      shared === null || total < 2
-        ? []
-        : complete
-          ? found
-          : read<SearchHit>(
-              `SELECT t.gid, t.booking_date AS date, t.amount, t.currency,
-                 t.counterparty_name AS name, t.reference, t.description,
-                 a.type AS accountType ${ROW_FROM} ${where}`,
-              ...params,
-            );
+      shared === null ? [] : total <= found.length ? found : source.all();
     const summary =
       shared === null || hits.length === 0
         ? null
@@ -616,8 +1036,7 @@ export const budgetSearch = defineQuery({
               currency: h.currency,
             })),
           );
-    const rows = found.slice(0, limit).map(toRow);
-    return { rows, total, summary };
+    return { rows: found.map(toRow), total, summary };
   },
 });
 
@@ -676,8 +1095,8 @@ export const budgetTransactionDetail = defineQuery({
     const sameMerchantCount =
       key === null
         ? 0
-        : (read<{ n: number }>(`SELECT count(*) AS n FROM (${merchantRowsSql(1)})`, key, key)[0]
-            ?.n ?? 0);
+        : (read<{ n: number }>(`SELECT count(*) AS n FROM (${merchantRowsSql(1)})`, key)[0]?.n ??
+          0);
     const earlier =
       key === null
         ? []
@@ -685,7 +1104,6 @@ export const budgetTransactionDetail = defineQuery({
             `${ROW_SELECT} WHERE ${VISIBLE} AND t.gid IN (SELECT gid FROM (${merchantRowsSql(1)}))
                AND (t.booking_date < ? OR (t.booking_date = ? AND t.gid < ?))
              ${NEWEST_FIRST} LIMIT ?`,
-            key,
             key,
             row.date,
             row.date,
@@ -729,7 +1147,13 @@ export interface CompanionUncategorizedRow extends CompanionTxnRow {
 
 export interface CompanionUncategorized {
   readonly rows: readonly CompanionUncategorizedRow[];
-  /** Every uncategorized row in the scope (the month and currency when given), not only `rows`. */
+  /**
+   * The uncategorized flow outflows in the scope (the month and currency when given), not only
+   * `rows`: the month figures' count (`budget.isFlow`). `rows` lists by the plain flag (an outflow,
+   * not an internal transfer, `category_source = 'default'`), so it may also hold a row with an
+   * own-account counterparty or a structural category that `total` leaves out (the engine files such
+   * rows as transfers, so through the engine the two agree).
+   */
   readonly total: number;
 }
 
@@ -763,22 +1187,55 @@ function suggestions(read: Read, keys: readonly string[]): Map<string, string> {
          AND t.category_source IN (${DECIDED_SOURCES.map((s) => `'${s}'`).join(", ")})
      ) WHERE rn = 1`,
     ...open,
-    ...open,
   ))
     out.set(r.merchantKey, r.category);
   return out;
+}
+
+/**
+ * The scope's uncategorized flow outflows, newest first, at most `limit`: exactly the rows the count
+ * and the total count (`budget.isFlow`: also no structural category and no own-account counterparty,
+ * the IBANs compared as keys in JS), read in keyset pages until `limit` rows pass.
+ */
+function uncategorizedFlowRows(
+  read: Read,
+  scope: CompanionUncategorizedScope,
+  limit: number,
+): CompanionTxnRow[] {
+  const { sql, params } = scopeSql(scope);
+  const own = ownIbanKeys(read);
+  const out: CompanionTxnRow[] = [];
+  let before: CompanionCursor | null = null;
+  for (;;) {
+    const cursor: (string | number)[] =
+      before === null ? [] : [before.date, before.date, before.gid];
+    const page: (SqlRow & { iban: string | null })[] = read(
+      `SELECT ${ROW_COLUMNS}, t.counterparty_iban AS iban ${ROW_FROM}
+       WHERE ${VISIBLE} AND ${UNCATEGORIZED_SQL}${sql}
+         ${before === null ? "" : "AND (t.booking_date < ? OR (t.booking_date = ? AND t.gid < ?))"}
+       ${NEWEST_FIRST} LIMIT ?`,
+      ...params,
+      ...cursor,
+      limit,
+    );
+    for (const r of page) {
+      const cp = r.iban ? ibanKey(r.iban) : "";
+      if (cp !== "" && own.has(cp)) continue;
+      if (r.category !== null && budget.NON_SPENDING_CATEGORIES.has(r.category)) continue;
+      out.push(toRow(r));
+      if (out.length === limit) return out;
+    }
+    const last: SqlRow | undefined = page.at(-1);
+    if (last === undefined || page.length < limit) return out;
+    before = { date: last.date, gid: last.gid };
+  }
 }
 
 export const budgetUncategorizedRows = defineQuery({
   id: "budget.companionUncategorized",
   run(read, args: CompanionUncategorizedArgs): CompanionUncategorized {
     const limit = clampLimit(args.limit, UNCATEGORIZED_DEFAULT);
-    const scope = scopeSql(args);
-    const rows = read<SqlRow>(
-      `${ROW_SELECT} WHERE ${VISIBLE} AND ${UNCATEGORIZED_SQL}${scope.sql} ${NEWEST_FIRST} LIMIT ?`,
-      ...scope.params,
-      limit,
-    ).map(toRow);
+    const rows = uncategorizedFlowRows(read, args, limit);
     const keys = [...new Set(rows.flatMap((r) => (r.merchantKey === null ? [] : [r.merchantKey])))];
     const suggested = suggestions(read, keys);
     return {
@@ -843,60 +1300,137 @@ export const budgetCategoryOptions = defineQuery({
 
 // --------------------------------------------------------------------------- overview inputs
 
-/** What the overview supplies to the recurring detection (defaults: the built-in registry). */
-export interface CompanionRecurringContext {
-  readonly book?: budget.BudgetBook;
-  readonly patterns?: readonly core.PaymentPattern[];
-  readonly registry?: core.CoreRegistry;
+/** The days before the vault's newest booking date a payee's last charge keeps it active. */
+const ACTIVE_DAYS = 45;
+
+interface RecurringSql {
+  merchant_key: string;
+  currency: string;
+  typical_amount: string;
+  occurrences: number;
+  months_covered: number;
+  median_gap_days: number;
+  last_date: IsoDate;
+  seq_account: number;
+  seq_id: number;
+  payee: string;
+  account_id: number | null;
+  charge_last: IsoDate | null;
+  first_seen: IsoDate;
+  charges: string;
 }
+
+const recordOf = (r: RecurringSql): RecurringRecord => ({
+  merchantKey: r.merchant_key,
+  currency: r.currency,
+  typicalAmount: r.typical_amount,
+  occurrences: r.occurrences,
+  monthsCovered: r.months_covered,
+  medianGapDays: r.median_gap_days,
+  lastDate: r.last_date,
+  seqAccount: r.seq_account,
+  seqId: r.seq_id,
+  payee: r.payee,
+  accountId: r.account_id,
+  chargeLast: r.charge_last,
+  firstSeen: r.first_seen,
+  charges: r.charges,
+});
 
 /**
- * The active recurring payments of the book up to `today` (rows booked later are not charges yet),
- * one per recurring candidate, each with its own charges (`budget.recurringSeries`: a one-off purchase
- * at the same merchant is not one of them).
+ * The active recurring payments up to `today` (rows booked later are not charges yet), one per
+ * recurring candidate with its own charges, in list order (`budget.recurringPayments` +
+ * `activeRecurring` + `recurringSeries` over the book cut at `today`). Over the recurring deriver's
+ * records (`fold_recurring`, every group over all its rows): active = last charge within 45 days of
+ * the newest booking date up to `today`. A group with a charge after `today`, or with both active
+ * and stale candidates (the series are formed over the active ones only), is recomputed from its
+ * rows up to `today` (`fold_recurring_rows`, `recurring-groups.ts`).
  */
-function recurringOf(
-  read: Read,
-  today: IsoDate,
-  ctx: CompanionRecurringContext,
-): { series: budget.RecurringSeries; book: budget.BudgetBook }[] {
-  const full = ctx.book ?? budgetBook(read);
-  const book = { ...full, transactions: full.transactions.filter((t) => t.bookingDate <= today) };
-  const registry = ctx.registry ?? core.builtinRegistry();
-  const candidates = budget.activeRecurring(
-    budget.recurringPayments(
-      book,
-      budgetEngineContext(read, ctx.patterns ?? [], registry),
-      budget.subscriptionExclusions(registry),
-    ),
-    book,
+function recurringRecords(read: Read, today: IsoDate): RecurringRecord[] {
+  // The recurring tables wake a live query with the rows, accounts and merchant rules (their
+  // `wakesWith`); the modules' payment patterns are read by the overview.
+  const ref =
+    read<{ d: IsoDate }>(
+      `SELECT t.booking_date AS d FROM transactions t JOIN accounts a ON a.id = t.account_id
+       WHERE ${VISIBLE} AND t.booking_date <= ? ORDER BY t.booking_date DESC LIMIT 1`,
+      today,
+    )[0]?.d ?? null;
+  const cutoff = ref === null ? null : addDays(ref, -ACTIVE_DAYS);
+  const isActive = (lastDate: IsoDate) => cutoff === null || lastDate >= cutoff;
+  // Groups with a possible charge after today: their stored records count rows today does not. Only
+  // a group that may recur over all its rows (`fold_recurring_groups`) may over those up to today.
+  const later = new Set(
+    read<{ mk: string; currency: string }>(
+      `SELECT DISTINCT t.merchant_key AS mk, t.currency FROM transactions t
+       JOIN accounts a ON a.id = t.account_id
+       WHERE t.booking_date > ? AND ${VISIBLE} AND t.is_internal_transfer = 0
+         AND t.merchant_key <> '' AND t.amount LIKE '-%'
+         AND EXISTS (SELECT 1 FROM fold_recurring_groups g
+           WHERE g.merchant_key = t.merchant_key AND g.currency = t.currency)`,
+      today,
+    ).map((r) => JSON.stringify([r.mk, r.currency])),
   );
-  return budget.recurringSeries(candidates, book).map((series) => ({ series, book }));
+  const byGroup = new Map<string, RecurringRecord[]>();
+  for (const r of read<RecurringSql>("SELECT * FROM fold_recurring")) {
+    const g = JSON.stringify([r.merchant_key, r.currency]);
+    const list = byGroup.get(g);
+    if (list === undefined) byGroup.set(g, [recordOf(r)]);
+    else list.push(recordOf(r));
+  }
+  const out: RecurringRecord[] = [];
+  const recompute: string[] = [...later];
+  for (const [g, records] of byGroup) {
+    if (later.has(g)) continue;
+    const active = records.filter((r) => isActive(r.lastDate));
+    if (active.length === records.length) out.push(...records);
+    else if (active.length > 0) recompute.push(g);
+  }
+  for (const g of recompute) {
+    const [mk, currency] = JSON.parse(g) as [string, string];
+    const rows = read<GroupEntryRow>(
+      `${GROUP_ENTRIES_SQL} AND booking_date <= ? ${BOOK_ORDER}`,
+      mk,
+      currency,
+      today,
+    );
+    out.push(...groupRecords(mk, currency, rows, (c) => isActive(c.lastDate)));
+  }
+  return out.filter((r) => isActive(r.lastDate)).sort(compareRecords);
 }
 
-function chargeOf(series: budget.RecurringSeries, book: budget.BudgetBook): budget.RecurringCharge {
-  const { candidate, rows } = series;
-  const newest = rows.at(-1);
-  const account =
-    newest === undefined ? undefined : book.accounts.find((a) => a.id === newest.account);
-  const cash = account?.type === budget.CASH_ACCOUNT_TYPE;
-  return {
-    key: series.key,
-    payee:
-      newest === undefined
-        ? candidate.counterparty
-        : payeeOf(newest.counterpartyName, newest.reference, newest.description, cash) ||
-          candidate.counterparty,
-    typicalAmount: candidate.typicalAmount,
-    currency: candidate.currency,
-    // A charge at a new price continues the series after the candidate's own last charge.
-    lastDate:
-      newest !== undefined && newest.bookingDate > candidate.lastDate
-        ? newest.bookingDate
-        : candidate.lastDate,
-    medianGapDays: candidate.medianGapDays,
-    account: account === undefined ? null : { id: account.id, name: account.name },
-  };
+/** The records as upcoming-charge inputs (the account of the series' newest charge, by id). */
+function chargesOf(
+  read: Read,
+  records: readonly RecurringRecord[],
+): { record: RecurringRecord; charge: budget.RecurringCharge }[] {
+  const ids = [...new Set(records.flatMap((r) => (r.accountId === null ? [] : [r.accountId])))];
+  const accounts = new Map(
+    ids.length === 0
+      ? []
+      : read<{ id: number; gid: string; name: string }>(
+          `SELECT id, gid, name FROM accounts WHERE id IN (${marks(ids.length)})`,
+          ...ids,
+        ).map((a) => [a.id, { id: a.gid, name: a.name }]),
+  );
+  return records.map((record) => {
+    const typicalAmount = D(record.typicalAmount);
+    return {
+      record,
+      charge: {
+        key: `${record.merchantKey}:${record.currency}:${typicalAmount.toString()}`,
+        payee: record.payee,
+        typicalAmount,
+        currency: record.currency,
+        // A charge at a new price continues the series after the candidate's own last charge.
+        lastDate:
+          record.chargeLast !== null && record.chargeLast > record.lastDate
+            ? record.chargeLast
+            : record.lastDate,
+        medianGapDays: record.medianGapDays,
+        account: record.accountId === null ? null : (accounts.get(record.accountId) ?? null),
+      },
+    };
+  });
 }
 
 /**
@@ -904,27 +1438,19 @@ function chargeOf(series: budget.RecurringSeries, book: budget.BudgetBook): budg
  * (`<merchant key>:<currency>:<typical amount>`), the paying account = the account of the series'
  * newest charge.
  */
-export function recurringCharges(
-  read: Read,
-  today: IsoDate,
-  ctx: CompanionRecurringContext = {},
-): budget.RecurringCharge[] {
-  return recurringOf(read, today, ctx).map((r) => chargeOf(r.series, r.book));
+export function recurringCharges(read: Read, today: IsoDate): budget.RecurringCharge[] {
+  return chargesOf(read, recurringRecords(read, today)).map((c) => c.charge);
 }
 
 /** The same series with their last 12 charges (newest first, positive) and their first charge. */
-export function payeeChargeHistories(
-  read: Read,
-  today: IsoDate,
-  ctx: CompanionRecurringContext = {},
-): budget.PayeeChargeHistory[] {
-  return recurringOf(read, today, ctx).map(({ series, book }) => ({
-    ...chargeOf(series, book),
-    charges: series.rows
-      .slice(-HISTORY_CHARGES)
-      .reverse()
-      .map((t) => ({ date: t.bookingDate, amount: t.amount.copyAbs() })),
-    firstSeen: series.rows[0]?.bookingDate ?? series.candidate.lastDate,
+export function payeeChargeHistories(read: Read, today: IsoDate): budget.PayeeChargeHistory[] {
+  return chargesOf(read, recurringRecords(read, today)).map(({ record, charge }) => ({
+    ...charge,
+    charges: (JSON.parse(record.charges) as [IsoDate, string][]).map(([date, amount]) => ({
+      date,
+      amount: D(amount),
+    })),
+    firstSeen: record.firstSeen,
   }));
 }
 
@@ -932,31 +1458,61 @@ const BALANCE_TYPES = ["checking", "savings", budget.CASH_ACCOUNT_TYPE] as const
 
 /**
  * The current balance of every visible checking, savings and cash account, valued as the overview
- * values them (`budgetNetWorth`): a bank account's newest balance snapshot, a cash pool's running sum
- * up to `today`. Accounts without a known balance are left out.
+ * values them (`budgetNetWorth`): a bank account's newest balance snapshot (its `latest`: the
+ * snapshots alone, the walk back over its rows only shapes the history), a cash pool's running sum up
+ * to `today` (the month aggregates' signed sums: whole months before today's, then today's month's
+ * days through today). Accounts without a known balance are left out.
  */
 export function accountBalances(read: Read, today: IsoDate): budget.AccountBalance[] {
-  const accounts = read<{
-    gid: string;
-    name: string;
-    type: string;
-    currency: string;
-    active: number;
-  }>(
-    `SELECT gid, name, type, currency, active FROM accounts
+  const accounts = read<{ id: number; gid: string; name: string; type: string; currency: string }>(
+    `SELECT id, gid, name, type, currency FROM accounts
      WHERE removed_at IS NULL AND type IN (${marks(BALANCE_TYPES.length)}) ORDER BY id`,
     ...BALANCE_TYPES,
   );
-  const valuations = budgetNetWorth(read, { today, prices: null }).valuations(
-    new Map(
-      accounts.map((a) => [
-        a.gid,
-        { id: a.gid, type: a.type, currency: a.currency, active: a.active === 1, removedAt: null },
-      ]),
-    ),
-  );
+  const snapshots = new Map<number, core.BalanceSnapshot[]>();
+  for (const b of read<{ account: number; date: IsoDate; amount: string; source: string }>(
+    `SELECT b.account_id AS account, b.date, b.amount, b.source FROM balances b
+     JOIN accounts a ON a.id = b.account_id
+     WHERE a.removed_at IS NULL AND a.type IN ('checking', 'savings')
+       AND b.date = (SELECT max(date) FROM balances WHERE account_id = b.account_id)
+     ORDER BY b.id`,
+  )) {
+    const list = snapshots.get(b.account) ?? [];
+    list.push({ date: b.date, amount: D(b.amount), source: b.source });
+    snapshots.set(b.account, list);
+  }
+  const pools = accounts.filter((a) => a.type === budget.CASH_ACCOUNT_TYPE).map((a) => a.id);
+  const running = new Map<number, Decimal>(pools.map((id) => [id, D("0.00")]));
+  if (pools.length > 0) {
+    const month = today.slice(0, 7);
+    const add = (r: { account: number; net: string }) =>
+      running.set(r.account, (running.get(r.account) as Decimal).add(D(r.net)));
+    for (const r of read<{ account: number; net: string }>(
+      `SELECT account_id AS account, net FROM fold_month_cat
+       WHERE account_id IN (${marks(pools.length)}) AND month < ?`,
+      ...pools,
+      month,
+    )) {
+      add(r);
+    }
+    for (const r of read<{ account: number; net: string }>(
+      `SELECT account_id AS account, net FROM fold_month_day
+       WHERE account_id IN (${marks(pools.length)}) AND month = ? AND day <= ?`,
+      ...pools,
+      month,
+      Number(today.slice(8, 10)),
+    )) {
+      add(r);
+    }
+  }
   return accounts.flatMap((a) => {
-    const latest = valuations.get(a.gid)?.latest(null, today);
+    if (a.type === budget.CASH_ACCOUNT_TYPE) {
+      return [
+        { id: a.gid, name: a.name, currency: a.currency, balance: running.get(a.id) as Decimal },
+      ];
+    }
+    const rows = snapshots.get(a.id);
+    const latest = rows === undefined ? null : new core.BalanceValuation(rows).latest(null, today);
     return latest == null
       ? []
       : [{ id: a.gid, name: a.name, currency: a.currency, balance: latest[1] }];

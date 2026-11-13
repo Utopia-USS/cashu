@@ -18,6 +18,7 @@ import type { StoreModule } from "./registry.js";
 import { viewHash } from "./snapshot.js";
 import { betterSqlite3Driver } from "./sql/better-sqlite3.js";
 import type { SqlDriver } from "./sql/driver.js";
+import { recurringState } from "./testing/recurring-oracle.js";
 import {
   EventFactory,
   memoryDriver,
@@ -121,7 +122,7 @@ function budgetEvents(): TestEnvelope[] {
   ];
   const imports: TestEnvelope[] = [];
   for (let n = 0; n < 60; n++) {
-    const hash = `upg-${String(n).padStart(4, "0")}`;
+    const hash = n.toString(16).padStart(40, "0"); // a sha1-shaped dedup hash
     const e = f.make("txn.imported", detGid(TEST_SALT, "transactions", [acc, hash, "0"]), {
       account: acc,
       batch: null,
@@ -141,6 +142,29 @@ function budgetEvents(): TestEnvelope[] {
     });
     imports.push(e);
     out.push(e);
+  }
+  // a monthly subscription: the recurring deriver holds a record (its bump test checks it)
+  for (let n = 0; n < 6; n++) {
+    const hash = (0x5ab00 + n).toString(16).padStart(40, "0");
+    out.push(
+      f.make("txn.imported", detGid(TEST_SALT, "transactions", [acc, hash, "0"]), {
+        account: acc,
+        batch: null,
+        bookingDate: `2025-0${1 + n}-12`,
+        valueDate: null,
+        amount: "-43.00",
+        currency: "PLN",
+        counterpartyName: "NETFLIX UPG",
+        counterpartyIban: null,
+        description: "platnosc karta",
+        reference: null,
+        bankTransactionId: null,
+        source: "csv",
+        dedupHash: hash,
+        occurrence: 0,
+        raw: {},
+      }),
+    );
   }
   for (let n = 0; n < 7; n++) {
     const m = `SKLEP ${n}`;
@@ -172,10 +196,22 @@ function noteEnvelopes(count: number): TestEnvelope[] {
 }
 
 /** The view a reader new from the start folds from `events` with `modules`. */
-function freshHash(modules: readonly StoreModule[], events: readonly TestEnvelope[]): string {
+function freshStore(modules: readonly StoreModule[], events: readonly TestEnvelope[]) {
   const fresh = openTestStore({ modules });
   for (let i = 0; i < events.length; i += 1000) fresh.applyEnvelopes(events.slice(i, i + 1000));
-  return viewHash(fresh).hash;
+  return fresh;
+}
+
+function freshHash(modules: readonly StoreModule[], events: readonly TestEnvelope[]): string {
+  return viewHash(freshStore(modules, events)).hash;
+}
+
+/** The month aggregates (internal, so outside the view hash). */
+function monthAggregates(store: { read<R>(sql: string): R[] }) {
+  return [
+    store.read("SELECT * FROM fold_month_cat ORDER BY account_id, currency, month, category"),
+    store.read("SELECT * FROM fold_month_day ORDER BY account_id, currency, month, day"),
+  ];
 }
 
 function reopen(driver: SqlDriver, modules: readonly StoreModule[], progress?: RebuildProgress[]) {
@@ -264,13 +300,16 @@ describe("view upgrade on open (events.md 7.9)", () => {
     oldApp(driver, builtinModules(), events);
     const rules = bumpVersion(builtinModules(), "budget.category_rules");
     const r1 = reopen(driver, rules);
-    // budget.categories reads the merchant rules (S24c): it re-derives with them
+    // budget.categories reads the merchant rules (S24c): it re-derives with them, and the derivers
+    // after it with the same inputs (recurring payments, month aggregates); the search index too (its
+    // input `transactions` is a table categories writes: the planner does not know which columns)
     expect(r1.lastRebuild).toMatchObject({
       scope: "partial",
       materializers: ["budget.category_rules"],
-      derivers: ["budget.categories"],
+      derivers: ["budget.categories", "budget.recurring", "budget.months", "budget.search"],
     });
     expect(viewHash(r1).hash).toBe(freshHash(rules, events));
+    expect(monthAggregates(r1)).toEqual(monthAggregates(freshStore(rules, events)));
     r1.detach();
     // a deriver bump runs that deriver (and later ones that see its table), nothing else
     const cats = bumpVersion(rules, "budget.categories");
@@ -278,9 +317,36 @@ describe("view upgrade on open (events.md 7.9)", () => {
     expect(r2.lastRebuild).toMatchObject({
       scope: "partial",
       materializers: [],
-      derivers: ["budget.categories"],
+      derivers: ["budget.categories", "budget.recurring", "budget.months", "budget.search"],
     });
     expect(viewHash(r2).hash).toBe(freshHash(cats, events));
+    r2.detach();
+    // the months deriver alone: its tables start empty and are derived again
+    const months = bumpVersion(cats, "budget.months");
+    const r3 = reopen(driver, months);
+    expect(r3.lastRebuild).toMatchObject({
+      scope: "partial",
+      materializers: [],
+      derivers: ["budget.months"],
+    });
+    expect(monthAggregates(r3)).toEqual(monthAggregates(freshStore(months, events)));
+    expect(monthAggregates(r3)[0]).not.toEqual([]);
+    r3.detach();
+    // the recurring deriver alone: its tables start empty and are derived again
+    const recurring = bumpVersion(months, "budget.recurring");
+    const r4 = reopen(driver, recurring);
+    expect(r4.lastRebuild).toMatchObject({
+      scope: "partial",
+      materializers: [],
+      derivers: ["budget.recurring"],
+    });
+    expect(recurringState(r4)).toEqual(recurringState(freshStore(recurring, events)));
+    // every table of it holds rows: the records, the rows, the counts, the groups that may recur
+    const [records, rows, keys, groups] = recurringState(r4) as unknown[][];
+    expect(records).toMatchObject([{ typical_amount: "43.00", occurrences: 6 }]);
+    expect(rows).not.toEqual([]);
+    expect(keys).not.toEqual([]);
+    expect(groups).not.toEqual([]);
   });
 
   it("rebuilds the whole view when a changed materializer indexes refs or an identity kind changed", () => {

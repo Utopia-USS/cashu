@@ -20,12 +20,16 @@
 //   rows, 256 at least) runs `deriveAll`.
 // Internal state: `fold_category_members` (row key -> its group and date, for rows in a group: the
 // old group of a re-folded row is only known here) and `fold_category_groups` (the qualifying
-// groups and their payees). A payee's rows are found through the transactions materializer's
-// `fold_txn_keys.merchant_key` (the same `merchantKey` of the same row content).
+// groups and their payees). A payee's rows are found through `transactions.merchant_key` (the
+// materializer writes it with the row).
 //
 // `is_internal_transfer` is read from the view (the transfers deriver writes it, before this one);
 // the bank rows whose flag it flipped in this apply (`takeTransferFlips`) are dirty rows here too.
 // Every input of the transfers deriver is an input here, so this deriver runs whenever it did.
+//
+// For the month aggregates after it (`budget.months`): `fold_category_changes` collects the row keys
+// whose category this run wrote and the transfer flips it took (`*` after a full pass); that deriver
+// takes them (`takeCategoryChanges`) in the same apply.
 import { budget, core, D } from "@cashu/domain";
 import { CONTRIBUTIONS, type DeriveContext, type Deriver } from "../../engine/types.js";
 import type { Read } from "../../query.js";
@@ -60,6 +64,53 @@ const groupsTable: TableDef = {
     { name: "payee", type: "TEXT", notNull: true },
   ],
 };
+
+/**
+ * Row keys whose `category` / `category_source` this deriver wrote or whose `is_internal_transfer`
+ * flipped (the flips it took), `*` after `deriveAll`, until the months deriver takes them.
+ */
+const changesTable: TableDef = {
+  name: "fold_category_changes",
+  primaryKey: ["row"],
+  internal: true,
+  withoutRowid: true,
+  columns: [{ name: "row", type: "TEXT", notNull: true }],
+};
+
+/** `fold_category_changes` value: every row may have changed (a full pass ran). */
+export const ALL_CHANGED = "*";
+
+function changed(ctx: DeriveContext, rows: Iterable<string>): void {
+  for (const row of rows) {
+    ctx.sql.insert(
+      changesTable.name,
+      "INSERT OR IGNORE INTO fold_category_changes (row)",
+      "(?)",
+      row,
+    );
+  }
+}
+
+/**
+ * The row keys whose category or transfer flag changed since the months deriver last took them
+ * (`ALL_CHANGED` among them after a full pass), left in place (the recurring deriver, which runs
+ * before the months deriver).
+ */
+export function categoryChanges(ctx: DeriveContext): string[] {
+  return ctx.sql.all<{ row: string }>("SELECT row FROM fold_category_changes").map((r) => r.row);
+}
+
+/**
+ * The row keys whose category or transfer flag changed since the last call (`ALL_CHANGED` among them
+ * after a full pass), emptied (the months deriver).
+ */
+export function takeCategoryChanges(ctx: DeriveContext): string[] {
+  const rows = ctx.sql
+    .all<{ row: string }>("SELECT row FROM fold_category_changes")
+    .map((r) => r.row);
+  if (rows.length > 0) ctx.sql.write(changesTable.name, "DELETE FROM fold_category_changes");
+  return rows;
+}
 
 const envTable: TableDef = {
   name: "fold_category_env",
@@ -235,10 +286,14 @@ function rowsByKey(ctx: DeriveContext, keys: Iterable<string>): Map<string, Row>
   return out;
 }
 
-/** The row keys of a payee (the materializer's merchant key index). */
+/** The row keys of a payee (the `transactions.merchant_key` index; cash legs have none). */
 function keysOfPayee(ctx: DeriveContext, payee: string): string[] {
   return ctx.sql
-    .all<{ row: string }>("SELECT row FROM fold_txn_keys WHERE merchant_key = ?", payee)
+    .all<{ row: string }>(
+      `SELECT ${ROW_KEY} AS row FROM transactions t JOIN view_ids v ON v.id = t.account_id
+       WHERE t.merchant_key = ?`,
+      payee,
+    )
     .map((r) => r.row);
 }
 
@@ -299,10 +354,11 @@ function memberOf(e: Engine, row: Row): Member | null {
 
 const payeeOfGroup = (grp: string): string => (JSON.parse(grp) as [string])[0];
 
-function write(ctx: DeriveContext, row: Row, value: budget.Effective): void {
+/** Write a row's effective category when it changed; true when it wrote. */
+function write(ctx: DeriveContext, row: Row, value: budget.Effective): boolean {
   const category = value?.category ?? null;
   const source = value?.source ?? null;
-  if (row.current[0] === category && row.current[1] === source) return;
+  if (row.current[0] === category && row.current[1] === source) return false;
   ctx.sql.write(
     TRANSACTIONS,
     "UPDATE transactions SET category = ?, category_source = ? WHERE id = ?",
@@ -310,6 +366,7 @@ function write(ctx: DeriveContext, row: Row, value: budget.Effective): void {
     source,
     row.id,
   );
+  return true;
 }
 
 /**
@@ -387,6 +444,7 @@ function recheckGroups(ctx: DeriveContext, groups: readonly string[]): void {
 
 function deriveAll(ctx: DeriveContext): void {
   takeTransferFlips(ctx); // every row is re-derived below
+  changed(ctx, [ALL_CHANGED]);
   const e = engine(ctx);
   const rows = allRows(ctx);
   const members = new Map<string, Member | null>();
@@ -446,7 +504,7 @@ export const categoriesDeriver: Deriver = {
   id: "budget.categories",
   // 3: split-payment VAT moves are transfers (engine `isSplitPaymentVatMove`); the upgrade re-derives.
   version: 3,
-  tables: [membersTable, groupsTable, envTable],
+  tables: [membersTable, groupsTable, envTable, changesTable],
   writes: [{ table: TRANSACTIONS, columns: ["category", "category_source"] }],
   inputs: [
     "budget.transactions",
@@ -466,7 +524,9 @@ export const categoriesDeriver: Deriver = {
       deriveAll(ctx);
       return;
     }
-    const keys = [...new Set([...(txns ?? []), ...takeTransferFlips(ctx)])];
+    const flips = takeTransferFlips(ctx);
+    changed(ctx, flips);
+    const keys = [...new Set([...(txns ?? []), ...flips])];
     if (keys.length >= FULL_PASS_MIN) {
       const total = ctx.sql.get<{ n: number }>("SELECT count(*) AS n FROM fold_txn_keys")?.n ?? 0;
       if (keys.length * FULL_PASS_SHARE > total) {
@@ -507,7 +567,11 @@ export const categoriesDeriver: Deriver = {
     const flipped = [...new Set([...before, ...subs])].filter((p) => before.has(p) !== subs.has(p));
     const more = flipped.flatMap((p) => keysOfPayee(ctx, p)).filter((k) => !rows.has(k));
     for (const [k, r] of rowsByKey(ctx, more)) rows.set(k, r);
-    for (const r of rows.values()) write(ctx, r, e.categorizer.effective(r.input, subs));
+    const wrote: string[] = [];
+    for (const r of rows.values()) {
+      if (write(ctx, r, e.categorizer.effective(r.input, subs))) wrote.push(r.input.key);
+    }
+    changed(ctx, wrote);
   },
   deriveAll,
 };

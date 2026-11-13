@@ -23,9 +23,10 @@
 // `fold_transfer_env`), a full re-fold or a bulk dirty set runs `deriveAll`.
 //
 // The categories deriver reads `is_internal_transfer` (a structural transfer, recurring groups skip
-// internal rows): the bank rows whose flag flipped are queued in `fold_transfer_flips`, which that
-// deriver (registered after this one, with a superset of its inputs, so it runs whenever this one
-// did) takes as dirty rows in the same apply.
+// internal rows): the partitions of the rows whose flag flipped (a cash leg: its source's) are queued
+// in `fold_transfer_flips`, which that deriver (registered after this one, with a superset of its
+// inputs, so it runs whenever this one did) takes as dirty rows in the same apply and hands on to the
+// month aggregates.
 import { budget, D } from "@cashu/domain";
 import type { DeriveContext, Deriver } from "../../engine/types.js";
 import type { TableDef } from "../../sql/ddl.js";
@@ -59,7 +60,10 @@ const envTable: TableDef = {
   ],
 };
 
-/** Bank row partitions whose `is_internal_transfer` flipped, until the categories deriver takes them. */
+/**
+ * Partitions of the rows whose `is_internal_transfer` flipped (a cash leg: its source partition), until
+ * the categories deriver takes them.
+ */
 const flipsTable: TableDef = {
   name: "fold_transfer_flips",
   primaryKey: ["row"],
@@ -380,7 +384,7 @@ function matchAndWrite(
       g,
       r.loaded.id,
     );
-    if (r.loaded.is_internal_transfer !== flag && !r.isLeg) {
+    if (r.loaded.is_internal_transfer !== flag) {
       ctx.sql.write(
         flipsTable.name,
         "INSERT OR IGNORE INTO fold_transfer_flips (row) VALUES (?)",
@@ -465,7 +469,7 @@ function deriveParts(ctx: DeriveContext, parts: readonly string[]): void {
 }
 
 /**
- * The bank row partitions whose `is_internal_transfer` flipped since the last call, emptied (the
+ * The row partitions whose `is_internal_transfer` flipped since the last call, emptied (the
  * categories deriver re-derives them, S24c).
  */
 export function takeTransferFlips(ctx: DeriveContext): string[] {

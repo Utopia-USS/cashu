@@ -79,16 +79,24 @@ export const NON_SPENDING_CATEGORIES: ReadonlySet<string> = new Set([
 ]);
 
 /** True when the counterparty account number is one of the profile's own (`iban_key` match). */
-export function isOwnCounterparty(t: BudgetTxn, own: ReadonlySet<string>): boolean {
+export function isOwnCounterparty(
+  t: Pick<BudgetTxn, "counterpartyIban">,
+  own: ReadonlySet<string>,
+): boolean {
   const cp = t.counterpartyIban ? ibanKey(t.counterpartyIban) : "";
   return cp !== "" && own.has(cp);
 }
 
+/** The fields `isFlow` reads: a whole `BudgetTxn`, or a stored row (the month aggregates' deriver). */
+export type FlowFields = Pick<BudgetTxn, "category" | "isInternalTransfer" | "counterpartyIban">;
+
 /**
  * `monthclose._is_flow`: income or spending (the cashflow filters), false for a transfer: a structural
- * category, a matched internal transfer or an own-account counterparty.
+ * category, a matched internal transfer or an own-account counterparty. The one flow predicate: the
+ * book analytics, the month aggregates (`budget.months`) and the companion's largest uncategorized row
+ * all call it.
  */
-export function isFlow(t: BudgetTxn, own: ReadonlySet<string>): boolean {
+export function isFlow(t: FlowFields, own: ReadonlySet<string>): boolean {
   if ((t.category !== null && NON_SPENDING_CATEGORIES.has(t.category)) || t.isInternalTransfer) {
     return false;
   }

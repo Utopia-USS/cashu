@@ -196,10 +196,11 @@ const withdrawal: fc.Arbitrary<Step[]> = fc
     ];
   });
 
-const script = scriptOf(step, fc.oneof(transfer, withdrawal));
+/** Random transfer scripts (the transfers property's; the month aggregates reuse them). */
+export const transferScript = scriptOf(step, fc.oneof(transfer, withdrawal));
 
 export const transfersProperty = fc.property(
-  script,
+  transferScript,
   fc.integer({ min: 1, max: 1_000_000 }),
   (events, seed) => {
     const a = deliver(events, seed, (s) => {

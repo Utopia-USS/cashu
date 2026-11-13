@@ -47,7 +47,7 @@ import {
   type ViewUpgradePlan,
 } from "./rebuild.js";
 import { EventRegistry, ModuleRegistry, type StoreModule, type ViewDefs } from "./registry.js";
-import { createTableSql, type TableDef } from "./sql/ddl.js";
+import { clearTableSql, createTableSql, inSnapshot, type TableDef } from "./sql/ddl.js";
 import type { SqlDriver, SqlValue } from "./sql/driver.js";
 import { SYSTEM_SCHEMA_VERSION, SYSTEM_TABLES } from "./sql/system.js";
 import { isSyncStatement } from "./statements.js";
@@ -147,6 +147,8 @@ export class Store {
   readonly #suppression: SuppressionRules;
   readonly #internal: ReadonlySet<string>;
   readonly #publicTables: readonly TableDef[];
+  /** `tablesRead`: the tables a SQL identifier stands for (a public table, or an internal one's `wakesWith`). */
+  readonly #reads: ReadonlyMap<string, readonly string[]>;
   readonly #hub = new ChangeHub();
   readonly deps: FoldDeps;
   readonly #deriveDeps: DeriveDeps;
@@ -195,6 +197,7 @@ export class Store {
       [...SYSTEM_TABLES, ...all].filter((t) => t.internal).map((t) => t.name),
     );
     this.#publicTables = all.filter((t) => !t.internal);
+    this.#reads = readsOf(this.#publicTables, all);
   }
 
   /**
@@ -601,6 +604,27 @@ export class Store {
     return { touchedTables: touched.set };
   }
 
+  /**
+   * Build the tables snapshots leave out (`inSnapshot`: the virtual tables, FTS5 indexes, and the
+   * deriver tables marked `snapshot: false`) again from the view: every deriver that owns one runs its
+   * `deriveAll` (one transaction), which rebuilds all of its tables. `importSnapshot` calls this after
+   * loading the rest. A table left out that no deriver owns could never be rebuilt: refused.
+   */
+  rederiveSnapshotOmitted(): void {
+    const owners = this.modules.derivers.filter((d) => d.tables?.some((t) => !inSnapshot(t)));
+    const owned = new Set(owners.flatMap((d) => (d.tables ?? []).map((t) => t.name)));
+    const orphan = this.viewTables().find((t) => !inSnapshot(t) && !owned.has(t.name));
+    if (orphan !== undefined) {
+      throw new Error(`table ${orphan.name} is left out of snapshots but no deriver owns it`);
+    }
+    if (owners.length === 0) return;
+    const touched = new TouchedTables(this.#internal);
+    this.driver.transaction(() =>
+      deriveEverything(owners, deriveContext(this.#deriveDeps, viewSql(this.#stmts, touched))),
+    );
+    this.#hub.notify(touched.set);
+  }
+
   // ------------------------------------------------------------------------------------------- //
   // Rebuild (events.md 7.9): recompute the view from the held log.
 
@@ -722,14 +746,14 @@ export class Store {
 
   /**
    * The public view tables a query reads (for useQuery invalidation): identifiers of the SQL that
-   * name a registered public table. Table names are a closed set, so this is exact for every query
-   * written against the view.
+   * name a registered public table, and for an internal table a query reads (a deriver's aggregate)
+   * the public tables it wakes with (`TableDef.wakesWith`). Table names are a closed set, so this is
+   * exact for every query written against the view.
    */
   tablesRead(sql: string): ReadonlySet<string> {
-    const names = new Set([...this.#publicTables.map((t) => t.name), "unknown_events"]);
     const out = new Set<string>();
     for (const word of sql.toLowerCase().match(/[a-z_][a-z0-9_]*/g) ?? []) {
-      if (names.has(word)) out.add(word);
+      for (const t of this.#reads.get(word) ?? []) out.add(t);
     }
     return out;
   }
@@ -777,7 +801,7 @@ export class Store {
     const touched = new TouchedTables(this.#internal);
     this.driver.transaction(() => {
       for (const t of this.viewTables()) {
-        viewSql(this.#stmts, touched).write(t.name, `DELETE FROM ${t.name}`);
+        viewSql(this.#stmts, touched).write(t.name, clearTableSql(t));
       }
       this.driver.exec(
         "DELETE FROM event_log; DELETE FROM event_refs; DELETE FROM event_rejects; DELETE FROM unknown_events; DELETE FROM materializer_state; DELETE FROM identity_roots; DELETE FROM identity_accepted; DELETE FROM view_ids; DELETE FROM sync_cursors;",
@@ -825,4 +849,29 @@ function safeJson(raw: unknown): string {
   } catch {
     return '"<unserializable>"';
   }
+}
+
+/**
+ * What each SQL identifier stands for in `tablesRead`: a public table (and `unknown_events`) itself, an
+ * internal table with `wakesWith` those public tables. Throws on a `wakesWith` that is not on an
+ * internal table or names a table that is not public (a query over it would never wake).
+ */
+function readsOf(
+  publicTables: readonly TableDef[],
+  all: readonly TableDef[],
+): ReadonlyMap<string, readonly string[]> {
+  const out = new Map<string, readonly string[]>(
+    [...publicTables.map((t) => t.name), "unknown_events"].map((n) => [n, [n]]),
+  );
+  for (const t of all) {
+    if (t.wakesWith === undefined) continue;
+    const unknown = t.wakesWith.filter((w) => !out.has(w));
+    if (!t.internal || unknown.length > 0 || t.wakesWith.length === 0) {
+      throw new Error(
+        `${t.name}: wakesWith is for an internal table and names public tables (${unknown.join(", ")})`,
+      );
+    }
+    out.set(t.name, t.wakesWith);
+  }
+  return out;
 }

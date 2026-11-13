@@ -119,3 +119,17 @@ it("rolls back split-window replacement and versions atomically, publishing only
   expect(observed).toEqual({ version: version + 2, close: "20" });
   driver.close();
 });
+
+it("closes its own driver and drops its subscribers", () => {
+  const driver = memoryDriver();
+  const cache = new SqlPriceCache(driver);
+  const key = market.marketSymbol("yahoo", "CLOSE");
+  let notifications = 0;
+  cache.subscribe(() => notifications++);
+  cache.upsertBars(key, [bar()], now);
+  expect(notifications).toBe(1);
+  cache.close();
+  expect(() => cache.version()).toThrow();
+  expect(() => driver.prepare("SELECT 1").get()).toThrow();
+  expect(notifications).toBe(1);
+});

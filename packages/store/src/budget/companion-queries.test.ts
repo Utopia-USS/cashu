@@ -2,11 +2,15 @@
 // the same imports, transfer and category derivation and cash pool as the apps.
 import { D } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { createProfile, recordBalance } from "../core/commands.js";
 import type { Store } from "../materialize.js";
-import { runQuery } from "../query.js";
+import { companionQueries } from "../overview/companion.js";
+import { type Query, type QueryArgs, runQuery, watchQuery } from "../query.js";
+import { betterSqlite3Driver } from "../sql/better-sqlite3.js";
 import { run, type TestEnv, testEnv } from "../testing/commands.js";
+import { expectMonthQueriesEqual } from "../testing/months-oracle.js";
 import { openTestStore } from "../testing/store.js";
 import { removeBankAccount } from "./account-removal.js";
 import {
@@ -223,6 +227,112 @@ describe("companionMonth", () => {
       store.close();
     }
   });
+
+  it("equals the book-based figures, balances and uncategorized counts (month aggregates)", () => {
+    const { store, env, eur } = monthVault();
+    try {
+      ingest(store, env, "PLN", OWN_A, [
+        { date: "2025-12-01", amount: "-100.00", name: "Own", ref: "own-dec-out", iban: OWN_B },
+        { date: "2026-03-20", amount: "-7.5", name: "QUUX STUDIO", ref: "quux-2" },
+        { date: "2026-04-02", amount: "-9.99", name: "LATER", ref: "later" },
+      ]);
+      ingest(store, env, "PLN", OWN_B, [
+        { date: "2025-12-01", amount: "100.00", name: "Own", ref: "own-dec-in", iban: OWN_A },
+      ]);
+      expect(
+        run(store, env, addCashExpense, {
+          amount: "12.00",
+          title: "Synthetic coffee",
+          category: "dining",
+          onDate: "2026-03-18",
+        }).ok,
+      ).toBe(true);
+      const requests = [
+        { today: TODAY, month: null, currency: "" },
+        { today: TODAY, month: null, currency: "EUR" },
+        { today: TODAY, month: "2026-02", currency: "PLN" },
+        { today: TODAY, month: "2026-04", currency: "" },
+        { today: "2026-03-31", month: null, currency: "PLN" },
+      ];
+      expectMonthQueriesEqual(store, requests, [TODAY, "2026-03-17", "2026-04-30"]);
+      expect(run(store, env, removeBankAccount, { account: eur }).ok).toBe(true);
+      expectMonthQueriesEqual(store, requests, [TODAY]);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("reads of the derivers' aggregates wake with the public tables they declare", () => {
+    const { store } = monthVault();
+    try {
+      const both = new Set(["transactions", "accounts"]);
+      expect(store.tablesRead("SELECT n FROM fold_month_cat")).toEqual(both);
+      expect(store.tablesRead("SELECT n FROM fold_month_day")).toEqual(both);
+      expect(store.tablesRead("SELECT * FROM fold_recurring")).toEqual(
+        new Set([...both, "category_rules"]),
+      );
+      // the row memory is not read by queries: it declares nothing
+      expect(store.tablesRead("SELECT * FROM fold_month_rows")).toEqual(new Set());
+    } finally {
+      store.close();
+    }
+  });
+
+  it("wakes the live month, count, upcoming, attention and search with a new import", () => {
+    const { store, env } = monthVault();
+    try {
+      const queries = companionQueries();
+      const seen = { month: 0, count: 0, upcoming: 0, attention: 0, search: 0 };
+      const watch = <A extends QueryArgs>(
+        query: Query<A, unknown>,
+        args: A,
+        key: keyof typeof seen,
+      ) =>
+        watchQuery(store, query, args, {
+          onValue: () => void seen[key]++,
+          onError: (e) => {
+            throw e;
+          },
+        });
+      const stops = [
+        watch(queries.month, { today: TODAY, currency: "PLN", lang: "en" }, "month"),
+        watch(budgetUncategorizedCount, {}, "count"),
+        watch(queries.upcoming, { today: TODAY }, "upcoming"),
+        watch(
+          queries.attention,
+          { today: TODAY, currency: "PLN", now: `${TODAY}T12:00:00Z` },
+          "attention",
+        ),
+        watch(budgetSearch, { q: "shop", lang: "en" }, "search"),
+      ];
+      expect(seen).toEqual({ month: 1, count: 1, upcoming: 1, attention: 1, search: 1 });
+      ingest(store, env, "PLN", OWN_A, [
+        { date: "2026-03-19", amount: "-42.00", name: "NEW SHOP", ref: "new-shop" },
+      ]);
+      expect(seen.month).toBeGreaterThan(1);
+      expect(seen.count).toBeGreaterThan(1);
+      expect(seen.upcoming).toBeGreaterThan(1);
+      expect(seen.attention).toBeGreaterThan(1);
+      expect(seen.search).toBeGreaterThan(1);
+      expect(
+        runQuery(store, queries.month, { today: TODAY, currency: "PLN", lang: "en" }).value,
+      ).toMatchObject({ spent: D("1826.00"), uncategorized: { count: 3 } });
+      const before = { ...seen };
+      expect(
+        run(store, env, addCashExpense, {
+          amount: "5.00",
+          title: "Synthetic tea",
+          category: "dining",
+          onDate: "2026-03-19",
+        }).ok,
+      ).toBe(true);
+      // the cash pool's balance is an upcoming-charges input (the month's bills read it too)
+      expect(seen.upcoming).toBeGreaterThan(before.upcoming);
+      for (const stop of stops) stop();
+    } finally {
+      store.close();
+    }
+  });
 });
 
 describe("budgetTransactions", () => {
@@ -358,7 +468,8 @@ describe("budgetSearch", () => {
       expect(search("paliwo").total).toBe(3);
       expect(search("fuel").total).toBe(3);
       expect(search("50%").rows.map((r) => r.payee)).toEqual(["Opłata 50% rabatu"]);
-      expect(search("5%").total).toBe(0);
+      // prefix tokens: punctuation separates words, so "5%" is the prefix "5" of "50"
+      expect(search("5%").rows.map((r) => r.payee)).toEqual(["Opłata 50% rabatu"]);
       expect(search("   ")).toEqual({ rows: [], total: 0, summary: null });
       // the total and the shared merchant come from every hit, not only the page
       const page = runQuery(store, budgetSearch, { q: "orlen", lang: "en", limit: 1 }).value;
@@ -371,10 +482,44 @@ describe("budgetSearch", () => {
     }
   });
 
-  // M3 (FTS5 with a normalized text column): SQLite LOWER / LIKE fold ASCII only, so a diacritic word
-  // found only in an upper-case statement text ("OPŁATA ZA ŚMIECI") is not found by "śmieci" unless
-  // the merchant key carries it.
-  it.todo("matches a diacritic word that is only in an upper-case description (OPŁATA ZA ŚMIECI)");
+  it("matches word prefixes with case and diacritics folded both ways (dev-feedback #22.9)", () => {
+    const { store, env } = vault();
+    try {
+      ingest(store, env, "PLN", OWN_A, [
+        { date: "2026-02-01", amount: "-30.00", name: null, ref: "s1", desc: "OPŁATA ZA ŚMIECI" },
+        { date: "2026-02-02", amount: "-12.00", name: "LODZ KALISKA", ref: "lodz" },
+        { date: "2026-02-03", amount: "-5.12", name: "ŁÓDŹ FABRYCZNA", ref: "lodz-2" },
+        { date: "2026-02-04", amount: "-120.40", name: 'KIOSK "POD *"', ref: "kiosk" },
+        { date: "2026-02-05", amount: "-77.00", name: "ORLEN STACJA 12", ref: "orlen-12" },
+      ]);
+      const payees = (q: string) =>
+        runQuery(store, budgetSearch, { q, lang: "pl" }).value.rows.map((r) => r.payee);
+      // a diacritic word only in an upper-case description
+      expect(payees("śmieci")).toEqual(["OPŁATA ZA ŚMIECI"]);
+      expect(payees("SMIECI")).toEqual(["OPŁATA ZA ŚMIECI"]);
+      // l-stroke folded (normalizeText) on both sides
+      expect(payees("łódź")).toEqual(["ŁÓDŹ FABRYCZNA", "LODZ KALISKA"]);
+      expect(payees("lodz")).toEqual(["ŁÓDŹ FABRYCZNA", "LODZ KALISKA"]);
+      // a word prefix, never the inside of a word
+      expect(payees("orl")).toEqual(["ORLEN STACJA 12"]);
+      expect(payees("rlen")).toEqual([]);
+      // a number: a word or an amount that starts with it, never an amount's fraction
+      expect(payees("12")).toEqual(["ORLEN STACJA 12", 'KIOSK "POD *"', "LODZ KALISKA"]);
+      expect(payees("120,4")).toEqual(['KIOSK "POD *"']);
+      expect(payees("5.12")).toEqual(["ŁÓDŹ FABRYCZNA"]);
+      expect(payees("orlen 12")).toEqual(["ORLEN STACJA 12"]);
+      // FTS syntax in a token is literal; a token without a letter or digit is ignored
+      expect(payees('"pod')).toEqual(['KIOSK "POD *"']);
+      expect(payees("kiosk * - AND OR NOT")).toEqual([]);
+      expect(payees("kiosk * -")).toEqual(['KIOSK "POD *"']);
+      expect(runQuery(store, budgetSearch, { q: "* - %", lang: "pl" }).value.total).toBe(0);
+      // a category label word prefix also hits that category's rows (ORLEN: fuel, "Paliwo")
+      expect(payees("pali")).toEqual(["ORLEN STACJA 12"]);
+      expect(payees("liwo")).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
 });
 
 describe("budgetTransactionDetail", () => {
@@ -462,6 +607,49 @@ describe("budgetUncategorizedRows", () => {
       expect(() => runQuery(store, budgetUncategorizedRows, { month: "2026-13" })).toThrow(
         RangeError,
       );
+    } finally {
+      store.close();
+    }
+  });
+
+  it("lists only the rows the count counts: no own-account counterparty (IBANs as keys)", () => {
+    // The categorization files an own-account counterparty as a transfer, so a `default` row with
+    // one only appears when the stored IBAN text and the own keys disagree; the view is edited here
+    // to build that row. The list follows `budget.isFlow` as the count does, keyset pages included.
+    const db = new Database(":memory:");
+    const store = openTestStore({ driver: betterSqlite3Driver(db) });
+    const env = testEnv();
+    try {
+      expect(
+        run(store, env, createProfile, {
+          slug: "synthetic-triage",
+          name: "Synthetic triage",
+          baseCurrency: "PLN",
+          modules: ["budget"],
+        }).ok,
+      ).toBe(true);
+      ingest(store, env, "PLN", OWN_A, [
+        { date: "2026-02-03", amount: "-30.00", name: "SKLEP A", ref: "tri-1" },
+        { date: "2026-02-04", amount: "-40.00", name: "SKLEP B", ref: "tri-2" },
+        { date: "2026-02-05", amount: "-50.00", name: "SKLEP C", ref: "tri-3" },
+      ]);
+      ingest(store, env, "PLN", OWN_B, [
+        { date: "2026-02-01", amount: "-1.00", name: "FEE", ref: "tri-fee" },
+      ]);
+      const spaced = `${OWN_B.slice(0, 4).toLowerCase()} ${OWN_B.slice(4)}`;
+      db.prepare(
+        "UPDATE transactions SET counterparty_iban = ? WHERE reference IN ('tri-3', 'tri-2')",
+      ).run(spaced);
+      const before = store.read<{ n: number }>(
+        `SELECT count(*) AS n FROM transactions WHERE category_source = 'default'
+           AND CAST(amount AS REAL) < 0`,
+      )[0]?.n;
+      expect(before).toBe(4); // the SQL rule alone still lists both edited rows
+      const triage = runQuery(store, budgetUncategorizedRows, { month: "2026-02" }).value;
+      expect(triage.rows.map((r) => r.payee)).toEqual(["SKLEP A", "FEE"]);
+      // limit 1: the first page is two own-counterparty rows, the next page holds the answer
+      const one = runQuery(store, budgetUncategorizedRows, { month: "2026-02", limit: 1 }).value;
+      expect(one.rows.map((r) => r.payee)).toEqual(["SKLEP A"]);
     } finally {
       store.close();
     }

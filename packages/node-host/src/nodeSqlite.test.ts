@@ -1,11 +1,18 @@
 // The node:sqlite SqlDriver on a temp database: read-write basics (transactions, savepoints,
-// rollback) and the read-only mode a host uses on a live WAL database written by another connection.
-import { lstatSync, mkdtempSync, realpathSync } from "node:fs";
+// rollback), the read-only mode a host uses on a live WAL database written by another connection, and
+// the FTS5 probe that names an old Node instead of failing deep in `Store.open`.
+import { lstatSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { acquireHostLock } from "./host/lock.js";
-import { backupNodeSqlite, openNodeSqlite, ReadOnlyDriverError } from "./nodeSqlite.js";
+import {
+  backupNodeSqlite,
+  MissingFts5Error,
+  openNodeSqlite,
+  probeFts5,
+  ReadOnlyDriverError,
+} from "./nodeSqlite.js";
 
 const tempDb = () =>
   join(mkdtempSync(join(realpathSync(tmpdir()), "cashu-node-host-sqlite-")), "t.db");
@@ -132,5 +139,48 @@ describe("live exclusive online backup", () => {
       lock.release();
     }
     await expect(backupNodeSqlite(source, join(dir, "late.db"))).rejects.toThrow();
+  });
+});
+
+describe("FTS5 probe", () => {
+  it("names the Node version when node:sqlite has no fts5 module", () => {
+    const fake = {
+      exec: () => {
+        throw new Error("no such module: fts5");
+      },
+    };
+    expect(() => probeFts5(fake)).toThrow(MissingFts5Error);
+    expect(() => probeFts5(fake)).toThrow(
+      `node:sqlite has no FTS5 (Node ${process.version}); cashU needs Node >= 24 (.nvmrc) or Electron's Node`,
+    );
+  });
+
+  it("rethrows any other failure as is", () => {
+    const fake = {
+      exec: () => {
+        throw new Error("disk I/O error");
+      },
+    };
+    expect(() => probeFts5(fake)).toThrow("disk I/O error");
+  });
+
+  it("creates and drops its table in the temp schema only", () => {
+    const executed: string[] = [];
+    probeFts5({ exec: (sql) => void executed.push(sql) });
+    expect(executed).toEqual([
+      "CREATE VIRTUAL TABLE temp.cashu_fts_probe USING fts5(x); DROP TABLE temp.cashu_fts_probe",
+    ]);
+  });
+
+  it("passes on this runtime's node:sqlite and leaves a read-only file untouched", () => {
+    const path = tempDb();
+    const writer = openNodeSqlite(path);
+    writer.exec("CREATE TABLE t (id INTEGER)");
+    writer.close();
+    const before = readFileSync(path);
+    const reader = openNodeSqlite(path, { readOnly: true });
+    expect(reader.prepare("SELECT name FROM sqlite_master").all()).toEqual([{ name: "t" }]);
+    reader.close();
+    expect(readFileSync(path).equals(before)).toBe(true);
   });
 });

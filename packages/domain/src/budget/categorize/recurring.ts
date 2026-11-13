@@ -29,6 +29,9 @@ export const TXN_DECIDED_SOURCES: ReadonlySet<string> = new Set([
   "cash_leg",
 ]);
 
+/** The occurrences of one amount the exact-amount rule needs by default (`recurringDates`). */
+export const RECURRING_MIN_OCCURRENCES = 3;
+
 export interface RecurringRow extends EngineTxn {
   readonly bookingDate: IsoDate;
   readonly currency: string;
@@ -113,7 +116,7 @@ export function recurringDates(
   groupDates: readonly IsoDate[],
   opts: RecurringOptions = {},
 ): RecurringDates | null {
-  const minOccurrences = opts.minOccurrences ?? 3;
+  const minOccurrences = opts.minOccurrences ?? RECURRING_MIN_OCCURRENCES;
   const minGap = opts.minGap ?? 24;
   const maxGap = opts.maxGap ?? 37;
   if (groupDates.length < minOccurrences) return null;
@@ -191,6 +194,13 @@ export function detectRecurring(
 const SUBSCRIPTIONS = "subscriptions";
 /** The engine's default for a merchant nothing files yet (`categorize`, step 6). */
 const UNFILED = "other";
+/**
+ * The categories a drifting charge needs on at least half of its cluster (`driftCandidate`): filed
+ * `subscriptions` or still unfiled. A group with no member in them and no amount seen
+ * `RECURRING_MIN_OCCURRENCES` times holds no candidate (`detectRecurringGroup`), so a store can keep
+ * these two counts per group and skip reading a group that cannot recur.
+ */
+export const RECURRING_FILED_CATEGORIES: readonly string[] = [SUBSCRIPTIONS, UNFILED];
 /** The default relative amount drift of one charge (foreign-currency billing). */
 export const RECURRING_AMOUNT_TOLERANCE = D("0.15");
 
@@ -240,6 +250,16 @@ function exactCandidates(
   currency: string,
   opts: RecurringOptions,
 ): Found[] {
+  // `recurringDates` needs `minOccurrences` rows of one amount: most clusters have none.
+  const minOccurrences = opts.minOccurrences ?? RECURRING_MIN_OCCURRENCES;
+  const counts = new Map<string, number>();
+  let repeated = false;
+  for (const e of cluster) {
+    const n = (counts.get(e.amountKey) ?? 0) + 1;
+    counts.set(e.amountKey, n);
+    if (n >= minOccurrences) repeated = true;
+  }
+  if (!repeated) return [];
   const byKey = new Map<string, ListEntry[]>();
   for (const e of [...cluster].sort((a, b) => a.seq - b.seq)) {
     const list = byKey.get(e.amountKey);
@@ -280,16 +300,16 @@ function driftCandidate(
   currency: string,
   opts: RecurringListOptions,
 ): Found | null {
-  const minOccurrences = opts.minOccurrences ?? 3;
+  const minOccurrences = opts.minOccurrences ?? RECURRING_MIN_OCCURRENCES;
   const minCyclesSubscription = opts.minCyclesSubscription ?? 2;
   const minGap = opts.minGap ?? 24;
   const maxGap = opts.maxGap ?? 37;
-  const byDate = [...cluster].sort((a, b) =>
-    a.date < b.date ? -1 : a.date > b.date ? 1 : a.seq - b.seq,
-  );
   const subs = cluster.filter((e) => e.category === SUBSCRIPTIONS).length;
   const unfiled = cluster.filter((e) => e.category === UNFILED).length;
   if (2 * (subs + unfiled) < cluster.length) return null;
+  const byDate = [...cluster].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : a.seq - b.seq,
+  );
   const subscription = 2 * subs >= cluster.length;
   const cycles: ListEntry[] = [];
   let extras = 0;
@@ -326,13 +346,94 @@ function driftCandidate(
   };
 }
 
+/** One outflow of a (payee, currency) group as the recurring-payments detection reads it. */
+export interface RecurringGroupEntry {
+  readonly date: IsoDate;
+  /** The outflow's magnitude as `format2(-amount)` (the signal's amount key). */
+  readonly amountKey: string;
+  /** The category it is judged by: its decided category, else the engine's without the signal. */
+  readonly category: string;
+}
+
+/** One candidate of a group and the index (in the group's entries) of the entry it was first seen at. */
+export interface RecurringGroupFound {
+  readonly candidate: RecurringCandidate;
+  readonly first: number;
+}
+
 /**
- * `detectRecurringPayments` with the categorizer to use for undecided rows. Per payee and
- * currency the outflows split into amount clusters (`amountTolerance`). A cluster the signal's
- * exact-amount rule (`recurringDates` per amount) already covers row for row keeps that answer;
- * otherwise a cluster that qualifies as one drifting charge (`driftCandidate`) is one candidate, and
- * the rest fall back to the exact-amount groups. The result is a superset of `detectRecurring`'s
- * payees.
+ * Whether a group can hold a candidate at all: the exact-amount rule needs one amount seen
+ * `minOccurrences` times (equal amounts share a cluster), a drifting cluster needs at least half of
+ * it filed `subscriptions` or still unfiled, so at least one such entry. Most merchants (filed in a
+ * spending category, amounts that never repeat) fail both and skip the clustering.
+ */
+function mayRecur(entries: readonly RecurringGroupEntry[], minOccurrences: number): boolean {
+  const seen = new Map<string, number>();
+  for (const e of entries) {
+    if (e.category === SUBSCRIPTIONS || e.category === UNFILED) return true;
+    const n = (seen.get(e.amountKey) ?? 0) + 1;
+    if (n >= minOccurrences) return true;
+    seen.set(e.amountKey, n);
+  }
+  return false;
+}
+
+/**
+ * `detectRecurringPayments` over one (payee, currency) group: its member entries in the caller's row
+ * order (outflows whose category is not in `notSubscription`). The outflows split into amount
+ * clusters (`amountTolerance`). A cluster the signal's exact-amount rule (`recurringDates` per amount)
+ * already covers row for row keeps that answer; otherwise a cluster that qualifies as one drifting
+ * charge (`driftCandidate`) is one candidate, and the rest fall back to the exact-amount groups.
+ * Groups are independent: a store re-detects only the groups its changes touch. Candidates in no
+ * particular order; `first` gives the first-seen order across groups.
+ */
+export function detectRecurringGroup(
+  payee: string,
+  currency: string,
+  entries: readonly RecurringGroupEntry[],
+  opts: RecurringListOptions = {},
+): RecurringGroupFound[] {
+  if (!mayRecur(entries, opts.minOccurrences ?? RECURRING_MIN_OCCURRENCES)) return [];
+  const tolerance = opts.amountTolerance ?? RECURRING_AMOUNT_TOLERANCE;
+  const list: ListEntry[] = entries.map((e, seq) => ({
+    date: e.date,
+    amount: D(e.amountKey),
+    amountKey: e.amountKey,
+    category: e.category,
+    seq,
+  }));
+  const found: Found[] = [];
+  for (const cluster of amountClusters(list, tolerance)) {
+    // One charge has no gap: neither rule can hold it (`recurringDates`, `driftCandidate` need two).
+    if (cluster.length < 2) continue;
+    const exact = exactCandidates(cluster, payee, currency, opts);
+    const covered = exact.reduce((n, f) => n + f.rows, 0) === cluster.length;
+    const drift = covered ? null : driftCandidate(cluster, payee, currency, opts);
+    if (drift !== null) found.push(drift);
+    else found.push(...exact);
+  }
+  return found.map((f) => ({ candidate: f.candidate, first: f.seq }));
+}
+
+/** First-seen order (`seq`), then stable by last date, newest first, as `detectRecurring` (Q21). */
+export function recurringOrder<T extends { readonly candidate: RecurringCandidate }>(
+  found: readonly T[],
+  seq: (f: T) => number,
+): T[] {
+  return [...found]
+    .sort((a, b) => seq(a) - seq(b))
+    .sort((a, b) =>
+      a.candidate.lastDate < b.candidate.lastDate
+        ? 1
+        : a.candidate.lastDate > b.candidate.lastDate
+          ? -1
+          : 0,
+    );
+}
+
+/**
+ * `detectRecurringPayments` with the categorizer to use for undecided rows: the rows grouped by
+ * payee and currency (`detectRecurringGroup` each), in first-seen order, then by last date.
  */
 function detectRecurringPaymentsWith(
   rows: readonly RecurringRow[],
@@ -340,8 +441,10 @@ function detectRecurringPaymentsWith(
   opts: RecurringListOptions,
   categorizeRow: Categorize,
 ): RecurringCandidate[] {
-  const tolerance = opts.amountTolerance ?? RECURRING_AMOUNT_TOLERANCE;
-  const groups = new Map<string, { payee: string; currency: string; entries: ListEntry[] }>();
+  const groups = new Map<
+    string,
+    { payee: string; currency: string; entries: RecurringGroupEntry[]; seqs: number[] }
+  >();
   let seq = 0;
   for (const t of rows) {
     const c = categorizedMember(t, notSubscription, categorizeRow);
@@ -350,32 +453,38 @@ function detectRecurringPaymentsWith(
     const key = JSON.stringify([payee, currency]);
     let g = groups.get(key);
     if (g === undefined) {
-      g = { payee, currency, entries: [] };
+      g = { payee, currency, entries: [], seqs: [] };
       groups.set(key, g);
     }
-    g.entries.push({
-      date: t.bookingDate,
-      amount: D(amountKey),
-      amountKey,
-      category: c.category,
-      seq: seq++,
-    });
+    g.entries.push({ date: t.bookingDate, amountKey, category: c.category });
+    g.seqs.push(seq++);
   }
-  const found: Found[] = [];
+  const found: { candidate: RecurringCandidate; seq: number }[] = [];
   for (const g of groups.values()) {
-    for (const cluster of amountClusters(g.entries, tolerance)) {
-      const exact = exactCandidates(cluster, g.payee, g.currency, opts);
-      const covered = exact.reduce((n, f) => n + f.rows, 0) === cluster.length;
-      const drift = covered ? null : driftCandidate(cluster, g.payee, g.currency, opts);
-      if (drift !== null) found.push(drift);
-      else found.push(...exact);
+    for (const f of detectRecurringGroup(g.payee, g.currency, g.entries, opts)) {
+      found.push({ candidate: f.candidate, seq: g.seqs[f.first] as number });
     }
   }
-  // First-seen order, then stable by last date (newest first), as `detectRecurring` (Q21).
-  return found
-    .sort((a, b) => a.seq - b.seq)
-    .map((f) => f.candidate)
-    .sort((a, b) => (a.lastDate < b.lastDate ? 1 : a.lastDate > b.lastDate ? -1 : 0));
+  return recurringOrder(found, (f) => f.seq).map((f) => f.candidate);
+}
+
+/**
+ * The category the recurring detection judges a stored row by, from its stored effective category
+ * (`category` / `category_source` as the categorization wrote it with the recurring signal): a
+ * per-row decision (`TXN_DECIDED_SOURCES`) is its own category; the signal's own answer
+ * (`subscription`) is what the engine gives without the signal (`other`, `categorize` step 6); any
+ * other stored answer is already the engine's without it (the signal is its last step before the
+ * default). null when nothing is stored (a cash-account row without a claim): the caller asks the
+ * engine (`categorize(t, ctx, no keys)`).
+ */
+export function storedRecurringCategory(
+  category: string | null,
+  source: string | null,
+): string | null {
+  if (source === null) return null;
+  if (TXN_DECIDED_SOURCES.has(source)) return category || null;
+  if (source === "subscription") return UNFILED;
+  return category;
 }
 
 /**

@@ -7,6 +7,11 @@
 // and statement `run` up front. This is how a host reads Python's live WAL database: each
 // `transaction(fn)` is one short read transaction (one consistent snapshot, ended when `fn` returns,
 // so WAL checkpoints are never starved); reads outside a transaction see the latest commit each.
+//
+// The store needs SQLite with FTS5 (the budget search index). `node:sqlite` has it from Node 24 (the
+// .nvmrc Node, also Electron's), not in Node 23, where the first failure would be a bare "no such module:
+// fts5" from deep inside `Store.open`. So the first driver of a process probes FTS5 once, on its own
+// in-memory connection (never the file, so a read-only open writes nothing), and names the cause.
 
 import { closeSync, constants, openSync } from "node:fs";
 import { backup, DatabaseSync, type StatementSync } from "node:sqlite";
@@ -41,6 +46,50 @@ export class ReadOnlyDriverError extends Error {
   }
 }
 
+/** The runtime's `node:sqlite` lacks FTS5, which the store's search index needs. */
+export class MissingFts5Error extends Error {
+  constructor() {
+    super(
+      `node:sqlite has no FTS5 (Node ${process.version}); cashU needs Node >= 24 (.nvmrc) or Electron's Node`,
+    );
+    this.name = "MissingFts5Error";
+  }
+}
+
+/** The part of a `DatabaseSync` the FTS5 probe uses. */
+export interface Fts5ProbeTarget {
+  exec(sql: string): void;
+}
+
+/**
+ * Create and drop an FTS5 table in the connection's temp schema; throws `MissingFts5Error` when SQLite
+ * has no fts5 module and rethrows any other failure as is.
+ */
+export function probeFts5(db: Fts5ProbeTarget): void {
+  try {
+    db.exec(
+      "CREATE VIRTUAL TABLE temp.cashu_fts_probe USING fts5(x); DROP TABLE temp.cashu_fts_probe",
+    );
+  } catch (error) {
+    if (/no such module: fts5/i.test(String(error))) throw new MissingFts5Error();
+    throw error;
+  }
+}
+
+let fts5Present = false;
+
+/** Probe once per process, on a throwaway in-memory connection. */
+function ensureFts5(): void {
+  if (fts5Present) return;
+  const probe = new DatabaseSync(":memory:");
+  try {
+    probeFts5(probe);
+  } finally {
+    probe.close();
+  }
+  fts5Present = true;
+}
+
 const liveBackups = new WeakMap<SqlDriver, { db: DatabaseSync; lock: HostLock; closed: boolean }>();
 
 /** Online backup from this process's live exclusive SQLite connection, including committed WAL. */
@@ -63,6 +112,7 @@ export async function backupNodeSqlite(driver: SqlDriver, destination: string): 
 
 /** Open (or, read-write, create) a database file, or `":memory:"`. `close()` closes it. */
 export function openNodeSqlite(path: string, options: NodeSqliteOptions = {}): SqlDriver {
+  ensureFts5();
   const readOnly = options.readOnly ?? false;
   if (options.exclusive !== undefined) {
     if (readOnly) throw new ExclusiveOpenError("an exclusive open is a writer, not read-only");

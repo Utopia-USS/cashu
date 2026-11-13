@@ -7,6 +7,7 @@ import { expect } from "vitest";
 import type { Store } from "../materialize.js";
 import { viewHash } from "../snapshot.js";
 import { expectCategoriesRecomputed } from "./categories-oracle.js";
+import { expectMonthsRecomputed, monthTables } from "./months-oracle.js";
 import { chunked } from "./random.js";
 import { Names, project, type RefDet, type RefEvent, toEnvelopes } from "./scenario-bridge.js";
 import { delivery } from "./scenarios.js";
@@ -22,7 +23,8 @@ function openInvariant(store: Store): void {
 /**
  * Deliver the scenario in each of `orders` (delivery k: single events for even k, random batches
  * for odd k, plus re-delivered duplicates); after every batch check the open-episode invariant and
- * the derived oracle (re-deriving everything changes nothing); every order must project to one view
+ * the derived oracle (re-deriving everything changes nothing, the month aggregates included, which
+ * also equal their recompute from the rows); every order must project to one view
  * with one view hash, the effective categories must equal the domain recompute, and a rebuild must
  * keep that hash. Returns the projected view for the scenario's checks.
  */
@@ -37,7 +39,11 @@ export function converge(events: readonly RefEvent[], det: RefDet, orders: reado
     for (const b of batches) {
       store.applyEnvelopes(b);
       openInvariant(store);
+      const months = monthTables(store);
       expect(store.rederive().touchedTables).toEqual(new Set());
+      // the month aggregates are internal: incremental == deriveAll, and they equal the rows' recompute
+      expect(monthTables(store)).toEqual(months);
+      expectMonthsRecomputed(store);
     }
     const projected = project(store, names);
     if (view === undefined) view = projected;

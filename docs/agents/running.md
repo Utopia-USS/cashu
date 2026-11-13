@@ -13,6 +13,12 @@ real data dir.
 Run from the repo root with Node >=24 (`.nvmrc`, the Node of Electron) and the pnpm version pinned in `package.json`
 (`corepack enable`). The pnpm workspace is `packages/*`, `apps/*` and `tools/arch`.
 
+Since M3 the store needs SQLite with FTS5 (the budget search index). `node:sqlite` has it from Node 24
+(the `.nvmrc` Node, also Electron 45's), not in Node 23; `better-sqlite3` (the tests' driver) and
+expo-sqlite (the phone) ship their own SQLite with it. On an older Node the dev host, the CLI from
+source and the host tests stop at the first store open with "node:sqlite has no FTS5 (Node vX.Y.Z);
+cashU needs Node >= 24 (.nvmrc) or Electron's Node" (`MissingFts5Error`, `packages/node-host/src/nodeSqlite.ts`).
+
 | Task | Command |
 |---|---|
 | Install locked dependencies | `pnpm install --frozen-lockfile` |

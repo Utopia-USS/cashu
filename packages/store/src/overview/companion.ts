@@ -31,7 +31,6 @@ import {
   accountBalances,
   type CompanionMonth,
   type CompanionMonthArgs,
-  type CompanionRecurringContext,
   companionMonth,
   companionMonthOf,
   payeeChargeHistories,
@@ -39,7 +38,7 @@ import {
 } from "../budget/companion-queries.js";
 import { dataFreshness } from "../budget/freshness.js";
 import { budgetBook } from "../budget/read-models.js";
-import { enabledModuleIds } from "../core/queries.js";
+import { enabledModuleIds, profileOf } from "../core/queries.js";
 import {
   type CurrentStrategySource,
   combinedChanges,
@@ -59,7 +58,7 @@ import { readPositions } from "../investments/views/positions.js";
 import { mcpLoanRows } from "../loans/mcp-queries.js";
 import { loanPayingAccount } from "../loans/screen.js";
 import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
-import { type OverviewSources, registryOf, vaultPaymentPatterns } from "./networth.js";
+import { type OverviewSources, vaultPaymentPatterns } from "./networth.js";
 
 // --------------------------------------------------------------------------- upcoming
 
@@ -71,13 +70,18 @@ export type CompanionUpcomingArgs = {
 
 const HOUR_MS = 3_600_000;
 
-/** The upcoming charges, optionally over recurring charges the caller already has. */
+/**
+ * The upcoming charges, optionally over recurring charges the caller already has. The recurring
+ * records (`budget.recurring`) judge some rows by the modules' payment patterns: reading the patterns
+ * here wakes a live query when one changes (the records are internal, never in `tablesRead`).
+ */
 function upcomingOf(
   read: Read,
   args: CompanionUpcomingArgs,
   recurring: readonly budget.RecurringCharge[] | null,
-  ctx: CompanionRecurringContext,
+  sources: OverviewSources,
 ): budget.Upcoming {
+  vaultPaymentPatterns(read, sources);
   const { today } = args;
   const horizonDays = args.horizonDays ?? budget.UPCOMING_HORIZON_DAYS;
   const from = addDays(today, -budget.UPCOMING_GRACE_DAYS);
@@ -117,23 +121,12 @@ function upcomingOf(
   return budget.upcomingCharges({
     today,
     horizonDays,
-    recurring: recurring ?? recurringCharges(read, today, ctx),
+    recurring: recurring ?? recurringCharges(read, today),
     installments,
     planned,
     balances: accountBalances(read, today),
   });
 }
-
-/** The recurring-detection context of the overview: its modules' payment patterns and registry. */
-const recurringContext = (
-  read: Read,
-  sources: OverviewSources,
-  book?: budget.BudgetBook,
-): CompanionRecurringContext => ({
-  ...(book === undefined ? {} : { book }),
-  patterns: vaultPaymentPatterns(read, sources),
-  registry: registryOf(sources),
-});
 
 /** The charges of the coming days (`budget.upcomingCharges`) of this vault. */
 export function companionUpcoming(
@@ -141,7 +134,7 @@ export function companionUpcoming(
   args: CompanionUpcomingArgs,
   sources: OverviewSources = {},
 ): budget.Upcoming {
-  return upcomingOf(read, args, null, recurringContext(read, sources));
+  return upcomingOf(read, args, null, sources);
 }
 
 /**
@@ -153,7 +146,7 @@ function billsDue(
   read: Read,
   args: CompanionMonthArgs,
   currency: string,
-  ctx: CompanionRecurringContext,
+  sources: OverviewSources,
 ): Decimal {
   const { label } = companionMonthOf(args);
   if (label !== args.today.slice(0, 7)) return D("0.00");
@@ -162,7 +155,7 @@ function billsDue(
     read,
     { today: args.today, horizonDays: daysBetween(args.today, monthEnd(args.today)) },
     null,
-    ctx,
+    sources,
   );
   let sum = D("0.00");
   // The grace day may reach into the month before on the 1st: only this month's rows count.
@@ -171,16 +164,18 @@ function billsDue(
   return sum;
 }
 
-/** `companionMonth` with the bills still due this month and the projection over them. */
+/**
+ * `companionMonth` with the bills still due this month and the projection over them. The figures come
+ * from the month aggregates, the running month's bills from the recurring records (`budget.recurring`).
+ */
 export function companionMonthWithBills(
   read: Read,
   args: CompanionMonthArgs,
   sources: OverviewSources = {},
 ): CompanionMonth {
-  const book = budgetBook(read);
-  const currency = args.currency || book.baseCurrency;
-  const bills = billsDue(read, args, currency, recurringContext(read, sources, book));
-  return companionMonth(read, { ...args, currency }, { book, billsDue: bills });
+  const currency = args.currency || budget.budgetBaseCurrency(profileOf(read)?.baseCurrency);
+  const bills = billsDue(read, args, currency, sources);
+  return companionMonth(read, { ...args, currency }, { billsDue: bills });
 }
 
 // --------------------------------------------------------------------------- attention
@@ -360,12 +355,10 @@ export function companionAttention(
   sources: OverviewSources = {},
   investments: CompanionInvestmentSources = {},
 ): CompanionAttention {
-  const book = budgetBook(read);
-  const currency = args.currency || book.baseCurrency;
-  const ctx = recurringContext(read, sources, book);
-  const payees = payeeChargeHistories(read, args.today, ctx);
-  const upcoming = upcomingOf(read, { today: args.today }, payees, ctx);
-  const month = companionMonth(read, { today: args.today, currency, lang: "en" }, { book });
+  const currency = args.currency || budget.budgetBaseCurrency(profileOf(read)?.baseCurrency);
+  const payees = payeeChargeHistories(read, args.today);
+  const upcoming = upcomingOf(read, { today: args.today }, payees, sources);
+  const month = companionMonth(read, { today: args.today, currency, lang: "en" });
   const usualMonth = month.norm?.expense ?? null;
   const largest = month.uncategorized.largest;
   const freshness = dataFreshness.run(read, undefined);

@@ -4,6 +4,9 @@ import type { StoreModule } from "../registry.js";
 import { categoryRulesMaterializer } from "./category-rules.js";
 import { categoriesDeriver } from "./derive/categories.js";
 import { legsDeriver } from "./derive/legs.js";
+import { monthsDeriver } from "./derive/months.js";
+import { recurringDeriver } from "./derive/recurring.js";
+import { searchDeriver } from "./derive/search.js";
 import { transfersDeriver } from "./derive/transfers.js";
 import { importBatchesMaterializer } from "./import-batches.js";
 import { budgetNetWorth, budgetSetup } from "./read-models.js";
@@ -21,8 +24,18 @@ export const budgetModule: StoreModule = {
     budgetSettingsMaterializer,
   ],
   // Order matters (each sees the previous one's writes): legs (transfer matching reads them), then
-  // transfers (categories read `is_internal_transfer` and take its flipped rows), then categories.
-  derivers: [legsDeriver, transfersDeriver, categoriesDeriver],
+  // transfers (categories read `is_internal_transfer` and take its flipped rows), then categories,
+  // then the recurring payments (they read the rows whose category or transfer flag changed), then
+  // the month aggregates (they take those rows); the search index last (it reads the rows' texts,
+  // cash legs included).
+  derivers: [
+    legsDeriver,
+    transfersDeriver,
+    categoriesDeriver,
+    recurringDeriver,
+    monthsDeriver,
+    searchDeriver,
+  ],
   netWorth: budgetNetWorth,
   setup: budgetSetup,
 };

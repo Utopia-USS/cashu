@@ -378,7 +378,7 @@ export const learnMerchantCategory = defineCommand({
   run(ctx, input) {
     if (
       ctx.read<{ present: number }>(
-        "SELECT 1 AS present FROM fold_txn_keys WHERE merchant_key = ? LIMIT 1",
+        "SELECT 1 AS present FROM transactions WHERE merchant_key = ? LIMIT 1",
         input.merchantKey,
       ).length === 0
     )

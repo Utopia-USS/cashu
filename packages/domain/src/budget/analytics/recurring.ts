@@ -95,12 +95,65 @@ function inBand(amount: Decimal, typical: Decimal, tolerance: Decimal): boolean 
 }
 
 /**
+ * The charges of one (payee, currency) group's candidates (`own`, in their order) among the group's
+ * outflows (`rows`: non-internal, negative, in book order), each list oldest first (book order on
+ * equal dates). A charge belongs to the candidate whose typical amount is nearest within the
+ * detector's amount tolerance (`RECURRING_AMOUNT_TOLERANCE`, one amount cluster). A charge outside
+ * every band still continues a series when it lands on the series' expected next date
+ * (`nextChargeDate`, within `SERIES_DATE_SLACK_DAYS`) after its last charge: a price rise. Anything
+ * else (a one-off purchase at a merchant that also bills a subscription) belongs to no series.
+ */
+export function groupSeries<T extends { readonly bookingDate: IsoDate; readonly amount: Decimal }>(
+  own: readonly RecurringCandidate[],
+  rows: readonly T[],
+  tolerance: Decimal = RECURRING_AMOUNT_TOLERANCE,
+): T[][] {
+  const members = own.map((): T[] => []);
+  const byDate = [...rows].sort((a, b) =>
+    a.bookingDate < b.bookingDate ? -1 : a.bookingDate > b.bookingDate ? 1 : 0,
+  );
+  const loose: T[] = [];
+  for (const t of byDate) {
+    const amount = t.amount.copyAbs();
+    let best = -1;
+    for (const [i, c] of own.entries()) {
+      if (!inBand(amount, c.typicalAmount, tolerance)) continue;
+      if (
+        best === -1 ||
+        amount
+          .sub(c.typicalAmount)
+          .copyAbs()
+          .lt(amount.sub((own[best] as RecurringCandidate).typicalAmount).copyAbs())
+      )
+        best = i;
+    }
+    if (best === -1) loose.push(t);
+    else members[best]?.push(t);
+  }
+  for (const [ci, c] of own.entries()) {
+    const series = members[ci] as T[];
+    let last = series.at(-1)?.bookingDate ?? c.lastDate;
+    for (let i = 0; i < loose.length; i++) {
+      const t = loose[i] as T;
+      if (t.bookingDate <= last) continue;
+      const off = Math.abs(daysBetween(nextChargeDate(last, c.medianGapDays), t.bookingDate));
+      if (off > SERIES_DATE_SLACK_DAYS) continue;
+      series.push(t);
+      last = t.bookingDate;
+      loose.splice(i, 1);
+      i--;
+    }
+  }
+  return members;
+}
+
+/** The series key of a candidate: `<merchant key>:<currency>:<typical amount>`. */
+const seriesKey = (c: RecurringCandidate): string =>
+  `${c.counterparty}:${c.currency}:${c.typicalAmount.toString()}`;
+
+/**
  * Each candidate's own charges among the book's outflows (non-internal, same merchant key and
- * currency). A charge belongs to the candidate whose typical amount is nearest within the detector's
- * amount tolerance (`RECURRING_AMOUNT_TOLERANCE`, one amount cluster). A charge outside every band
- * still continues a series when it lands on the series' expected next date (`nextChargeDate`, within
- * `SERIES_DATE_SLACK_DAYS`) after its last charge: a price rise. Anything else (a one-off purchase at a
- * merchant that also bills a subscription) belongs to no series. Candidates keep their order.
+ * currency; `groupSeries` per group). Candidates keep their order.
  */
 export function recurringSeries(
   candidates: readonly RecurringCandidate[],
@@ -120,42 +173,12 @@ export function recurringSeries(
   const members = new Map<RecurringCandidate, BudgetTxn[]>(candidates.map((c) => [c, []]));
   for (const [key, rows] of byPayee) {
     const own = candidates.filter((c) => groupKey(c.counterparty, c.currency) === key);
-    const byDate = [...rows].sort((a, b) =>
-      a.bookingDate < b.bookingDate ? -1 : a.bookingDate > b.bookingDate ? 1 : 0,
-    );
-    const loose: BudgetTxn[] = [];
-    for (const t of byDate) {
-      const amount = t.amount.copyAbs();
-      let best: RecurringCandidate | null = null;
-      for (const c of own) {
-        if (!inBand(amount, c.typicalAmount, tolerance)) continue;
-        if (
-          best === null ||
-          amount.sub(c.typicalAmount).copyAbs().lt(amount.sub(best.typicalAmount).copyAbs())
-        )
-          best = c;
-      }
-      if (best === null) loose.push(t);
-      else members.get(best)?.push(t);
-    }
-    for (const c of own) {
-      const series = members.get(c) as BudgetTxn[];
-      let last = series.at(-1)?.bookingDate ?? c.lastDate;
-      for (let i = 0; i < loose.length; i++) {
-        const t = loose[i] as BudgetTxn;
-        if (t.bookingDate <= last) continue;
-        const off = Math.abs(daysBetween(nextChargeDate(last, c.medianGapDays), t.bookingDate));
-        if (off > SERIES_DATE_SLACK_DAYS) continue;
-        series.push(t);
-        last = t.bookingDate;
-        loose.splice(i, 1);
-        i--;
-      }
-    }
+    const series = groupSeries(own, rows, tolerance);
+    for (const [i, c] of own.entries()) members.set(c, series[i] as BudgetTxn[]);
   }
   return candidates.map((c) => ({
     candidate: c,
-    key: `${c.counterparty}:${c.currency}:${c.typicalAmount.toString()}`,
+    key: seriesKey(c),
     rows: members.get(c) as BudgetTxn[],
   }));
 }

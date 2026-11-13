@@ -228,7 +228,8 @@ export const scriptOf = (step: fc.Arbitrary<Step>, series: fc.Arbitrary<Step[]>)
       });
     });
 
-const script = scriptOf(step, series);
+/** Random budget scripts (the categories property's; the month aggregates reuse them). */
+export const categoryScript = scriptOf(step, series);
 
 /** Deliver in a seeded order with duplicates and random batches; `each` runs after every batch. */
 export function deliver(
@@ -248,7 +249,7 @@ export function deliver(
 }
 
 export const categoriesProperty = fc.property(
-  script,
+  categoryScript,
   fc.integer({ min: 1, max: 1_000_000 }),
   (events, seed) => {
     const a = deliver(events, seed, (s) => {

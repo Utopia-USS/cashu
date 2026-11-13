@@ -32,14 +32,44 @@ export interface TableDef {
    */
   readonly primaryKey?: readonly string[];
   readonly indexes?: readonly IndexDef[];
-  /** Fold-internal table: not reported as touched, not hashed, not queryable by convention. */
+  /**
+   * Fold-internal table: not reported as touched, not hashed, not queryable by convention (a deriver's
+   * aggregate a query reads declares `wakesWith`).
+   */
   readonly internal?: boolean;
+  /**
+   * An internal table queries read (a deriver's aggregate): the public tables written in every apply
+   * that changes it. `Store.tablesRead` reports them for a SQL that names this table, so a live query
+   * over it wakes with them without reading them. Only on `internal` tables, naming public ones.
+   */
+  readonly wakesWith?: readonly string[];
   readonly withoutRowid?: boolean;
+  /**
+   * A virtual table (`CREATE VIRTUAL TABLE <name> USING <using>(<columns>, <args>)`): an FTS5 index
+   * a deriver owns. Its `columns` are the module's column names (types are not part of its DDL); `args`
+   * are the module options (e.g. `content=''`, `tokenize='...'`). It must be `internal`, with no
+   * primary key, indexes or `withoutRowid`. The engine clears it with `clearTableSql`, never hashes it
+   * (a contentless table reads its columns as NULL) and leaves it out of snapshots (`inSnapshot`): the
+   * owning deriver's `deriveAll` builds it again from the tables it is a function of (snapshot.ts).
+   */
+  readonly virtual?: { readonly using: "fts5"; readonly args: readonly string[] };
+  /**
+   * `false`: left out of snapshots like a virtual table, for a deriver's internal table that only
+   * makes sense with one it owns (an index's memory of what it indexed). `importSnapshot` rebuilds
+   * every such table and every virtual one in one path: their owners' `deriveAll`
+   * (`Store.rederiveSnapshotOmitted`). Only on `internal` tables of a deriver.
+   */
+  readonly snapshot?: false;
 }
 
-/** The columns of a table as stored, including the implicit `id` / `gid`. */
+/** Whether snapshots carry the table (not a virtual table, not `snapshot: false`). */
+export function inSnapshot(t: TableDef): boolean {
+  return t.virtual === undefined && t.snapshot !== false;
+}
+
+/** The columns of a table as stored, including the implicit `id` / `gid` (none on a virtual table). */
 export function allColumns(t: TableDef): readonly ColumnDef[] {
-  if (t.primaryKey) return t.columns;
+  if (t.primaryKey || t.virtual) return t.columns;
   return [
     { name: "id", type: "INTEGER", notNull: true },
     { name: "gid", type: "TEXT", notNull: true },
@@ -74,7 +104,28 @@ export function bulkIndexes(t: TableDef): readonly IndexDef[] {
   return (t.indexes ?? []).filter((ix) => !ix.unique && ix.where === undefined);
 }
 
+/** The statement that empties a view table (truncate; an FTS5 table takes its `delete-all` command). */
+export function clearTableSql(t: TableDef): string {
+  if (t.virtual) return `INSERT INTO ${ident(t.name)}(${ident(t.name)}) VALUES('delete-all')`;
+  return `DELETE FROM ${ident(t.name)}`;
+}
+
+/** FTS5 options: `key=value` with a quoted or bare value (no statement can hide in one). */
+const VIRTUAL_ARG = /^[a-z_]+=(?:'[^']*'|[a-z0-9_]+)$/;
+
+function createVirtualTableSql(t: TableDef, v: NonNullable<TableDef["virtual"]>): string {
+  if (!t.internal || t.primaryKey || t.indexes?.length || t.withoutRowid) {
+    throw new RangeError(`virtual table ${t.name}: internal only, no keys or indexes`);
+  }
+  for (const a of v.args) {
+    if (!VIRTUAL_ARG.test(a)) throw new RangeError(`virtual table ${t.name}: invalid option ${a}`);
+  }
+  const args = [...t.columns.map((c) => ident(c.name)), ...v.args];
+  return `CREATE VIRTUAL TABLE IF NOT EXISTS ${ident(t.name)} USING ${v.using}(${args.join(", ")});`;
+}
+
 export function createTableSql(t: TableDef): string {
+  if (t.virtual) return createVirtualTableSql(t, t.virtual);
   const cols = allColumns(t).map((c) => {
     if (!t.primaryKey && c.name === "id") return "id INTEGER PRIMARY KEY";
     if (!t.primaryKey && c.name === "gid") return "gid TEXT NOT NULL UNIQUE";

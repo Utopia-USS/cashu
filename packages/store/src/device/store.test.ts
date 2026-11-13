@@ -1,5 +1,10 @@
 // The device-local store: settings written by device commands (validated, one transaction, refusal
 // writes nothing) and read live through the same watchQuery as a vault. Synthetic data only.
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  EMPTY_NOTIFICATION_LEDGER,
+  type NotificationLedger,
+} from "@cashu/domain/core/notifications";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -8,12 +13,20 @@ import { watchQuery } from "../query.js";
 import { betterSqlite3Driver } from "../sql/better-sqlite3.js";
 import {
   currentVault,
+  deviceLock,
   devicePhoneState,
+  markedAlerts,
   monthClosedSeen,
+  notificationLedger,
+  notificationPrefs,
   pricesFetchedAt,
+  setAlertMarked,
   setCurrentVault,
+  setDeviceLock,
   setDevicePhoneState,
   setMonthClosedSeen,
+  setNotificationLedger,
+  setNotificationPrefs,
   setPricesFetchedAt,
 } from "./settings.js";
 import { DeviceStore, defineDeviceCommand } from "./store.js";
@@ -200,5 +213,159 @@ describe("DeviceStore", () => {
     expect(notified).toBe(0);
     db.prepare("UPDATE device_settings SET value = 'October' WHERE key = 'monthClosedSeen'").run();
     expect(read()).toBeNull();
+  });
+});
+
+describe("DeviceStore: notification settings", () => {
+  const OTHER = "6a1b2c3d4e5f60718293a4b5c6d7e8f9";
+  const ALERT = "01JD0000000000000000000001";
+  const ALERT_2 = "01JD0000000000000000000002";
+
+  function counted(device: DeviceStore): () => number {
+    let notified = 0;
+    device.subscribe(["device_settings"], () => {
+      notified += 1;
+    });
+    return () => notified;
+  }
+
+  it("reads the default notification prefs and merges the user's choices over them, per vault", () => {
+    const db = new Database(":memory:");
+    const device = openDevice(db);
+    const read = (vault = VAULT) =>
+      notificationPrefs.run((sql, ...p) => device.read(sql, ...p), { vault });
+    expect(notificationPrefs.scope).toBe("device");
+    expect(read()).toEqual(DEFAULT_NOTIFICATION_PREFS);
+    expect(
+      device.run(setNotificationPrefs, { vault: VAULT, prefs: { evening: true, weekly: false } }),
+    ).toEqual({ ok: true, value: null });
+    expect(
+      device.run(setNotificationPrefs, { vault: VAULT, prefs: { alertsFired: true } }),
+    ).toEqual({ ok: true, value: null });
+    expect(read()).toEqual({
+      ...DEFAULT_NOTIFICATION_PREFS,
+      evening: true,
+      weekly: false,
+      alertsFired: true,
+    });
+    // One profile's choices never reach another profile on the same phone.
+    expect(read(OTHER)).toEqual(DEFAULT_NOTIFICATION_PREFS);
+    // Device changes are always on: not settable.
+    expect(
+      device.run(setNotificationPrefs, { vault: VAULT, prefs: { deviceChanges: false } }),
+    ).toEqual({ ok: false, reason: "invalid_input" });
+    expect(device.run(setNotificationPrefs, { vault: "nope", prefs: { evening: true } })).toEqual({
+      ok: false,
+      reason: "invalid_input",
+    });
+    const notified = counted(device);
+    device.run(setNotificationPrefs, { vault: VAULT, prefs: { evening: true } });
+    device.run(setNotificationPrefs, { vault: OTHER, prefs: { weekly: true } });
+    device.run(setNotificationPrefs, { vault: VAULT, prefs: {} });
+    expect(notified()).toBe(0);
+    db.prepare("UPDATE device_settings SET value = '{' WHERE key = 'notificationPrefs'").run();
+    expect(read()).toEqual(DEFAULT_NOTIFICATION_PREFS);
+  });
+
+  it("keeps the notification ledger per vault and writes it only when it changes", () => {
+    const db = new Database(":memory:");
+    const device = openDevice(db);
+    const read = (vault = VAULT) =>
+      notificationLedger.run((sql, ...p) => device.read(sql, ...p), { vault });
+    const sent: NotificationLedger = {
+      lastPlannedAt: "2026-11-12T09:00:00.000Z",
+      alertsSentOn: { "2026-11-12": 1 },
+      notifiedAlerts: { [ALERT]: "2026-11-12" },
+      staleRung: 0,
+      consentRung: null,
+      monthClosedSentFor: "2026-10",
+      weeklySentFor: "2026-11-15",
+      eveningSentFor: null,
+    };
+    expect(notificationLedger.scope).toBe("device");
+    expect(read()).toEqual(EMPTY_NOTIFICATION_LEDGER);
+    expect(device.run(setNotificationLedger, { vault: VAULT, ledger: sent })).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(read()).toEqual(sent);
+    expect(read(OTHER)).toEqual(EMPTY_NOTIFICATION_LEDGER);
+    expect(
+      device.run(setNotificationLedger, {
+        vault: VAULT,
+        ledger: { ...sent, alertsSentOn: { "12 Nov": 1 } },
+      }),
+    ).toEqual({ ok: false, reason: "invalid_input" });
+    expect(
+      device.run(setNotificationLedger, { vault: VAULT, ledger: { ...sent, staleRung: -1 } }),
+    ).toEqual({ ok: false, reason: "invalid_input" });
+    expect(
+      device.run(setNotificationLedger, {
+        vault: VAULT,
+        ledger: { ...sent, notifiedAlerts: { "not a gid": "2026-11-12" } },
+      }),
+    ).toEqual({ ok: false, reason: "invalid_input" });
+    expect(read()).toEqual(sent);
+    const notified = counted(device);
+    device.run(setNotificationLedger, { vault: VAULT, ledger: { ...sent } });
+    expect(notified()).toBe(0);
+    // A ledger stored before the told-alerts record existed reads with an empty one.
+    const { notifiedAlerts: _, ...older } = sent;
+    db.prepare("UPDATE device_settings SET value = ? WHERE key = 'notificationLedger'").run(
+      JSON.stringify({ [VAULT]: older }),
+    );
+    expect(read()).toEqual({ ...sent, notifiedAlerts: {} });
+    db.prepare("UPDATE device_settings SET value = 'x' WHERE key = 'notificationLedger'").run();
+    expect(read()).toEqual(EMPTY_NOTIFICATION_LEDGER);
+  });
+
+  it("marks and unmarks alerts to tell this phone about, per vault", () => {
+    const db = new Database(":memory:");
+    const device = openDevice(db);
+    const read = (vault = VAULT) =>
+      markedAlerts.run((sql, ...p) => device.read(sql, ...p), { vault });
+    expect(markedAlerts.scope).toBe("device");
+    expect(read()).toEqual([]);
+    device.run(setAlertMarked, { vault: VAULT, alert: ALERT_2, marked: true });
+    expect(device.run(setAlertMarked, { vault: VAULT, alert: ALERT, marked: true })).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(read()).toEqual([ALERT, ALERT_2]);
+    expect(read(OTHER)).toEqual([]);
+    device.run(setAlertMarked, { vault: VAULT, alert: ALERT_2, marked: false });
+    expect(read()).toEqual([ALERT]);
+    expect(device.run(setAlertMarked, { vault: VAULT, alert: "CD Projekt", marked: true })).toEqual(
+      { ok: false, reason: "invalid_input" },
+    );
+    const notified = counted(device);
+    device.run(setAlertMarked, { vault: VAULT, alert: ALERT, marked: true });
+    device.run(setAlertMarked, { vault: VAULT, alert: ALERT_2, marked: false });
+    expect(notified()).toBe(0);
+    device.run(setAlertMarked, { vault: VAULT, alert: ALERT, marked: false });
+    expect(read()).toEqual([]);
+    db.prepare("UPDATE device_settings SET value = '[1]' WHERE key = 'markedAlerts'").run();
+    expect(read()).toEqual([]);
+  });
+
+  it("keeps the app lock choice device-wide", () => {
+    const db = new Database(":memory:");
+    const device = openDevice(db);
+    const read = () => deviceLock.run((sql, ...p) => device.read(sql, ...p), undefined);
+    expect(deviceLock.scope).toBe("device");
+    expect(read()).toEqual({ appLock: null });
+    expect(device.run(setDeviceLock, { appLock: true })).toEqual({ ok: true, value: null });
+    expect(read()).toEqual({ appLock: true });
+    expect(device.run(setDeviceLock, { appLock: "yes" })).toEqual({
+      ok: false,
+      reason: "invalid_input",
+    });
+    const notified = counted(device);
+    device.run(setDeviceLock, { appLock: true });
+    expect(notified()).toBe(0);
+    device.run(setDeviceLock, { appLock: false });
+    expect(read()).toEqual({ appLock: false });
+    db.prepare("UPDATE device_settings SET value = 'on' WHERE key = 'appLock'").run();
+    expect(read()).toEqual({ appLock: null });
   });
 });

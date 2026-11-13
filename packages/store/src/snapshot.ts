@@ -4,13 +4,15 @@
 //   the referenced row's gid, JSON canonical). Two stores holding the same event set have the same
 //   hash, whatever the delivery order (events.md 6.7); parity checks (S24-S26, S48) compare it.
 // - `exportSnapshot` / `importSnapshot`: the whole store (log copy, view, fold indexes) as a portable
-//   value, to start a device without replaying (and decrypting) the log. The snapshot is PLAINTEXT:
+//   value, to start a device without replaying (and decrypting) the log. Virtual tables (FTS5
+//   indexes) and the deriver tables marked `snapshot: false` (an index's memory) are left out and
+//   derived again on import, by their derivers' `deriveAll`. The snapshot is PLAINTEXT:
 //   it must only leave the device through the carrier's encryption (S32 builds compaction on it).
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { canonicalJson } from "./canonical.js";
 import { Store, type StoreOptions } from "./materialize.js";
-import { allColumns, type TableDef } from "./sql/ddl.js";
+import { allColumns, inSnapshot, type TableDef } from "./sql/ddl.js";
 import type { SqlValue } from "./sql/driver.js";
 import { SYSTEM_TABLES } from "./sql/system.js";
 
@@ -28,7 +30,10 @@ export function viewHash(store: Store): ViewHash {
       .map((r) => [r.id, r.gid]),
   );
   const tables: Record<string, { rows: number; hash: string }> = {};
-  const defs = [...store.publicTables()].sort((a, b) => (a.name < b.name ? -1 : 1));
+  // A virtual table is internal (never public); the filter states it: its columns read as NULL.
+  const defs = [...store.publicTables()]
+    .filter((t) => t.virtual === undefined)
+    .sort((a, b) => (a.name < b.name ? -1 : 1));
   for (const t of defs) {
     const cols = allColumns(t).filter((c) => !(t.primaryKey === undefined && c.name === "id"));
     const rows = store
@@ -59,8 +64,9 @@ export interface StoreSnapshot {
   >;
 }
 
+/** The tables a snapshot carries: every table but those its derivers rebuild (`inSnapshot`). */
 function storeTables(store: Store): readonly TableDef[] {
-  return [...SYSTEM_TABLES, ...store.viewTables()];
+  return [...SYSTEM_TABLES, ...store.viewTables()].filter(inSnapshot);
 }
 
 export function exportSnapshot(store: Store): StoreSnapshot {
@@ -114,6 +120,8 @@ export function importSnapshot(opts: StoreOptions, snapshot: StoreSnapshot): Sto
   });
   // Different definitions: open() sees the snapshot's fingerprints and rebuilds from the log.
   const store = Store.open(opts);
+  // Same definitions: the tables left out of the snapshot are built by their derivers.
+  if (sameDefinitions) store.rederiveSnapshotOmitted();
   if (sameDefinitions && viewHash(store).hash !== snapshot.viewHash) {
     throw new Error("the imported view does not match the snapshot hash");
   }

@@ -6,6 +6,7 @@ export {
   type BudgetTxn,
   bookOwnIbans,
   budgetBaseCurrency,
+  type FlowFields,
   inPeriod,
   isFlow,
   monthLabel,
@@ -39,6 +40,20 @@ export {
   type StrategyPlanSource,
   type StrategyState,
 } from "./investingLink.js";
+export {
+  type AccountFirstBooking,
+  type CurrencyCountRow,
+  categoryNormFromRows,
+  coverageStartFromRows,
+  currenciesFromRows,
+  type MonthAggregates,
+  type MonthCatRow,
+  type MonthDayRow,
+  monthlyCashflowFromRows,
+  spendingByCategoryFromRows,
+  usualPayDayFromRows,
+  usualToDateFromRows,
+} from "./monthAggregates.js";
 export {
   type CurrencyClose,
   defaultMonth,
@@ -94,6 +109,7 @@ export {
 } from "./projection.js";
 export {
   activeRecurring,
+  groupSeries,
   type RecurringSeries,
   recurringPayments,
   recurringSeries,

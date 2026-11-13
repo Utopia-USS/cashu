@@ -1,4 +1,8 @@
-/** Device-local public market cache. The caller owns the private driver and its lifecycle. */
+/**
+ * Device-local public market cache. The caller owns the driver and its lifecycle: a cache over a driver
+ * of its own (the phone's market.db) is closed with `close()`; one over a shared driver (the host's
+ * device store) is never closed by the cache.
+ */
 import { D, type DateTime, parseDateTime, toStorage } from "@cashu/domain";
 import {
   type CalendarDate,
@@ -88,6 +92,11 @@ export class SqlPriceCache implements TransactionalPriceCache {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+  /** Drop the subscribers and close the driver (only for a cache that was given a driver of its own). */
+  close(): void {
+    this.listeners.clear();
+    this.driver.close();
   }
   batch<T>(work: () => T): T {
     const before = this.version();

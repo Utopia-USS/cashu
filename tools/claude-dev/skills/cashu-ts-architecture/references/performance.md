@@ -22,7 +22,7 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Tap / click to visual response | <= 100 ms |
 | Scrolling the 60k list | no dropped frames > 1% in a 10 s fling at 60 Hz (120 Hz on ProMotion) |
 | Mobile memory, steady state with 60k transactions | <= 250 MB |
-| Bundles | mobile JS (Hermes bytecode) <= 9.30 MB ceiling (M2 companion budget, see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
+| Bundles | mobile JS (Hermes bytecode) <= 9.60 MB ceiling (M3 companion budget, see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
 | Render regressions on key screens (Reassure) | <= 10% more renders or render time than the baseline |
 
 Mobile bundle note (lead, 2026-11-01, from S41b measurements): the first 4 MB budget was a guess. React Native +
@@ -51,6 +51,25 @@ the reference device, memory and list performance. The ceiling is therefore set 
 measurement plus real headroom: M1 8.30 MB, M2 9.30 MB, M3 9.60 MB. Within a milestone it stays a ratchet
 (a regression guard: it may only be lowered); each milestone commit lists the top bundle owners from
 `bundle-size.mjs --report` and its cold-start measurement.
+
+M3 measurements (lead, 2026-11-13; the 60k workload of `packages/store/src/budget/companion-queries.perf.test.ts`
+and `src/perf.test.ts` on the M-series Mac, other sessions running): the phone's hot reads moved to derived tables
+(`budget.months`, `budget.recurring`, `budget.search` FTS5, `merchant_key` column) and now sit far inside the 8 ms
+budget, asserted at 60k: month figures 1.2 ms (was 229), month with bills 1.8 ms (was 666), attention 1.4 ms (was
+862), upcoming 0.1 ms, account balances and the uncategorized count 0.0 ms (was 62 / 3.9), search 0.1-5.2 ms (was
+67-79; "orlen" 0.9, "1284" 0.4, "sklep 12" 5.2, "sk" / "sklep" / "karta" 4.7-4.8, "paliwo" 3.4). One query is
+logged, not asserted: "zakup" at 15 ms, a token that occurs in every row of the synthetic workload and is also the
+prefix of the "Zakupy" category label (the hit set is the whole table). The write side pays for the four derivers.
+File mode, 1000-event batches, before -> after (the "before" export ran at load 25-50, the "after" at load 8-9, so
+the ratio is a floor): bulk apply 12.7 s -> 25.5 s wall, rebuild 1.9 s -> 3.6 s, a day's events 75 -> 113 ms wall
+(54 -> 92 ms CPU), upgrade after a `budget.transactions` bump 3.0 -> 5.8 s CPU; the 25k sync-pull shape in memory
+is 7.8 s. Lead decision: the read budgets are the user-facing ones on the phone and are met; the bulk, rebuild and
+day budgets above are MISSED in the 1000-event batch shape on a loaded machine and are accepted for the M3 commit
+with two conditions: an idle re-measure before the next milestone, and a follow-up (M3.1) on the write path: the
+recurring deriver re-detects every touched merchant group per batch (the largest share), the months index costs
+0.5-0.9 s of bulk, and a rules bump re-derives the search index because the upgrade planner does not know which
+columns a deriver reads. Also since M3 the store needs SQLite with FTS5: `node:sqlite` has it from Node 24 (the
+`.nvmrc` Node, also Electron 45's), not in Node 23; better-sqlite3 and expo-sqlite ship it (docs/agents/running.md).
 
 ## Rules that keep the budgets
 

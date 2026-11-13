@@ -9,7 +9,13 @@
 // - Full re-fold: identity roots changed (rows re-key), the view version changed, or a rebuild.
 
 import type { DetGid } from "../gid.js";
-import { bulkIndexes, createIndexSql, indexName, type TableDef } from "../sql/ddl.js";
+import {
+  bulkIndexes,
+  clearTableSql,
+  createIndexSql,
+  indexName,
+  type TableDef,
+} from "../sql/ddl.js";
 import { foldContext, foldMembers, type StatementCache, type ViewIds } from "./context.js";
 import type { DirtyCollector } from "./derive.js";
 import type { IdentityService } from "./identity.js";
@@ -237,8 +243,8 @@ export class MaterializerRunner {
     const ctx = this.#ctx(sql);
     const stmts = this.#deps.stmts;
     const bulk = this.mat.tables.flatMap((t) => bulkIndexes(t).map((ix) => ({ t, ix })));
-    // DELETE without WHERE is SQLite's truncate: cheap even for 60k rows.
-    for (const t of this.mat.tables) ctx.sql.write(t.name, `DELETE FROM ${t.name}`);
+    // DELETE without WHERE is SQLite's truncate: cheap even for 60k rows (`delete-all` for FTS5).
+    for (const t of this.mat.tables) ctx.sql.write(t.name, clearTableSql(t));
     for (const { t, ix } of bulk) stmts.exec(`DROP INDEX IF EXISTS ${indexName(t, ix)}`);
     this.#members.clearAll();
     const events = this.#deps.log.appliedOfTypes(this.mat.handles);

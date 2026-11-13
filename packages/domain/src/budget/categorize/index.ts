@@ -79,16 +79,23 @@ export {
 } from "./reclassify.js";
 export {
   detectRecurring,
+  detectRecurringGroup,
   detectRecurringPayments,
   NOT_SUBSCRIPTION_CATEGORIES,
   RECURRING_AMOUNT_TOLERANCE,
+  RECURRING_FILED_CATEGORIES,
+  RECURRING_MIN_OCCURRENCES,
   type RecurringCandidate,
   type RecurringDates,
+  type RecurringGroupEntry,
+  type RecurringGroupFound,
   type RecurringListOptions,
   type RecurringMember,
   type RecurringOptions,
   type RecurringRow,
   recurringDates,
+  recurringOrder,
+  storedRecurringCategory,
   subscriptionPayees,
   TXN_DECIDED_SOURCES,
 } from "./recurring.js";

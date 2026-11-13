@@ -17,14 +17,22 @@ export {
 } from "./connector-runs.js";
 export {
   currentVault,
+  deviceLock,
   devicePhoneState,
   devicePreferences,
+  markedAlerts,
   monthClosedSeen,
+  notificationLedger,
+  notificationPrefs,
   pricesFetchedAt,
+  setAlertMarked,
   setCurrentVault,
+  setDeviceLock,
   setDevicePhoneState,
   setDevicePreferences,
   setMonthClosedSeen,
+  setNotificationLedger,
+  setNotificationPrefs,
   setPricesFetchedAt,
 } from "./settings.js";
 export {
