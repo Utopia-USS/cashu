@@ -5,11 +5,13 @@
 // query: one month (the day's and the week's change) and one year (the chart, this year, the high).
 import { addDays, D, Decimal, type IsoDate, Money, ZERO } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
-import { useQuery } from "@cashu/store-react";
+import { pricesFetchedAt } from "@cashu/store/device";
+import { useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
 import { useServices } from "../../../services/ServicesProvider";
 import { useNow } from "../../../shell/useNow";
+import { localToday } from "../../screenContext";
 import { monthYear, uiLang, weekdayDayMonth } from "../format";
 import type {
   AllocationColor,
@@ -143,6 +145,8 @@ function portfolioProps(
   year: Portfolio,
   input: {
     readonly today: IsoDate;
+    /** When this phone last fetched the vault's prices itself (an ISO instant), null if never. */
+    readonly fetchedAt: string | null;
     readonly locale: string;
     /** Instruments with an open action signal waiting for a decision. */
     readonly risky: ReadonlySet<string>;
@@ -163,12 +167,16 @@ function portfolioProps(
     formatDecimalValue(Decimal.fromFloat(value), locale, { currency: base, fractionDigits: 0 })
       .text;
 
-  // Today's and this week's change from the month's daily points.
+  // Today's and this week's change from the month's daily points. Today's change exists only once the
+  // phone fetched prices today: before that the last two points are carried prices, not today's move.
   const daily = valued(month.performance.points);
   const last = daily.at(-1);
   const before = daily.at(-2);
+  const fetchedToday = input.fetchedAt !== null && localToday(new Date(input.fetchedAt)) === today;
   const day =
-    last !== undefined && before !== undefined ? moveBetween(before, last, last.flow) : null;
+    fetchedToday && last !== undefined && before !== undefined
+      ? moveBetween(before, last, last.flow)
+      : null;
   const weekBase = last === undefined ? null : pointAt(daily, addDays(last.date as IsoDate, -7));
   const week =
     last !== undefined && weekBase !== null && weekBase !== last
@@ -343,6 +351,7 @@ export function usePortfolioSection(args: {
     range: "1m",
   });
   const year = useQuery(moneyQueries.investments.portfolio, { today, lang, account, range: "1y" });
+  const fetchedAt = useQuery(pricesFetchedAt, { vault: useProfile() });
   const signals = useInvestmentSignals();
   const risky = new Set(
     signals.status === "ready"
@@ -353,6 +362,7 @@ export function usePortfolioSection(args: {
   );
   return portfolioProps(month, year, {
     today,
+    fetchedAt,
     locale,
     risky,
     account,

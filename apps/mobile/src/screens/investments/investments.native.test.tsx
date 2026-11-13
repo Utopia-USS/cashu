@@ -270,6 +270,22 @@ describe("the Portfolio view", () => {
     expect(openPosition).toHaveBeenCalledWith(kit.instrument("CDR"));
   });
 
+  it("shows today's change once this phone fetched prices today", async () => {
+    const kit = setup({ pricesFetchedAt: new Date(2026, 10, 12, 7, 31).toISOString() });
+    const props = (await show(kit, "portfolio")).portfolio;
+    if (props?.status !== "ready") throw new Error(`portfolio ${props?.status}`);
+    expect(props.value.day).not.toBeNull();
+    expect(screen.getByText("today")).toBeOnTheScreen();
+  });
+
+  it("hides today's change until this phone fetched prices today", async () => {
+    const kit = setup({ pricesFetchedAt: new Date(2026, 10, 11, 18, 5).toISOString() });
+    const props = (await show(kit, "portfolio")).portfolio;
+    if (props?.status !== "ready") throw new Error(`portfolio ${props?.status}`);
+    expect(props.value.day).toBeNull();
+    expect(screen.queryByText("today")).toBeNull();
+  });
+
   it("shows an empty portfolio when the strategy is synced but nothing is bought", async () => {
     const kit = setup({ content: "strategy" });
     const seen = await show(kit, "portfolio");
