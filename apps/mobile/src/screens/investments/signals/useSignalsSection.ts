@@ -11,6 +11,7 @@ import { useNow } from "../../../shell/useNow";
 import { localToday } from "../../screenContext";
 import { dayMonth, instantOf, uiLang, weekdayDayMonth, whenLabel } from "../format";
 import type { ReadySignalsProps, SignalsViewProps } from "../investments-contracts";
+import { signalText } from "../signalText";
 import { type ReadySignals, useInvestmentSignals } from "../useInvestmentSignals";
 import { S } from "./Signals.strings";
 
@@ -83,6 +84,7 @@ function signalsProps(
   );
   const nameOf = (gid: string | null, fallback: string | null) =>
     (gid === null ? null : names.get(gid)) ?? fallback ?? S.portfolio;
+  const currencies = new Map<string, string>(signals.instruments.map((i) => [i.id, i.currency]));
 
   const lastReview = signals.lastReviewAt === null ? null : instantOf(signals.lastReviewAt);
   const sinceMs = lastReview?.getTime() ?? now.getTime() - 7 * 86_400_000;
@@ -159,7 +161,14 @@ function signalsProps(
     .filter((s) => s.alert === null && s.source !== "research")
     .map((s) => ({
       gid: s.gid,
-      message: s.message,
+      message: signalText(
+        s,
+        {
+          name: nameOf(s.instrument, s.instrumentLabel),
+          currency: (s.instrument === null ? null : currencies.get(s.instrument)) ?? null,
+        },
+        locale,
+      ),
       sub: `${polarityLabel(s.polarity)} · ${whenLabel(instantOf(s.firstSeenAt), now, locale)}`,
       tone:
         s.polarity === "negative"

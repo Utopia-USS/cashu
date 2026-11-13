@@ -17,6 +17,7 @@ import {
 } from "@cashu/store/investments/review-screen";
 import { signalsOwnerCommands } from "@cashu/store/investments/signals-screen";
 import { useCommand, useQuery } from "@cashu/store-react";
+import { useUiEnv } from "@cashu/ui/native";
 import {
   canKeep,
   currentCard,
@@ -34,6 +35,8 @@ import {
 } from "@cashu/ui-logic/investments/v2/reviewDeckState";
 import { useRef, useState } from "react";
 import { useServices } from "../../services/ServicesProvider";
+import { type SignalTextRow, signalText } from "../investments/signalText";
+import { useInvestmentSignals } from "../investments/useInvestmentSignals";
 import { S } from "./Review.strings";
 
 const research = researchScreenCommands();
@@ -381,6 +384,8 @@ export function useReviewDeck(args: {
   close(): void;
 }): ReviewDeckState {
   const { moneyQueries } = useServices();
+  const { locale } = useUiEnv();
+  const signals = useInvestmentSignals();
   const live = useQuery(moneyQueries.investments.review, {
     today: args.today,
     lang: args.lang,
@@ -407,6 +412,15 @@ export function useReviewDeck(args: {
   if (frozen === null) return { kind: "unavailable", onClose: args.close };
   const result = frozen;
   const decideItems: readonly ReviewDecideItem[] = result.decide.items;
+  // The decide rows read the rule and alert signals as sentences with the instrument's name.
+  const instruments = signals.status === "ready" ? signals.instruments : [];
+  const say = (
+    row: SignalTextRow & { instrument: string | null; instrumentLabel: string | null },
+  ) => {
+    const instrument = instruments.find((i) => i.id === row.instrument);
+    const name = instrument?.name || instrument?.symbol || row.instrumentLabel || "";
+    return signalText(row, { name, currency: instrument?.currency ?? null }, locale);
+  };
   // The deck starts from the frozen result on the first render that has one (and at `step`, if given).
   const initial = (): DeckState => {
     const { cards, skipped } = deckCardsOf(result);
@@ -568,8 +582,9 @@ export function useReviewDeck(args: {
           rows: decideItems.map((item) => ({
             key: item.key,
             title: item.title,
-            why: item.why,
-            facts: item.facts,
+            why:
+              item.lead !== undefined && item.whySource !== "research" ? say(item.lead) : item.why,
+            facts: item.supporting?.map(say) ?? item.facts,
             mode: item.kind === "proposal" ? "mac" : needsChoice(item) ? "choose" : "info",
             choice: deck.choices[item.key] ?? null,
             saved: written.has(item.key),

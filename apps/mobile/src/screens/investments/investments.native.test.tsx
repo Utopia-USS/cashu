@@ -320,7 +320,9 @@ describe("the Signals view", () => {
       expect.objectContaining({ title: "CD Projekt fell 9.4% in 5 sessions", decided: false }),
     ]);
     expect(props.fired[0]?.sub).toMatch(/^risk · .+ · waiting for a decision$/);
-    expect(props.rules.map((r) => r.message)).toEqual(["CDR: 7.5% of the portfolio (max 5.0%)."]);
+    expect(props.rules.map((r) => r.message)).toEqual([
+      "CD Projekt is 7.5% of the portfolio (your limit 5%)",
+    ]);
     expect(props.research.map((r) => [r.title, r.tag])).toEqual([
       ["Q3 and the 2027 slate", "weakens your thesis"],
       ["Polish bonds after the rate cut", "background"],

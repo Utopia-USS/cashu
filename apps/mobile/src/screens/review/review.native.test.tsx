@@ -139,6 +139,13 @@ describe("weekly review deck with the real synchronous store", () => {
     const body = card.card.body;
     if (body.kind !== "decide") throw new Error("expected the decide body");
     expect(body.rows.map((r) => [r.mode, r.choice, r.saved])).toEqual([["choose", null, false]]);
+    // The signals read as sentences with the instrument's name, never the engine's machine text.
+    expect(body.rows.map((r) => [r.why, r.facts])).toEqual([
+      [
+        "CD Projekt fell 9.4% in 5 sessions (PLN\u00a0236.87 → PLN\u00a0214.60)",
+        ["CD Projekt is 7.5% of the portfolio (your limit 5%)"],
+      ],
+    ]);
 
     await press(card.onKeep);
     expect(deck.card.card.id).toBe("decide");
