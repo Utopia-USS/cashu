@@ -16,6 +16,7 @@
     "./core/markdown": "./src/core/markdown.ts",
     "./core/messages.strings": "./src/core/messages.strings.ts",
     "./core/time": "./src/core/time.ts",
+    "./investments/buckets": "./src/investments/buckets.ts",
     "./investments/labels": "./src/investments/labels.ts",
     "./investments/logic": "./src/investments/logic.ts",
     "./investments/types": "./src/investments/types.ts",

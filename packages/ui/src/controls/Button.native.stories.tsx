@@ -53,3 +53,11 @@ export const IconClose: Story<ButtonProps> = {
 export const Glyph: Story<ButtonProps> = {
   args: { variant: "glyph", label: "More", children: <Icon name="more" size={20} /> },
 };
+export const GlyphPressed: Story<ButtonProps> = {
+  args: {
+    variant: "glyph",
+    label: "Stop telling this phone",
+    pressed: true,
+    children: <Icon name="bell" size={20} />,
+  },
+};

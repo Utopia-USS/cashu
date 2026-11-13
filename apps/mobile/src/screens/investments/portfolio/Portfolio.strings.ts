@@ -67,16 +67,4 @@ export const S = catalog({
     pl: "Portfela nie da się teraz wycenić na tym telefonie.",
     en: "The portfolio cannot be valued on this phone right now.",
   },
-  // Generic strategy buckets (the strategy's own ids are not shown).
-  bucket_global_equity: { pl: "Akcje globalne", en: "Global stocks" },
-  bucket_pl_equity: { pl: "Akcje polskie", en: "Polish stocks" },
-  bucket_equity: { pl: "Akcje", en: "Stocks" },
-  bucket_bond_etfs: { pl: "ETF-y obligacyjne", en: "Bond ETFs" },
-  bucket_treasury_bonds: { pl: "Obligacje skarbowe", en: "Treasury bonds" },
-  bucket_bonds: { pl: "Obligacje", en: "Bonds" },
-  bucket_cash: { pl: "Gotówka", en: "Cash" },
-  bucket_other: {
-    pl: (id: string) => `Koszyk ${id}`,
-    en: (id: string) => `Bucket ${id}`,
-  },
 });

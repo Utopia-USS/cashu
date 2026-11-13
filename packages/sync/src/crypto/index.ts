@@ -95,11 +95,13 @@ export {
   loadKeyring,
   openKeyStoreValue,
   type SafeStorageLike,
+  SECURE_STORE_KEK_ITEM,
   type SecureStoreLike,
   type SecureStoreOptions,
   saveDeviceIdentity,
   saveKeyring,
   sealKeyStoreValue,
+  secureStoreOptions,
 } from "./keystore.js";
 export {
   createRecoveryKey,

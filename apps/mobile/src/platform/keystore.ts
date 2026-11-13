@@ -4,8 +4,10 @@ import * as crypto from "@cashu/sync/crypto";
 import { Directory, File, Paths } from "expo-file-system";
 import * as SecureStore from "expo-secure-store";
 
+const BLOB_FOLDER = "keys";
+
 /** One file per name under documents/keys; names are `[A-Za-z0-9._-]` (checked by the KeyStore). */
-function documentBlobFiles(folder = "keys"): crypto.BlobFiles {
+function documentBlobFiles(folder = BLOB_FOLDER): crypto.BlobFiles {
   const dir = new Directory(Paths.document, folder);
   const file = (name: string) => new File(dir, `${name}.bin`);
   return {
@@ -28,4 +30,18 @@ function documentBlobFiles(folder = "keys"): crypto.BlobFiles {
 
 export function createMobileKeyStore(sodium: crypto.Sodium): crypto.KeyStore {
   return crypto.createSecureStoreKeyStore(sodium, SecureStore, documentBlobFiles());
+}
+
+/** Delete the KeyStore's key-encryption key from the Keychain (the phone wipe); missing is not an error. */
+export function deleteKeyStoreKek(): Promise<void> {
+  return SecureStore.deleteItemAsync(
+    crypto.SECURE_STORE_KEK_ITEM,
+    crypto.secureStoreOptions(SecureStore),
+  );
+}
+
+/** Delete every sealed value under documents/keys (the phone wipe); missing is not an error. */
+export function deleteKeyStoreFiles(): void {
+  const dir = new Directory(Paths.document, BLOB_FOLDER);
+  if (dir.exists) dir.delete();
 }

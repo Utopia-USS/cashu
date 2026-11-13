@@ -1,5 +1,6 @@
 // Stories of the profile sheet (CSF 3, synthetic profiles): the owner with two profiles and nothing
-// waiting, proposals waiting, incognito on, a partner phone with one profile, a release build.
+// waiting, proposals waiting, incognito on, notifications off in iOS Settings, a partner phone with one profile, a release build, the app
+// lock on, a Touch ID phone and a phone with nothing set up to unlock with.
 import { ProfileSheetView, type ProfileSheetViewProps } from "./ProfileSheetView";
 
 const base: ProfileSheetViewProps = {
@@ -24,10 +25,16 @@ const base: ProfileSheetViewProps = {
   isSwitching: false,
   switchFailed: false,
   waiting: { kind: "nothing" },
+  notificationsOff: false,
+  phone: { name: "This iPhone", sub: "demo data" },
   version: "0.0.0",
   dev: true,
   onProfilePicked: () => {},
   onIncognitoToggle: () => {},
+  lock: { enabled: false, capability: "face", isPending: false },
+  onLockToggle: () => {},
+  onRemovePhone: () => {},
+  onNotifications: () => {},
   onDiagnostics: () => {},
   onBench: () => {},
   onClose: () => {},
@@ -39,6 +46,7 @@ export default meta;
 export const Owner = { args: {} };
 export const ProposalsWaiting = { args: { waiting: { kind: "proposals", count: 2 } } };
 export const IncognitoOn = { args: { incognito: true } };
+export const NotificationsOff = { args: { notificationsOff: true } };
 export const Partner = {
   args: {
     profiles: [
@@ -54,3 +62,10 @@ export const Partner = {
 };
 export const Release = { args: { dev: false } };
 export const SwitchFailed = { args: { switchFailed: true } };
+export const LockOn = { args: { lock: { enabled: true, capability: "face", isPending: false } } };
+export const LockTouchId = {
+  args: { lock: { enabled: false, capability: "fingerprint", isPending: false } },
+};
+export const LockUnavailable = {
+  args: { lock: { enabled: false, capability: "none", isPending: false } },
+};

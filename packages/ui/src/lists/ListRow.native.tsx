@@ -19,8 +19,12 @@ export interface ListRowProps {
   sub2?: ReactNode;
   /** A row that matters less (a paid bill, a hidden category): drawn faded. */
   dim?: boolean;
+  /** `danger`: a destructive action (remove this phone): the name in the negative colour. */
+  tone?: "danger";
   /** The first row of a tile has no hairline above it. */
   first?: boolean;
+  /** Lines the name may take before it truncates; a sentence (a signal) gets 2, a label keeps 1. */
+  nameLines?: 1 | 2;
   onPress?(): void;
   /** Accessible name of a pressable row when its name does not say where it leads. */
   accessibilityLabel?: string;
@@ -45,7 +49,9 @@ export function ListRow({
   sub,
   sub2,
   dim,
+  tone,
   first,
+  nameLines = 1,
   onPress,
   accessibilityLabel,
 }: ListRowProps) {
@@ -54,7 +60,10 @@ export function ListRow({
       {lead}
       <View className="min-w-0 flex-1 gap-0.5">
         <View className="flex-row items-center justify-between gap-3">
-          <Text numberOfLines={1} className="shrink text-body font-demi text-fg">
+          <Text
+            numberOfLines={nameLines}
+            className={`shrink text-body font-demi ${tone === "danger" ? "text-negative" : "text-fg"}`}
+          >
             {name}
           </Text>
           {text(value, "text-body font-heavy text-fg tabular-nums")}

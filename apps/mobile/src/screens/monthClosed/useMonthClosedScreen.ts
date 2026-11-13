@@ -9,6 +9,7 @@ import { cancelPlannedDeposit, createPlannedDeposit } from "@cashu/store/investm
 import { type CommandOutcome, useCommand, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
+import { monthClosedState } from "../../notifications/monthClosedRules";
 import { useServices } from "../../services/ServicesProvider";
 import { useTabChrome } from "../../shell/useTabChrome";
 import { type DisplayEnv, moneyText, monthName, percentText, shiftMonth } from "../today/display";
@@ -111,13 +112,8 @@ export function useMonthClosedScreen(args: {
   // The strategy tile: what the surplus is for, the plan for the month after.
   const investing = close.investing;
   const plan = investing?.planned ?? null;
-  const suggested = investing?.comparison?.suggestedTransfer ?? figures?.suggestedTransfer ?? null;
-  const planAmount =
-    suggested === null
-      ? null
-      : plan !== null && suggested.gt(plan.amount)
-        ? plan.amount
-        : suggested;
+  const rules = monthClosedState(close, args.month, args.today);
+  const { planAmount, canPlan } = rules;
   const sentences: string[] = [];
   if (cushion?.topUp.gt(D("0"))) {
     sentences.push(S.cushionShortTopUp(money(cushion.topUp)));
@@ -130,8 +126,6 @@ export function useMonthClosedScreen(args: {
     sentences.push(S.cushionFull);
   }
   const body = sentences.length === 0 ? null : sentences.join(" ");
-  // A plan dated in a month long gone is refused by the command: only the running month or later.
-  const canPlan = following >= args.today.slice(0, 7);
   const save = async (amount: string) => {
     const outcome = await create.run({
       amount,
@@ -230,12 +224,7 @@ export function useMonthClosedScreen(args: {
     categories: { title: S.whereMonthWent(closed), rows },
     onShowRunning: args.onShowRunning,
   };
-  const planNeeded = investing !== null && positive(planAmount) && canPlan;
-  return {
-    view,
-    complete: close.complete && figures !== undefined && close.month === args.month,
-    planSaved: !planNeeded || deposit !== null,
-  };
+  return { view, complete: rules.complete, planSaved: rules.planSaved };
 }
 
 /** The month before today's: the one Today's month-closed state is about. */

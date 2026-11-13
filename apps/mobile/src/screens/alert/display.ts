@@ -9,7 +9,7 @@ import {
   formatDecimalValue,
 } from "@cashu/i18n/values";
 import { localToday } from "../screenContext";
-import type { DisplayEnv } from "../today/display";
+import { type DisplayEnv, MASK } from "../today/display";
 
 /** Within this many calendar days a moment is named by its weekday ("Mon 07:30"), beyond it by its date. */
 const WEEKDAY_DAYS = 6;
@@ -69,9 +69,6 @@ export function ratioText(
     signed: options.signed ?? false,
   }).text;
 }
-
-/** The mask of the owner's own figures while amounts are hidden (as `useNumberValue` without a currency). */
-export const MASK = "•••";
 
 /** The owner's own price (the average cost, a quantity): masked while amounts are hidden, never on the
  * banana scale (a unit price in bananas would still give the cost away against the public price). */

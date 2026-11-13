@@ -10,8 +10,9 @@ import type { ReviewScreenResult } from "@cashu/store/investments/review-screen"
 import type { PortfolioSnapshot } from "@cashu/store/investments/screen";
 import type { ReadySignals } from "@cashu/store/investments/signals-screen";
 import type { StrategiesSnapshot } from "@cashu/store/investments/strategies-screen";
+import { isShownSignal } from "@cashu/ui-logic/investments/buckets";
 import type { Decision, StrategyStatus, Thesis } from "@cashu/ui-logic/investments/types";
-import { digestShown, isShownSignal } from "@cashu/ui-logic/investments/v2/logic";
+import { digestShown } from "@cashu/ui-logic/investments/v2/logic";
 import { normMacro } from "@cashu/ui-logic/investments/v2/research/macro";
 import { normAttribution, normTopicThesis } from "@cashu/ui-logic/investments/v2/research/segments";
 import type {

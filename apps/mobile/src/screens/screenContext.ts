@@ -1,14 +1,8 @@
-import { type Decimal, type IsoDate, ZERO } from "@cashu/domain";
+import { type Decimal, ZERO } from "@cashu/domain";
 import type { BudgetScreenPeriod } from "@cashu/store/budget/screen";
 import type { PeriodChoice } from "./money-contracts";
 
-/** Calendar day on this device, rather than the UTC day of an ISO timestamp. */
-export function localToday(now = new Date()): IsoDate {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+export { localToday } from "../format/calendar";
 
 export function budgetPeriod(choice: PeriodChoice): BudgetScreenPeriod {
   switch (choice.kind) {

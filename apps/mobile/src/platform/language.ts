@@ -30,3 +30,9 @@ export function installMobileLanguage(): void {
     },
   });
 }
+
+/** Delete the language pin (the phone wipe); the language follows the system from the next launch. */
+export function deleteLanguagePin(): void {
+  const f = pinFile();
+  if (f.exists) f.delete();
+}

@@ -5,6 +5,11 @@ import { catalog, enForm } from "@cashu/i18n";
 
 export const S = catalog({
   close: { pl: "Zamknij", en: "Close" },
+  tellPhone: {
+    pl: "Powiadamiaj na tym telefonie, gdy zadziała",
+    en: "Tell this phone when it fires",
+  },
+  stopTelling: { pl: "Nie powiadamiaj na tym telefonie", en: "Stop telling this phone" },
   missing: { pl: "Tego alertu już nie ma", en: "This alert is gone" },
   tagRisk: { pl: "Twój alert · ryzyko", en: "Your alert · risk" },
   tagOpportunity: { pl: "Twój alert · szansa", en: "Your alert · opportunity" },
@@ -93,10 +98,13 @@ export const ACTION = catalog({
   other: { pl: "Inna decyzja", en: "Other decision" },
 });
 
-/** A research note's verdict on the thesis (the alert sheet, the position page, the note reader). */
+/**
+ * A research note's verdict on the thesis (the alert sheet, the position page, the note reader): the
+ * verbs of the desktop's `RELATION_LABEL` (@cashu/ui-logic), without "the thesis" the line already names.
+ */
 export const RELATION = catalog({
-  supports: { pl: "wspiera", en: "supports" },
+  supports: { pl: "wzmacnia", en: "supports" },
   weakens: { pl: "osłabia", en: "weakens" },
-  invalidates: { pl: "podważa", en: "breaks" },
-  fulfills: { pl: "spełnia", en: "fulfils" },
+  invalidates: { pl: "podważa", en: "invalidates" },
+  fulfills: { pl: "potwierdza", en: "fulfills" },
 });

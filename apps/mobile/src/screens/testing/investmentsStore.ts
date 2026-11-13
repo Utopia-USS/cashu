@@ -28,8 +28,10 @@ import {
   seedCompanionPrices,
 } from "../../fixture/companionInvestments";
 import { phoneInvestmentSources } from "../../services/investments";
+import { servicesCloser } from "../../services/lifecycle";
 import { createMoneyQueries } from "../../services/moneyQueries";
 import type { Services } from "../../services/services";
+import { memoryAuthenticator } from "../../shell/testing/auth";
 
 /** The kit's calendar day (a Thursday; the review is due on Sunday the 15th). */
 export const INVESTMENTS_TODAY: IsoDate = "2026-11-12";
@@ -150,6 +152,7 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
   const now = new Date(at(today, 9, 40)).toISOString();
   const services: Services = {
     client,
+    device,
     moneyQueries: createMoneyQueries(
       { prices, changes: prices },
       phoneInvestmentSources({ prices, now: () => now }),
@@ -165,6 +168,7 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
         slug: "synthetic-investor",
         name: "Synthetic investor",
         modules: ["budget", "investments"],
+        role: "owner",
       },
     ],
     prices,
@@ -172,6 +176,12 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
     firstLoad: [],
     // Unused by investments screens. These tests never claim a crypto self-test ran.
     cryptoSelfTest: Promise.resolve({ checks: [], ok: false, nativeAead: "not_run" }),
+    // better-sqlite3 has no SQLCipher: test files are never encrypted.
+    storage: { cipherVersion: null },
+    // The lock prompts nothing unless a test scripts it; off by default like the demo.
+    auth: memoryAuthenticator(),
+    isDemo: true,
+    close: servicesCloser({ client, vaults: [store], prices, device }),
   };
   /** An instrument's gid by its ticker (the fixture's keys: CDR, VWCE, EDO, DBND, VT, BETA, ETFBM40TR). */
   const instrument = (symbol: string): string => {
@@ -194,11 +204,7 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
     instrument,
     /** Runs a vault command as this device (throws on a refusal). */
     apply,
-    close() {
-      client.dispose();
-      device.close();
-      store.close();
-    },
+    close: services.close,
   };
 }
 

@@ -1,6 +1,7 @@
 // Stories of the alert sheet (CSF 3, invented figures): a fired risk alert waiting for a decision, a
 // choice made, a refused write, one set aside for the review, one already decided, a rule signal without
-// a thesis, hidden amounts and an alert that is gone.
+// a thesis (no bell: rules are not marked), an alert this phone is told about, hidden amounts and an
+// alert that is gone.
 import { D, Money } from "@cashu/domain";
 import { UiEnvProvider } from "@cashu/ui/native";
 import type { ComponentType } from "react";
@@ -50,6 +51,7 @@ const fired: Ready = {
     },
   },
   strategyLine: "A drawdown alone is not a reason to sell. Check the thesis, then decide.",
+  tellPhone: { on: false, onToggle: () => {} },
   settled: null,
   decision,
   onSave: async () => {},
@@ -85,6 +87,8 @@ export const SetAsideForReview = {
   },
 };
 
+export const TellsThisPhone = { args: { tellPhone: { on: true, onToggle: () => {} } } };
+
 export const Decided = {
   args: { settled: "Noted: Nothing for now · Nov 12, 2026", decision: null },
 };
@@ -97,6 +101,7 @@ export const RuleWithoutThesis = {
     facts: fired.facts.slice(0, 3),
     thesis: null,
     strategyLine: null,
+    tellPhone: null,
   },
 };
 

@@ -1,17 +1,21 @@
 // The navigation shell over the real synchronous store: tab header and profile sheet stories render,
 // the header's data (profile, freshness, incognito) comes from the stores, the eye button and the
-// profile sheet write the device store, the app-switcher cover follows AppState.
+// profile sheet write the device store, "Remove this phone" confirms before it wipes (and does not
+// navigate), the app-switcher cover follows AppState whether Hide amounts is on or off.
 import { setLanguageForTests } from "@cashu/i18n";
 import { dataFreshness } from "@cashu/store/budget/freshness";
-import { currentVault, devicePhoneState } from "@cashu/store/device";
+import { currentVault, devicePhoneState, setDevicePhoneState } from "@cashu/store/device";
 import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import { isIncognito } from "@cashu/ui-logic/core/incognito";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ComponentType, ReactNode } from "react";
-import { AppState, type AppStateStatus, Text } from "react-native";
+import { Alert, type AlertButton, AppState, type AppStateStatus, Text } from "react-native";
 import { ProfileSheetView } from "../screens/profile/ProfileSheetView";
 import profileMeta, {
   IncognitoOn,
+  LockOn,
+  LockTouchId,
+  LockUnavailable,
   Owner as OwnerSheet,
   Partner as PartnerSheet,
   ProposalsWaiting,
@@ -93,6 +97,9 @@ const STORIES: [string, ComponentType<never>, object, Record<string, { args: obj
       Partner: PartnerSheet,
       Release,
       SwitchFailed,
+      LockOn,
+      LockTouchId,
+      LockUnavailable,
     },
   ],
 ];
@@ -178,18 +185,28 @@ describe("tab header over the real store", () => {
 describe("app-switcher cover", () => {
   // The cover is hidden from assistive technology (it only masks the snapshot).
   const hidden = { includeHiddenElements: true };
-  it("covers the app while it is not active", async () => {
-    let listener: ((state: AppStateStatus) => void) | undefined;
+  /** Drives AppState: every listener hears the change and `currentState` reads it. */
+  function appState() {
+    const listeners: ((state: AppStateStatus) => void)[] = [];
     jest.spyOn(AppState, "addEventListener").mockImplementation((_type, handler) => {
-      listener = handler as (state: AppStateStatus) => void;
+      listeners.push(handler as (state: AppStateStatus) => void);
       return { remove: () => {} } as ReturnType<typeof AppState.addEventListener>;
     });
     // The React Native Jest preset mocks AppState with a function here; the app reads a status.
     const original = Object.getOwnPropertyDescriptor(AppState, "currentState");
-    const enter = (state: AppStateStatus) => {
-      Object.defineProperty(AppState, "currentState", { value: state, configurable: true });
-      listener?.(state);
+    return {
+      enter(state: AppStateStatus) {
+        Object.defineProperty(AppState, "currentState", { value: state, configurable: true });
+        for (const listener of listeners) listener(state);
+      },
+      restore() {
+        if (original) Object.defineProperty(AppState, "currentState", original);
+      },
     };
+  }
+
+  it("covers the app while it is not active", async () => {
+    const { enter, restore } = appState();
     try {
       enter("active");
       await render(<PrivacyCover />);
@@ -204,13 +221,53 @@ describe("app-switcher cover", () => {
       await act(() => enter("active"));
       expect(screen.queryByTestId("privacy-cover", hidden)).toBeNull();
     } finally {
-      if (original) Object.defineProperty(AppState, "currentState", original);
+      restore();
+    }
+  });
+
+  // Independent of Hide amounts by design: the app switcher is always covered.
+  it.each([
+    ["off", false],
+    ["on", true],
+  ])("covers the app with Hide amounts %s", async (_name, hide) => {
+    const fixture = setup();
+    fixture.device.run(setDevicePhoneState, { incognito: hide });
+    const { enter, restore } = appState();
+    try {
+      enter("active");
+      await render(
+        <Frame fixture={fixture}>
+          <AppEnv>
+            <Text>Synthetic content</Text>
+          </AppEnv>
+        </Frame>,
+      );
+      expect(isIncognito()).toBe(hide);
+      expect(screen.queryByTestId("privacy-cover", hidden)).toBeNull();
+      await act(() => enter("inactive"));
+      expect(screen.getByTestId("privacy-cover", hidden)).toBeOnTheScreen();
+      await act(() => enter("background"));
+      expect(screen.getByTestId("privacy-cover", hidden)).toBeOnTheScreen();
+    } finally {
+      restore();
     }
   });
 });
 
-function ProfileSheet({ close }: { close: () => void }) {
-  const props = useProfileSheet({ close, openDiagnostics: () => {}, openBench: () => {} });
+function ProfileSheet({
+  close,
+  removePhone = async () => {},
+}: {
+  close: () => void;
+  removePhone?: () => Promise<void>;
+}) {
+  const props = useProfileSheet({
+    close,
+    openDiagnostics: () => {},
+    openNotifications: () => {},
+    openBench: () => {},
+    removePhone,
+  });
   return (
     <>
       <Text testID="current-profile">{useProfile()}</Text>
@@ -257,6 +314,51 @@ describe("profile sheet", () => {
     await render(<Sheet {...profileMeta.args} onClose={onClose} />);
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks before removing this phone, and on Remove wipes without navigating", async () => {
+    const fixture = setup();
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const close = jest.fn();
+    const removePhone = jest.fn(async () => {});
+    await render(
+      <Frame fixture={fixture}>
+        <ProfileSheet close={close} removePhone={removePhone} />
+      </Frame>,
+    );
+    expect(screen.getByText("This iPhone")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: /Remove this phone/ }));
+    expect(alert).toHaveBeenCalledTimes(1);
+    const [title, body, buttons = []] = alert.mock.calls[0] ?? [];
+    expect(title).toBe("Remove this phone?");
+    expect(body).toBe(
+      "The copy of your profiles on this phone is deleted. Your Mac keeps everything.",
+    );
+    expect(buttons.map((b: AlertButton) => [b.text, b.style])).toEqual([
+      ["Cancel", "cancel"],
+      ["Remove", "destructive"],
+    ]);
+    expect(removePhone).not.toHaveBeenCalled();
+    buttons[0]?.onPress?.();
+    expect(removePhone).not.toHaveBeenCalled();
+    await act(async () => buttons[1]?.onPress?.());
+    // The wipe's remount closes the sheet; a close here would reach a navigator that is gone.
+    expect(close).not.toHaveBeenCalled();
+    expect(removePhone).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when the wipe failed", async () => {
+    const fixture = setup();
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    await render(
+      <Frame fixture={fixture}>
+        <ProfileSheet close={() => {}} removePhone={() => Promise.reject(new Error("synthetic"))} />
+      </Frame>,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: /Remove this phone/ }));
+    const buttons = alert.mock.calls[0]?.[2] ?? [];
+    await act(async () => buttons[1]?.onPress?.());
+    expect(alert).toHaveBeenLastCalledWith("Could not delete everything on this phone. Try again.");
   });
 
   it("toggles incognito from the sheet", async () => {

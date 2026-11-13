@@ -52,8 +52,12 @@ Decided (owner and lead; the plan of record keeps the full list and the scope id
   + Uniwind + tailwind-variants, `@expo/ui` for native controls (react-strict-dom / StyleX were
   rejected); charts are shared SVG scenes (DOM svg / react-native-svg). React Compiler on, no manual
   memo; live reads via `useQuery` (useSyncExternalStore).
-- **Phone hardening before real data**: encrypted view DB at rest, local notifications from synced
-  data (APNs later), signing and TestFlight / Play distribution.
+- **Phone hardening before real data**: local notifications from synced data (APNs later), signing and
+  TestFlight / Play distribution. Encryption at rest is done: every SQLite file on the phone (the
+  vaults, `device.db`, `market.db`) is SQLCipher, keyed with one raw 256-bit key in the Keychain item
+  `cashu.db.key` (service `cashu`, after first unlock, this device only), next to the KeyStore's
+  key-encryption key `cashu.keystore.kek`; "Remove this phone" deletes both
+  (`apps/mobile/src/platform/dbKey.ts`, `sqlite.ts`, `services/wipe.ts`).
 - Proposal approval stays desktop only; the agent never writes strategy files directly; the MCP audit
   stays per device; connector code and approval stay per device (bindings sync, cursors are
   leader-only); rule categories are recomputed on each device, LLM and manual categories ship as

@@ -107,7 +107,23 @@ export interface SecureStoreOptions {
   keychainAccessible?: number;
 }
 
-const KEK_ITEM = "cashu.keystore.kek";
+/** The Keychain item holding the KeyStore's key-encryption key (a phone wipe deletes it by this name). */
+export const SECURE_STORE_KEK_ITEM = "cashu.keystore.kek";
+const KEK_ITEM = SECURE_STORE_KEK_ITEM;
+
+/**
+ * The options of every cashU Keychain item: service "cashu", readable after the first unlock (background
+ * sync reads keys while the phone is locked), never backed up or moved to another device. A read, write
+ * or delete must pass the same options to find the item.
+ */
+export function secureStoreOptions(
+  secureStore: Pick<SecureStoreLike, "AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY">,
+): SecureStoreOptions {
+  return {
+    keychainService: "cashu",
+    keychainAccessible: secureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+  };
+}
 const SEALED_VERSION = 1;
 
 /** S27 sealed-v1 bytes and AAD, shared by mobile and the Node host. */
@@ -170,10 +186,7 @@ export function createSecureStoreKeyStore(
   secureStore: SecureStoreLike,
   files: BlobFiles,
 ): KeyStore {
-  const options: SecureStoreOptions = {
-    keychainService: "cashu",
-    keychainAccessible: secureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
-  };
+  const options = secureStoreOptions(secureStore);
   // Single flight: one get-or-create at a time, so concurrent first writes cannot create two KEKs.
   // Only a successful result is cached; a failure is retried on the next call.
   let cached: Secret | undefined;

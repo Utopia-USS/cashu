@@ -6,6 +6,7 @@
 import { setLanguageForTests } from "@cashu/i18n";
 import { saveReview } from "@cashu/store/investments/review-screen";
 import { signalsOwnerCommands } from "@cashu/store/investments/signals-screen";
+import { runQuery } from "@cashu/store/query";
 import { ProfileProvider, StoreProvider } from "@cashu/store-react";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
@@ -28,13 +29,14 @@ import type {
 } from "./investments-contracts";
 import { PortfolioView } from "./portfolio/PortfolioView";
 import portfolioMeta, * as portfolioStories from "./portfolio/PortfolioView.stories";
-import { usePortfolioSection } from "./portfolio/usePortfolioSection";
+import { allocationProps, usePortfolioSection } from "./portfolio/usePortfolioSection";
 import { SignalsView } from "./signals/SignalsView";
 import signalsMeta, * as signalsStories from "./signals/SignalsView.stories";
-import { useSignalsSection } from "./signals/useSignalsSection";
+import { signalsProps, useSignalsSection } from "./signals/useSignalsSection";
 import { StrategyView } from "./strategy/StrategyView";
 import strategyMeta, * as strategyStories from "./strategy/StrategyView.stories";
 import { useStrategySection } from "./strategy/useStrategySection";
+import { waitsForDecision } from "./useInvestmentSignals";
 import { useInvestmentsScreen } from "./useInvestmentsScreen";
 
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
@@ -253,7 +255,7 @@ describe("the Portfolio view", () => {
     expect(props.chart.series[0]?.values.length).toBeLessThanOrEqual(52);
     expect(props.chart.series[0]?.values.length).toBeGreaterThan(40);
     expect(props.allocation.rows.map((r) => r.label)).toEqual([
-      "Global stocks",
+      "Global equities",
       "Bond ETFs",
       "Treasury bonds",
       "Cash",
@@ -316,10 +318,17 @@ describe("the Signals view", () => {
     const props = seen.signals;
     if (props?.status !== "ready") throw new Error("signals not ready");
     expect(props.since).toBe("New in the last week");
+    // The % move reads as the title; the other alert keeps its own title and reads its facts below it.
+    // Only the action alert waits for a decision; the info alert (the average) is a fact.
     expect(props.fired).toEqual([
+      expect.objectContaining({
+        title: "CDR below its 5-session average",
+        sub: "CD Projekt closed below its 5-session average (PLN\u00a0214.60 vs PLN\u00a0223.33)",
+        decided: false,
+      }),
       expect.objectContaining({ title: "CD Projekt fell 9.4% in 5 sessions", decided: false }),
     ]);
-    expect(props.fired[0]?.sub).toMatch(/^risk · .+ · waiting for a decision$/);
+    expect(props.fired[1]?.sub).toMatch(/^risk · .+ · waiting for a decision$/);
     expect(props.rules.map((r) => r.message)).toEqual([
       "CD Projekt is 7.5% of the portfolio (your limit 5%)",
     ]);
@@ -334,7 +343,7 @@ describe("the Signals view", () => {
       "Polish Bond ETF - nothing",
     ]);
     await fireEvent.press(screen.getByLabelText("CD Projekt fell 9.4% in 5 sessions, decide"));
-    expect(openAlert).toHaveBeenCalledWith(props.fired[0]?.gid);
+    expect(openAlert).toHaveBeenCalledWith(props.fired[1]?.gid);
     await fireEvent.press(screen.getByLabelText("Q3 and the 2027 slate, open the note"));
     expect(openNote).toHaveBeenCalledWith(props.research[0]?.gid);
   });
@@ -344,7 +353,7 @@ describe("the Signals view", () => {
     const seen = await show(kit, "signals");
     const props = seen.signals;
     if (props?.status !== "ready") throw new Error("signals not ready");
-    const signal = props.fired[0]?.gid;
+    const signal = props.fired.find((f) => f.title === "CD Projekt fell 9.4% in 5 sessions")?.gid;
     await act(async () => {
       kit.apply(signalsOwnerCommands.acknowledge, { signal });
     });
@@ -353,13 +362,150 @@ describe("the Signals view", () => {
     const after = seen.signals;
     if (after?.status !== "ready") throw new Error("signals not ready");
     expect(after.fired).toEqual([
+      expect.objectContaining({ title: "CDR below its 5-session average", decided: false }),
       {
         gid: signal,
         title: "CD Projekt - noted",
         sub: "Decide later - back in your review",
         decided: true,
+        marked: false,
       },
     ]);
+  });
+});
+
+describe("the Signals view's rules", () => {
+  it("never lists or counts an allocation drift of the owner's own bucket, and names a generic one", () => {
+    const kit = setup();
+    const queries = kit.services.moneyQueries.investments;
+    const signals = runQuery(kit.store, queries.signals, {
+      now: kit.now,
+      today: kit.today,
+      timeZone: "UTC",
+      lang: "en",
+      privacy: false,
+    }).value;
+    if (signals.status !== "ready") throw new Error("signals not ready");
+    const notes = runQuery(kit.store, queries.research.notes, {
+      today: kit.today,
+      lang: "en",
+    }).value;
+    const rule = signals.open.find((s) => s.kind === "position_concentration");
+    if (rule === undefined) throw new Error("no rule signal");
+    // A stored flag says generic, the id is the owner's own: the phone still hides it (as the desktop).
+    const drift = (bucket: string) => ({
+      ...rule,
+      gid: `drift-${bucket}`,
+      kind: "allocation_drift",
+      instrument: null,
+      instrumentLabel: null,
+      severity: "action",
+      payload: {
+        bucket_id: bucket,
+        bucket_generic: true,
+        weight: 0.42,
+        target: 0.35,
+        drift_pp: 0.07,
+        drift_value_base: "700",
+        currency: "PLN",
+      },
+    });
+    const props = signalsProps(
+      { ...signals, open: [...signals.open, drift("core"), drift("global_equity")] },
+      notes,
+      {
+        today: kit.today,
+        now: new Date(kit.now),
+        env: { locale: "en-GB", privacy: false },
+        onAlertPressed: () => {},
+        onNotePressed: () => {},
+        marked: [],
+      },
+    );
+    expect(props.rules.map((r) => r.message)).toEqual([
+      "CD Projekt is 7.5% of the portfolio (your limit 5%)",
+      "Global equities: 42.0% of the portfolio against a 35% target (PLN\u00a0700 over)",
+    ]);
+    expect(props.rules.some((r) => r.message.includes("core"))).toBe(false);
+    expect(waitsForDecision(drift("core"))).toBe(false);
+    expect(waitsForDecision(drift("global_equity"))).toBe(true);
+  });
+
+  it("shows an alert's own title without the owner's bucket id, masked in incognito", () => {
+    const kit = setup();
+    const queries = kit.services.moneyQueries.investments;
+    const signals = runQuery(kit.store, queries.signals, {
+      now: kit.now,
+      today: kit.today,
+      timeZone: "UTC",
+      lang: "en",
+      privacy: false,
+    }).value;
+    if (signals.status !== "ready") throw new Error("signals not ready");
+    const notes = runQuery(kit.store, queries.research.notes, {
+      today: kit.today,
+      lang: "en",
+    }).value;
+    const fired = signals.signals.find((s) => s.alert !== null && s.kind === "alert:sma_cross");
+    if (fired === undefined) throw new Error("no average alert");
+    const titled = {
+      ...fired,
+      kind: "alert:weight_above",
+      messageParams: { ...fired.messageParams, title: "Bucket core above 40%" },
+      message: "Bucket core: 42% (above 40%)",
+      payload: { bucket_id: "core" },
+    };
+    const read = (privacy: boolean) =>
+      signalsProps({ ...signals, signals: [titled] }, notes, {
+        today: kit.today,
+        now: new Date(kit.now),
+        env: { locale: "en-GB", privacy },
+        onAlertPressed: () => {},
+        onNotePressed: () => {},
+        marked: [],
+      }).fired[0];
+    expect(read(false)?.title).toBe("Bucket above 40%");
+    expect(read(true)?.title).toBe("Bucket above •••%");
+    expect(JSON.stringify(read(false))).not.toContain("core");
+  });
+});
+
+describe("the Portfolio allocation", () => {
+  const bucket = (bucket_id: string, weight: number, target: number, generic?: boolean) => ({
+    bucket_id,
+    weight,
+    target,
+    drift_pp: (weight - target) * 100,
+    ...(generic === undefined ? {} : { generic }),
+  });
+
+  it("shows the targets and the drift while every bucket is generic", () => {
+    const allocation = allocationProps({
+      buckets: [bucket("global_equity", 0.62, 0.6), bucket("bonds", 0.33, 0.4)],
+      buckets_generic: true,
+      unclassified: { weight: 0.05 },
+    });
+    expect(allocation.rows.map((r) => r.label)).toEqual([
+      "Global equities",
+      "Bonds",
+      "Not in a bucket",
+    ]);
+    expect(allocation.drift).toEqual({ label: "Bonds 7% below target", tone: "warn" });
+  });
+
+  it("hides the whole block and the drift of the owner's own buckets, as the desktop", () => {
+    const own = allocationProps({
+      buckets: [bucket("core", 0.66, 0.6), bucket("bonds", 0.34, 0.4)],
+      unclassified: { weight: 0.05 },
+    });
+    expect(own).toEqual({ rows: [], drift: null });
+    // A generic id the server marks as the owner's own counts as the owner's own.
+    expect(
+      allocationProps({
+        buckets: [bucket("global_equity", 0.6, 0.6, false), bucket("bonds", 0.4, 0.4)],
+        unclassified: null,
+      }),
+    ).toEqual({ rows: [], drift: null });
   });
 });
 
@@ -378,8 +524,8 @@ describe("the Strategy view", () => {
       ["A deposit at least every 31 days", "ok"],
       ["Akcje globalne poniżej celu, a gotówka czeka na zainwestowanie", "ok"],
     ]);
-    expect(props?.alertsCount).toBe(1);
-    expect(screen.getByText("6 rules · 1 alert")).toBeOnTheScreen();
+    expect(props?.alertsCount).toBe(2);
+    expect(screen.getByText("6 rules · 2 alerts")).toBeOnTheScreen();
   });
 
   it("says there is no strategy yet before one is synced", async () => {

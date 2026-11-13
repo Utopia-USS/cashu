@@ -26,7 +26,7 @@ export interface ButtonProps {
   className?: string;
   /** Accessible name when the visible content does not name the action (an arrow, a truncated title). */
   label?: string;
-  /** Toggle state; a pressed button takes the selected look. */
+  /** Toggle state; a pressed button takes the selected look (a bare glyph on the phone turns accent). */
   pressed?: boolean;
   /** Marks the button for the current page or view in a set (tabs, a file list); takes the selected look. */
   current?: "page";

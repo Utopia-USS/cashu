@@ -128,6 +128,8 @@ export interface ReadySignalsProps {
     readonly sub: string;
     /** Decided rows are not tappable; their sub says the decision. */
     readonly decided: boolean;
+    /** The alert is marked "tell this phone": a small bell after the title. */
+    readonly marked: boolean;
   }[];
   readonly near: readonly {
     readonly gid: string;

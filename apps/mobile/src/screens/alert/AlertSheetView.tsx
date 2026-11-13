@@ -1,13 +1,15 @@
 // The alert sheet (prototype `alert` sheet, "see it, then decide - nothing preselected"): the alert tag,
 // what fired and when, the facts of the position, the thesis with the research verdict, the strategy's
 // drawdown line and the decision (Nothing / Buy more / Sell, an optional reason), with "Decide later" and
-// "Save decision" in the footer. Save stays disabled until a choice.
+// "Save decision" in the footer. Save stays disabled until a choice. The bell left of the close button
+// marks the alert "tell this phone" (accent while marked).
 import {
   Button,
   Delta,
   EmptyState,
   Facts,
   type FactsItem,
+  GroupSection,
   Icon,
   Money as MoneyValue,
   NoteLine,
@@ -22,17 +24,6 @@ import type { AlertFact, AlertSheetState } from "./useAlertSheet";
 
 export type AlertSheetViewProps = AlertSheetState;
 type Ready = Extract<AlertSheetState, { kind: "ready" }>;
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <View className="gap-2">
-      <Text role="heading" className="px-1 text-caption font-demi text-fg-muted">
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
-}
 
 function Quote({ children }: { children: ReactNode }) {
   return (
@@ -87,7 +78,7 @@ function Thesis({ props }: { props: Ready }) {
   if (thesis === null || (thesis.wrongIf === null && thesis.researchLine === null)) return null;
   const research = thesis.researchLine;
   return (
-    <Section title={S.yourThesis}>
+    <GroupSection grouped={false} title={S.yourThesis}>
       {thesis.wrongIf !== null && (
         <Quote>
           <Text className="font-strong text-fg">{S.wrongIf} </Text>
@@ -101,7 +92,7 @@ function Thesis({ props }: { props: Ready }) {
           <Text className="shrink text-caption text-fg-muted">{research.text}</Text>
         </View>
       )}
-    </Section>
+    </GroupSection>
   );
 }
 
@@ -109,7 +100,7 @@ function Decision({ props }: { props: Ready }) {
   const { decision } = props;
   if (decision === null) return null;
   return (
-    <Section title={S.yourDecision}>
+    <GroupSection grouped={false} title={S.yourDecision}>
       <Seg
         full
         label={S.yourDecision}
@@ -138,7 +129,7 @@ function Decision({ props }: { props: Ready }) {
           {decision.error}
         </Text>
       )}
-    </Section>
+    </GroupSection>
   );
 }
 
@@ -161,7 +152,19 @@ export function AlertSheetView(props: AlertSheetViewProps) {
     <ScrollView className="flex-1 bg-surface" contentContainerClassName="gap-5 px-4 pt-6 pb-10">
       <View className="flex-row items-center justify-between gap-3">
         <Tag tone={props.tag.tone}>{props.tag.text}</Tag>
-        <CloseButton onClose={props.onClose} />
+        <View className="flex-row items-center">
+          {props.tellPhone !== null && (
+            <Button
+              variant="glyph"
+              pressed={props.tellPhone.on}
+              label={props.tellPhone.on ? S.stopTelling : S.tellPhone}
+              onPress={props.tellPhone.onToggle}
+            >
+              <Icon name="bell" size={20} />
+            </Button>
+          )}
+          <CloseButton onClose={props.onClose} />
+        </View>
       </View>
       <View className="gap-1.5">
         <Text role="heading" className="text-headline font-strong text-fg">
@@ -172,9 +175,9 @@ export function AlertSheetView(props: AlertSheetViewProps) {
       {props.facts.length > 0 && <Facts items={props.facts.map(factItem)} />}
       <Thesis props={props} />
       {props.strategyLine !== null && (
-        <Section title={S.strategySays}>
+        <GroupSection grouped={false} title={S.strategySays}>
           <Quote>{props.strategyLine}</Quote>
-        </Section>
+        </GroupSection>
       )}
       {props.settled !== null && (
         <NoteLine icon={decision === null ? "check" : "calendar"}>{props.settled}</NoteLine>

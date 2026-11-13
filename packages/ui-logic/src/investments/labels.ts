@@ -248,6 +248,10 @@ export function bucketLabel(id: string | null | undefined): string | null {
 /** Genitive of the generic bucket labels ("domyka 1,1 pp Akcji globalnych"; English: the label). */
 export const bucketGenitive = (id: string | null | undefined): string | null =>
   id && isGenericBucket(id) ? ((BUCKET_GEN as Record<string, string>)[id] ?? null) : null;
+/** The name a bucket shows under: its generic label, else the neutral word ("Koszyk" / "Bucket") without the
+ * id, for places that must still say "a bucket" (an allocation row, a weight alert, a custom rule). */
+export const bucketDisplayName = (id: string | null | undefined): string =>
+  bucketLabel(id) ?? S.bucketFallback;
 
 /** Exchange (MIC) -> the name owners use; other MICs show their code (instrument card, asset header). */
 const MIC_NAME: Record<string, string> = {

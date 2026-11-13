@@ -12,6 +12,15 @@ const ready: SignalsViewProps = {
       title: "CD Projekt fell 9.4% in 5 sessions",
       sub: "risk · 07:31 · waiting for a decision",
       decided: false,
+      marked: true,
+    },
+    // An info alert reads as a fact: it does not wait for a decision.
+    {
+      gid: "s2",
+      title: "CDR below its 5-session average",
+      sub: "CD Projekt closed below its 5-session average (PLN 214.60 vs PLN 223.33)",
+      decided: false,
+      marked: false,
     },
   ],
   near: [
@@ -74,6 +83,7 @@ export const Decided = {
         title: "CD Projekt - noted",
         sub: "Decide later - back in your review",
         decided: true,
+        marked: false,
       },
     ],
   } satisfies SignalsViewProps,

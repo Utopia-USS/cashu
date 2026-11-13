@@ -98,6 +98,18 @@ describe("formatClockTime", () => {
     expect(formatClockTime(at, "en-GB", { timeZone: "UTC" })).toBe("07:30");
     expect(formatClockTime(at, "en-US", { weekday: true, timeZone: "UTC" })).toBe("Mon 07:30 AM");
   });
+
+  it("writes a 12-hour locale's hour without the leading zero when asked, 24-hour ones as before", () => {
+    const evening = new Date(Date.UTC(2026, 10, 15, 18, 0));
+    const morning = new Date(Date.UTC(2026, 10, 15, 6, 5));
+    const natural = { naturalHour: true, timeZone: "UTC" } as const;
+    expect(formatClockTime(evening, "en-US", natural)).toBe("6:00 PM");
+    expect(formatClockTime(morning, "en-US", natural)).toBe("6:05 AM");
+    expect(formatClockTime(evening, "en-US", { timeZone: "UTC" })).toBe("06:00 PM");
+    expect(formatClockTime(evening, "pl-PL", natural)).toBe("18:00");
+    expect(formatClockTime(morning, "pl-PL", natural)).toBe("06:05");
+    expect(formatClockTime(evening, "en-GB", natural)).toBe("18:00");
+  });
 });
 
 describe("number formatting without Intl.NumberFormat.formatToParts (Hermes on iOS)", () => {

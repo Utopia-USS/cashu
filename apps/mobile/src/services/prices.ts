@@ -10,7 +10,7 @@ import { type FetchLike, MarketHttp, YahooPriceSource } from "@cashu/market/yaho
 import type { SqlPriceCache } from "@cashu/store/investments/local";
 import { collectPriceNeeds, refreshPriceNeeds } from "@cashu/store/investments/prices";
 import type { Store } from "@cashu/store/runtime";
-import { COMPANION_VAULTS } from "../fixture/companionDemo";
+import { isDemoVault } from "./demo";
 
 /** Per request, connect plus the whole body. */
 const TIMEOUT_MS = 10_000;
@@ -46,11 +46,6 @@ function timed(fetch: FetchLike, net: { answered: boolean }): FetchLike {
       clearTimeout(timer);
     }
   };
-}
-
-/** TRANSITIONAL(S44): the fixture's demo vaults keep their seeded synthetic prices, never fetched. */
-function isDemoVault(vault: string): boolean {
-  return vault === COMPANION_VAULTS.anna.vault || vault === COMPANION_VAULTS.home.vault;
 }
 
 /**

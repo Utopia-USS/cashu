@@ -45,6 +45,7 @@ export { FreshLine, type FreshLineProps } from "./status/FreshLine.js";
 export { Card } from "./surfaces/Card.js";
 export type { CardProps } from "./surfaces/Card.types.js";
 export { Facts, type FactsItem, type FactsProps } from "./surfaces/Facts.js";
+export { GroupSection, type GroupSectionProps } from "./surfaces/GroupSection.js";
 export { KpiStrip, type KpiStripItem, type KpiStripProps } from "./surfaces/KpiStrip.js";
 export { Tag } from "./surfaces/Tag.js";
 export type { TagProps, TagTone } from "./surfaces/Tag.types.js";

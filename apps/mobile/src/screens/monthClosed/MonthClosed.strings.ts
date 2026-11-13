@@ -3,15 +3,7 @@
 // month went against a usual one. PL + EN. A month arrives as `MonthName`: its nominative (capitalized
 // for a title) and the form that follows "of" (Polish genitive), both from `Intl`.
 import { catalog } from "@cashu/i18n";
-
-export interface MonthName {
-  /** Nominative, capitalized: "November", "Listopad". */
-  readonly title: string;
-  /** As in "kept in November" / "zostało z listopada": "November", "listopada". */
-  readonly of: string;
-  /** Nominative, as inside a sentence: "December", "grudzień". */
-  readonly name: string;
-}
+import type { MonthName } from "../../format/calendar";
 
 export const S = catalog({
   monthClosed: {

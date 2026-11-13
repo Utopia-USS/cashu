@@ -30,6 +30,16 @@ export const NameOnly: Story<ListRowProps> = {
   args: { lead: undefined, value: undefined, sub: undefined },
 };
 export const Dim: Story<ListRowProps> = { args: { dim: true, sub: "Paid" } };
+export const Danger: Story<ListRowProps> = {
+  args: {
+    lead: undefined,
+    value: undefined,
+    name: "Remove this phone",
+    sub: "Deletes the copy on this phone",
+    tone: "danger",
+    onPress: () => {},
+  },
+};
 export const Pressable: Story<ListRowProps> = {
   args: { onPress: () => {}, accessibilityLabel: "Grocery store, open the transaction" },
 };

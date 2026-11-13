@@ -18,6 +18,7 @@ import {
 import { signalsOwnerCommands } from "@cashu/store/investments/signals-screen";
 import { useCommand, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
+import { isShownSignal } from "@cashu/ui-logic/investments/buckets";
 import {
   canKeep,
   currentCard,
@@ -37,6 +38,7 @@ import { useRef, useState } from "react";
 import { useServices } from "../../services/ServicesProvider";
 import { type SignalTextRow, signalText } from "../investments/signalText";
 import { useInvestmentSignals } from "../investments/useInvestmentSignals";
+import type { DisplayEnv } from "../today/display";
 import { S } from "./Review.strings";
 
 const research = researchScreenCommands();
@@ -374,6 +376,45 @@ function staticCard(id: Exclude<ReviewCardId, "ideas" | "decide">, result: Curre
   }
 }
 
+// --------------------------------------------------------------------------- shown signals
+
+/**
+ * The decide items without the signals that never show (an allocation drift of the owner's own bucket,
+ * F7), per signal: a hidden lead gives way to the first shown supporting signal, the facts and the
+ * journalled signal ids lose the hidden ones (looked up among the open signals, which the store
+ * groups the items from), and an item left with no signal is dropped. Exported for the test.
+ */
+export function shownDecideItems(
+  items: readonly ReviewDecideItem[],
+  open: readonly {
+    readonly gid: string;
+    readonly kind: string;
+    readonly payload: Readonly<Record<string, unknown>>;
+  }[],
+): ReviewDecideItem[] {
+  const hidden = new Set(open.filter((s) => !isShownSignal(s)).map((s) => s.gid));
+  return items.flatMap((item) => {
+    if (item.lead === undefined) return [item];
+    const rows = [item.lead, ...(item.supporting ?? [])];
+    for (const row of rows) if (!isShownSignal(row)) hidden.add(row.gid);
+    const shown = rows.filter((row) => !hidden.has(row.gid));
+    const signals = item.signals.filter((id) => !hidden.has(id));
+    if (shown.length === rows.length && signals.length === item.signals.length) return [item];
+    const [lead, ...supporting] = shown;
+    if (lead === undefined) return [];
+    return [
+      {
+        ...item,
+        lead,
+        supporting,
+        why: item.lead === lead ? item.why : lead.message,
+        facts: supporting.map((row) => row.message),
+        signals,
+      },
+    ];
+  });
+}
+
 // --------------------------------------------------------------------------- the hook
 
 export function useReviewDeck(args: {
@@ -384,7 +425,8 @@ export function useReviewDeck(args: {
   close(): void;
 }): ReviewDeckState {
   const { moneyQueries } = useServices();
-  const { locale } = useUiEnv();
+  const ui = useUiEnv();
+  const env: DisplayEnv = { locale: ui.locale, privacy: ui.privacy, bananas: ui.bananas ?? null };
   const signals = useInvestmentSignals();
   const live = useQuery(moneyQueries.investments.review, {
     today: args.today,
@@ -411,15 +453,23 @@ export function useReviewDeck(args: {
 
   if (frozen === null) return { kind: "unavailable", onClose: args.close };
   const result = frozen;
-  const decideItems: readonly ReviewDecideItem[] = result.decide.items;
+  // A signal that never shows (an allocation drift of the owner's own bucket) is left out per signal.
+  const decideItems = shownDecideItems(
+    result.decide.items,
+    signals.status === "ready" ? signals.open : [],
+  );
   // The decide rows read the rule and alert signals as sentences with the instrument's name.
   const instruments = signals.status === "ready" ? signals.instruments : [];
+  const baseCurrency =
+    signals.status === "ready" && signals.context.status === "ready"
+      ? signals.context.allocation.base_currency
+      : null;
   const say = (
     row: SignalTextRow & { instrument: string | null; instrumentLabel: string | null },
   ) => {
     const instrument = instruments.find((i) => i.id === row.instrument);
     const name = instrument?.name || instrument?.symbol || row.instrumentLabel || "";
-    return signalText(row, { name, currency: instrument?.currency ?? null }, locale);
+    return signalText(row, { name, currency: instrument?.currency ?? null, baseCurrency }, env);
   };
   /** A decide item's title with the instrument's display name in place of the ticker. */
   const titleOf = (item: ReviewDecideItem): string =>

@@ -20,14 +20,13 @@ import {
   axisDayText,
   dayOf,
   dayText,
-  MASK,
   momentText,
   ownPriceText,
   priceText,
   ratioText,
 } from "../alert/display";
 import { isAcknowledgement, signalTitle } from "../alert/useAlertSheet";
-import type { DisplayEnv } from "../today/display";
+import { type DisplayEnv, MASK } from "../today/display";
 import { EXCHANGE, S } from "./Position.strings";
 
 type PositionRange = "1m" | "3m" | "1y" | "max";
@@ -317,7 +316,7 @@ export function usePositionScreen(args: {
     rows.push({
       kind: "signal",
       key: s.gid,
-      title: signalTitle(s, name, instrument.currency, locale),
+      title: signalTitle(s, { name, currency: instrument.currency, baseCurrency: base }, env),
       sub: s.alert === null ? S.yourRule(when) : S.yourAlert(when),
       tag: decided ? { text: S.noted, tone: "positive" } : { text: S.open, tone: "negative" },
       onPress: decided ? null : () => args.openAlert(s.gid),

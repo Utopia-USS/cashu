@@ -10,6 +10,12 @@ export const S = catalog({
   store: { pl: "Magazyn danych", en: "Store" },
   vault: { pl: "Sejf", en: "Vault" },
   openMs: { pl: "Otwarcie bazy", en: "Database open" },
+  storage: { pl: "Pliki bazy", en: "Storage" },
+  sqlcipher: {
+    pl: (version: string) => `SQLCipher ${version}`,
+    en: (version: string) => `SQLCipher ${version}`,
+  },
+  notEncrypted: { pl: "NIEZASZYFROWANE", en: "NOT encrypted" },
   fixture: { pl: "Dziennik zdarzeń demo", en: "Demo event log" },
   firstLaunch: { pl: "Załadowany przy tym uruchomieniu", en: "Loaded on this launch" },
   reopened: {

@@ -3,6 +3,7 @@
 import { CARD_LABEL, S } from "@cashu/i18n/investments/v2/Alerts.strings";
 import { csvLine } from "@cashu/ui-logic/core/csv";
 import { addDays, localDay, parseServerTime, todayLocal } from "@cashu/ui-logic/core/time";
+import { unnameBuckets } from "@cashu/ui-logic/investments/buckets";
 import {
   bucketLabel,
   DECISION_ACTION,
@@ -23,7 +24,6 @@ import {
   instName,
   price,
   ratioX,
-  unnameBuckets,
 } from "@cashu/ui-logic/investments/v2/logic";
 import type { Alert, SignalV2 } from "@cashu/ui-logic/investments/v2/types";
 

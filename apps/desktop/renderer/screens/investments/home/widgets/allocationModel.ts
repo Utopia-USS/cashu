@@ -5,6 +5,7 @@
 import { S } from "@cashu/i18n/investments/v2/Portfolio.strings";
 import type { ChartColor, DonutProps } from "@cashu/ui";
 import { bananaMoney, hideAmount } from "@cashu/ui-logic/core/incognito";
+import { allocGeneric } from "@cashu/ui-logic/investments/buckets";
 import {
   accountLabel,
   assetClass,
@@ -22,7 +23,7 @@ import {
 } from "@cashu/ui-logic/investments/labels";
 import { warningItems } from "@cashu/ui-logic/investments/logic";
 import type { Overview } from "@cashu/ui-logic/investments/types";
-import { accountSnapshot, allocGeneric, ruleKindLabel } from "@cashu/ui-logic/investments/v2/logic";
+import { accountSnapshot, ruleKindLabel } from "@cashu/ui-logic/investments/v2/logic";
 import type { InvestmentsHomeData } from "../useInvestmentsHomeData.js";
 
 export type AllocView = "buckets" | "classes" | "regions" | "accounts";

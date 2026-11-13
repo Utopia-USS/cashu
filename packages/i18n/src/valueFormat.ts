@@ -221,30 +221,56 @@ export function formatCalendarDay(
 }
 
 const clockFormats = new Map<string, Intl.DateTimeFormat>();
-function clockFormat(locale: string, timeZone: string | undefined, weekday: boolean) {
-  const key = JSON.stringify([locale, timeZone ?? null, weekday]);
+function clockFormat(
+  locale: string,
+  timeZone: string | undefined,
+  kind: "weekday" | "2-digit" | "numeric",
+) {
+  const key = JSON.stringify([locale, timeZone ?? null, kind]);
   let format = clockFormats.get(key);
   if (!format) {
     const zone = timeZone === undefined ? {} : { timeZone };
     format = new Intl.DateTimeFormat(
       locale,
-      weekday ? { weekday: "short", ...zone } : { hour: "2-digit", minute: "2-digit", ...zone },
+      kind === "weekday"
+        ? { weekday: "short", ...zone }
+        : { hour: kind, minute: "2-digit", ...zone },
     );
     clockFormats.set(key, format);
   }
   return format;
 }
 
+const twelveHour = new Map<string, boolean>();
+/** True when `locale` writes 18:00 on a 12-hour clock (read from the text: Hermes lacks some parts APIs). */
+function usesTwelveHour(locale: string): boolean {
+  let twelve = twelveHour.get(locale);
+  if (twelve === undefined) {
+    twelve = !clockFormat(locale, "UTC", "2-digit")
+      .format(new Date(Date.UTC(2000, 0, 1, 18)))
+      .includes("18");
+    twelveHour.set(locale, twelve);
+  }
+  return twelve;
+}
+
 /** The wall-clock time of an instant ("06:40", "06:40 AM"), with the short weekday in front when asked
- * ("Mon 07:30", "pon. 07:30"); in the device timezone unless `timeZone` names one. */
+ * ("Mon 07:30", "pon. 07:30"); in the device timezone unless `timeZone` names one. `naturalHour` writes a
+ * 12-hour locale's hour without the leading zero, as a setting label reads ("6:00 PM"); 24-hour locales
+ * keep two digits ("18:00"). */
 export function formatClockTime(
   at: Date,
   locale: string,
-  options: { readonly weekday?: boolean; readonly timeZone?: string } = {},
+  options: {
+    readonly weekday?: boolean;
+    readonly timeZone?: string;
+    readonly naturalHour?: boolean;
+  } = {},
 ): string {
-  const time = clockFormat(locale, options.timeZone, false).format(at);
+  const hour = options.naturalHour && usesTwelveHour(locale) ? "numeric" : "2-digit";
+  const time = clockFormat(locale, options.timeZone, hour).format(at);
   return options.weekday
-    ? `${clockFormat(locale, options.timeZone, true).format(at)} ${time}`
+    ? `${clockFormat(locale, options.timeZone, "weekday").format(at)} ${time}`
     : time;
 }
 

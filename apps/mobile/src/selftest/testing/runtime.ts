@@ -22,6 +22,26 @@ export function memoryKeyStore(sodium: crypto.Sodium): crypto.KeyStore {
   );
 }
 
+/**
+ * An in-memory stand-in for expo-secure-store's synchronous and async item API. Items are keyed by
+ * service and name, so a read with other options than the write misses as the Keychain would.
+ */
+export function memorySecureStore() {
+  const items = new Map<string, string>();
+  const at = (key: string, options?: crypto.SecureStoreOptions) =>
+    `${options?.keychainService ?? ""}/${key}`;
+  return {
+    items,
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 7,
+    getItem: (key: string, options?: crypto.SecureStoreOptions) =>
+      items.get(at(key, options)) ?? null,
+    setItem: (key: string, value: string, options?: crypto.SecureStoreOptions) =>
+      void items.set(at(key, options), value),
+    deleteItemAsync: async (key: string, options?: crypto.SecureStoreOptions) =>
+      void items.delete(at(key, options)),
+  };
+}
+
 export async function runtime(): Promise<crypto.LibsodiumLike> {
   await sodiumWrappers.ready;
   return sodiumWrappers as unknown as crypto.LibsodiumLike;

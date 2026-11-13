@@ -35,9 +35,11 @@ export const S = catalog({
     pl: "Zdecydujesz później - wróci w przeglądzie",
     en: "Decide later - back in your review",
   },
+  /** A fired alert's row; `marked`: its bell tells this phone when it fires. */
   openAlert: {
-    pl: (title: string) => `${title}, zdecyduj`,
-    en: (title: string) => `${title}, decide`,
+    pl: (title: string, marked: boolean) =>
+      `${title}${marked ? ", powiadomienia włączone" : ""}, zdecyduj`,
+    en: (title: string, marked: boolean) => `${title}${marked ? ", notifications on" : ""}, decide`,
   },
   near: { pl: "Blisko Twoich poziomów", en: "Close to your levels" },
   prices: { pl: "notowania", en: "prices" },
@@ -56,8 +58,8 @@ export const S = catalog({
   fromRules: { pl: "Z Twoich reguł", en: "From your rules" },
   fromResearch: { pl: "Z researchu", en: "From research" },
   weakens: { pl: "osłabia Twoją tezę", en: "weakens your thesis" },
-  invalidates: { pl: "podważa Twoją tezę", en: "breaks your thesis" },
-  supports: { pl: "wspiera", en: "supports" },
+  invalidates: { pl: "podważa Twoją tezę", en: "invalidates your thesis" },
+  supports: { pl: "wzmacnia", en: "supports" },
   background: { pl: "tło", en: "background" },
   nSources: {
     pl: (n: number) => plCount(n, "źródło", "źródła", "źródeł"),

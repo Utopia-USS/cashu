@@ -3,7 +3,9 @@
 // one-line summary, exchange names, the Aktywa sub line; generic bucket labels, hidden drift signals, the
 // allocation gate, server texts with bucket ids, benchmark names.
 import assert from "node:assert/strict";
+import { allocGeneric, isShownSignal, unnameBuckets } from "@cashu/ui-logic/investments/buckets";
 import {
+  bucketDisplayName,
   bucketGenitive,
   bucketLabel,
   GENERIC_BUCKET_IDS,
@@ -12,17 +14,14 @@ import {
 } from "@cashu/ui-logic/investments/labels";
 import {
   alertConditionText,
-  allocGeneric,
   benchmarkLabel,
   digestShown,
   instCardFacts,
   instMono,
   instSummary,
-  isShownSignal,
   ruleKindLabel,
   signalText,
   subLine,
-  unnameBuckets,
 } from "@cashu/ui-logic/investments/v2/logic";
 import { test } from "vitest";
 
@@ -198,6 +197,10 @@ test("generic buckets: the contract's 14 ids have Polish labels, any other id ha
   }
   assert.equal(bucketGenitive("global_equity"), "Akcji globalnych");
   assert.equal(bucketGenitive("core"), null);
+  // The display name: the generic label, else the neutral word without the id.
+  assert.equal(bucketDisplayName("global_equity"), "Akcje globalne");
+  assert.equal(bucketDisplayName("core"), "Koszyk");
+  assert.equal(bucketDisplayName(null), "Koszyk");
 });
 
 test("GF4: an allocation drift of a non-generic bucket never shows; everything else does (missing flag = generic)", () => {

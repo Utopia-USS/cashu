@@ -74,8 +74,15 @@ export function Button({
   const bare = variant === "icon" || variant === "glyph";
   const selected = Boolean(pressed) || current !== undefined;
   const text = typeof children === "string" ? children : undefined;
-  // The selected face is subtle whatever the variant, so its text takes the plain ink.
-  const tone = framed && selected ? "text-fg" : tones[variant];
+  // The selected face is subtle whatever the variant, so its text takes the plain ink; a pressed bare
+  // glyph (a toggle such as "tell this phone") has no face and turns accent instead.
+  const tone = selected
+    ? framed
+      ? "text-fg"
+      : bare
+        ? "text-accent"
+        : tones[variant]
+    : tones[variant];
   const { color: spinnerColor } = useResolveClassNames(tone);
   const strong = variant === "primary" || weight === "strong";
   const face = framed

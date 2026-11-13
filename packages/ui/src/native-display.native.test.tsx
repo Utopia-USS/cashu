@@ -18,6 +18,7 @@ import * as meterStories from "./meters/Meter.native.stories.js";
 import * as paceStories from "./meters/PaceMeter.native.stories.js";
 import * as freshStories from "./status/FreshLine.native.stories.js";
 import * as factsStories from "./surfaces/Facts.native.stories.js";
+import * as groupStories from "./surfaces/GroupSection.native.stories.js";
 import * as kpiStories from "./surfaces/KpiStrip.native.stories.js";
 import * as tagStories from "./surfaces/Tag.native.stories.js";
 import * as tileStories from "./surfaces/Tile.native.stories.js";
@@ -30,6 +31,7 @@ beforeEach(() => setLanguageForTests("en"));
 const MODULES = {
   iconStories,
   tileStories,
+  groupStories,
   figureStories,
   rowStories,
   dateLeadStories,

@@ -24,6 +24,9 @@ relative to those unless they start with `apps/` or `packages/`).
    `CASHU_PROFILE`, else the oldest profile); an MCP session serves exactly one vault and refuses an
    ambiguous slug. Why: data of one profile must never show up in another
    (`packages/store/src/investments/queries/isolation.test.ts`).
+   On the phone (`apps/mobile`) every database file (each vault, `device.db`, `market.db`) is SQLCipher
+   under one device key, the Keychain item `cashu.db.key` (service `cashu`), next to the KeyStore's
+   key-encryption key `cashu.keystore.kek`; "Remove this phone" deletes both items with the files.
 2. **Own IBANs are per profile.** "Own IBANs" (what counts as an internal transfer) are the vault's
    accounts: a transfer to a partner in another profile is a real outflow.
 3. **Net worth is per-currency: never sum currencies.** Budget analytics default to the profile's base

@@ -1,10 +1,12 @@
-// Stories of the debug screen (CSF 3, synthetic state): first launch, reopened, failures. The RNTL
-// smoke test renders every story; on-device Storybook picks the same file up once it is wired.
+// Stories of the debug screen (CSF 3, synthetic state): first launch, reopened, failures (with
+// unencrypted storage). The RNTL smoke test renders every story; on-device Storybook picks the same
+// file up once it is wired.
 import { DebugView, type DebugViewProps } from "./DebugView";
 
 const base: DebugViewProps = {
   vault: "ca000000000000000000000000000a11",
   openMs: "12",
+  cipherVersion: "4.17.0 community",
   load: { firstLaunch: true, events: 1312, applyMs: "730", rebuild: null },
   tables: [
     { table: "accounts", rows: 4 },
@@ -56,5 +58,6 @@ export const Failures = {
       },
     },
     needsUpgrade: true,
+    cipherVersion: null,
   },
 };

@@ -57,6 +57,7 @@
 @source "../meters/Meter.native.tsx";
 @source "../status/FreshLine.native.tsx";
 @source "../surfaces/Facts.native.tsx";
+@source "../surfaces/GroupSection.native.tsx";
 @source "../surfaces/KpiStrip.native.tsx";
 @source "../surfaces/Tag.native.tsx";
 @source "../surfaces/Tag.types.ts";

@@ -1,13 +1,17 @@
 // The Investments tab's Portfolio view: the value converted to the base currency (with today's and the
 // week's change, the foreign positions and the NBP table), the 12-month chart, the facts (this year, from
 // the 12-month high, the gain so far, the money added this year against the monthly plan), allocation
-// against the strategy's targets and the positions with their week and result. Two reads of the portfolio
+// against the strategy's targets (only while every bucket is generic, under its shared label, as the
+// desktop: the owner's own buckets, their targets and drift never show, F7) and the positions with
+// their week and result. Two reads of the portfolio
 // query: one month (the day's and the week's change) and one year (the chart, this year, the high).
 import { addDays, D, Decimal, type IsoDate, Money, ZERO } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
 import { pricesFetchedAt } from "@cashu/store/device";
 import { useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
+import { allocGeneric } from "@cashu/ui-logic/investments/buckets";
+import { bucketDisplayName } from "@cashu/ui-logic/investments/labels";
 import { useState } from "react";
 import { useServices } from "../../../services/ServicesProvider";
 import { useNow } from "../../../shell/useNow";
@@ -97,34 +101,6 @@ function weekly(points: readonly PerfPoint[]): PerfPoint[] {
   return picked.reverse();
 }
 
-function bucketLabel(id: string): string {
-  switch (id) {
-    case "global_equity":
-    case "global_equities":
-    case "world_equity":
-      return S.bucket_global_equity;
-    case "pl_equity":
-    case "polish_equity":
-    case "pl_equities":
-    case "equity_pl":
-      return S.bucket_pl_equity;
-    case "equity":
-    case "stocks":
-      return S.bucket_equity;
-    case "bond_etfs":
-      return S.bucket_bond_etfs;
-    case "treasury_bonds":
-      return S.bucket_treasury_bonds;
-    case "bonds":
-    case "pl_bonds":
-      return S.bucket_bonds;
-    case "cash":
-      return S.bucket_cash;
-    default:
-      return S.bucket_other(id);
-  }
-}
-
 function bucketColor(id: string): AllocationColor {
   if (id === "cash") return "inv-cash";
   if (/bond|treasury/.test(id)) return "inv-bonds";
@@ -138,6 +114,61 @@ function plannedMonths(today: IsoDate, dayOfMonth: number | null): number {
   const month = Number(today.slice(5, 7));
   const day = Number(today.slice(8, 10));
   return dayOfMonth !== null && day < dayOfMonth ? month - 1 : month;
+}
+
+type Allocation = Extract<PortfolioViewProps, { status: "ready" }>["allocation"];
+
+/**
+ * Allocation against the strategy's targets, only while every bucket is generic (the desktop's
+ * `allocGeneric`); otherwise neither the rows nor the drift status show (F7). Exported for its test.
+ */
+export function allocationProps(allocation: {
+  readonly buckets: readonly {
+    readonly bucket_id: string;
+    readonly generic?: boolean | null;
+    readonly weight: number | null;
+    readonly target: number | null;
+    readonly drift_pp: number | null;
+  }[];
+  readonly buckets_generic?: boolean | null;
+  readonly unclassified: { readonly weight: number | null } | null;
+}): Allocation {
+  const buckets = allocGeneric(allocation) ? allocation.buckets : [];
+  const rows: Allocation["rows"][number][] = buckets.map((b) => ({
+    key: b.bucket_id,
+    label: bucketDisplayName(b.bucket_id),
+    now: ratio(b.weight ?? 0),
+    target: b.target === null ? null : ratio(b.target),
+    color: bucketColor(b.bucket_id),
+  }));
+  const unclassified = allocation.unclassified;
+  if (buckets.length > 0 && unclassified !== null && (unclassified.weight ?? 0) > 0)
+    rows.push({
+      key: "unbucketed",
+      label: S.unbucketed,
+      now: ratio(unclassified.weight ?? 0),
+      target: null,
+      color: "inv-other",
+    });
+  const worst = buckets
+    .filter((b) => b.target !== null && b.drift_pp !== null)
+    .reduce<(typeof buckets)[number] | null>(
+      (w, b) => (w === null || Math.abs(b.drift_pp ?? 0) > Math.abs(w.drift_pp ?? 0) ? b : w),
+      null,
+    );
+  const drift =
+    worst === null
+      ? null
+      : Math.abs(worst.drift_pp ?? 0) < ON_TARGET_PP
+        ? { label: S.onTarget, tone: "ok" as const }
+        : {
+            label: ((worst.drift_pp ?? 0) < 0 ? S.below : S.above)(
+              bucketDisplayName(worst.bucket_id),
+              `${Math.round(Math.abs(worst.drift_pp ?? 0))}%`,
+            ),
+            tone: "warn" as const,
+          };
+  return { rows, drift };
 }
 
 function portfolioProps(
@@ -215,43 +246,7 @@ function portfolioProps(
       ? null
       : money(plan.monthlyAmount.mul(D(String(plannedMonths(today, plan.dayOfMonth ?? null)))));
 
-  // Allocation against the strategy's targets.
-  const buckets = month.allocation.buckets;
-  const rows: Extract<PortfolioViewProps, { status: "ready" }>["allocation"]["rows"][number][] =
-    buckets.map((b) => ({
-      key: b.bucket_id,
-      label: bucketLabel(b.bucket_id),
-      now: ratio(b.weight ?? 0),
-      target: b.target === null ? null : ratio(b.target),
-      color: bucketColor(b.bucket_id),
-    }));
-  const unclassified = month.allocation.unclassified;
-  if (unclassified !== null && (unclassified.weight ?? 0) > 0)
-    rows.push({
-      key: "unbucketed",
-      label: S.unbucketed,
-      now: ratio(unclassified.weight ?? 0),
-      target: null,
-      color: "inv-other",
-    });
-  const worst = buckets
-    .filter((b) => b.target !== null && b.drift_pp !== null)
-    .reduce<(typeof buckets)[number] | null>(
-      (w, b) => (w === null || Math.abs(b.drift_pp ?? 0) > Math.abs(w.drift_pp ?? 0) ? b : w),
-      null,
-    );
-  const drift =
-    worst === null
-      ? null
-      : Math.abs(worst.drift_pp ?? 0) < ON_TARGET_PP
-        ? { label: S.onTarget, tone: "ok" as const }
-        : {
-            label: ((worst.drift_pp ?? 0) < 0 ? S.below : S.above)(
-              bucketLabel(worst.bucket_id),
-              `${Math.round(Math.abs(worst.drift_pp ?? 0))}%`,
-            ),
-            tone: "warn" as const,
-          };
+  const { rows, drift } = allocationProps(month.allocation);
 
   // Positions, each in its own currency, with the foreign ones listed beside the converted value.
   const incl = new Map<string, Decimal>();

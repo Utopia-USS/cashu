@@ -37,8 +37,17 @@ function Fired({ props }: { props: ReadySignalsProps }) {
             lead={<Glyph icon="bell" tone="negative" />}
             name={row.title}
             sub={row.sub}
-            value={<Icon name="chevron-right" className="text-fg-muted" />}
-            accessibilityLabel={S.openAlert(row.title)}
+            value={
+              row.marked ? (
+                <View className="flex-row items-center gap-1">
+                  <Icon name="bell" size={16} className="text-accent" />
+                  <Icon name="chevron-right" className="text-fg-muted" />
+                </View>
+              ) : (
+                <Icon name="chevron-right" className="text-fg-muted" />
+              )
+            }
+            accessibilityLabel={S.openAlert(row.title, row.marked)}
             onPress={() => props.onAlertPressed(row.gid)}
           />
         ),
@@ -75,6 +84,7 @@ function Rules({ props }: { props: ReadySignalsProps }) {
           first={i === 0}
           lead={<Glyph icon="sparkle" tone={row.tone} />}
           name={row.message}
+          nameLines={2}
           sub={row.sub}
         />
       ))}

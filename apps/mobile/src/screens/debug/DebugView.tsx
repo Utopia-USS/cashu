@@ -23,6 +23,8 @@ export interface DebugLoad {
 export interface DebugViewProps {
   readonly vault: string;
   readonly openMs: string;
+  /** SQLCipher's version of this launch's database files; null when they are not encrypted. */
+  readonly cipherVersion: string | null;
   readonly load: DebugLoad | null;
   readonly tables: readonly { readonly table: string; readonly rows: number }[];
   readonly cursors: number;
@@ -54,6 +56,10 @@ export function DebugView(props: DebugViewProps) {
         <Section title={S.store}>
           <Line label={S.vault} value={vault.slice(0, 8)} />
           <Line label={S.openMs} value={S.ms(openMs)} />
+          <Line
+            label={S.storage}
+            value={props.cipherVersion === null ? S.notEncrypted : S.sqlcipher(props.cipherVersion)}
+          />
         </Section>
         <Section title={S.fixture}>
           {load === null ? (

@@ -3,6 +3,7 @@
 // source overrides `now` and the time zone; `today` is the shell's day.
 import { useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
+import { isShownSignal } from "@cashu/ui-logic/investments/buckets";
 import { deviceTimeZone } from "../../services/investments";
 import { useServices } from "../../services/ServicesProvider";
 import { useNow } from "../../shell/useNow";
@@ -28,14 +29,16 @@ export type OpenSignal = ReadySignals["open"][number];
 /**
  * An open signal waiting for the owner's decision: an action signal (the strategy's immediate severity)
  * with no decision covering it, not snoozed, and not research (research that weakens a thesis shows in
- * the list but never counts: the count means "waiting for your decision").
+ * the list but never counts: the count means "waiting for your decision"). A signal that never shows
+ * (an allocation drift of the owner's own bucket) never counts either.
  */
 export function waitsForDecision(signal: OpenSignal): boolean {
   return (
     signal.severity === "action" &&
     signal.decisions.length === 0 &&
     !signal.snoozed &&
-    signal.source !== "research"
+    signal.source !== "research" &&
+    isShownSignal(signal)
   );
 }
 

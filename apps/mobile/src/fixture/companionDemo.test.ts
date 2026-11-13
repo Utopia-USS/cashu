@@ -156,7 +156,7 @@ describe("companion demo", () => {
     }
   });
 
-  it("builds Anna's portfolio: accounts, instruments, deposits, the fired alert, research, strategy", () => {
+  it("builds Anna's portfolio: accounts, instruments, deposits, the fired alerts, research, strategy", () => {
     const { store } = build("anna");
     const cacheDb = new Database(":memory:");
     try {
@@ -172,12 +172,19 @@ describe("companion demo", () => {
         count(store, "SELECT COUNT(*) AS n FROM inv_transactions WHERE type = 'deposit'"),
       ).toBeGreaterThanOrEqual(36);
       const open = investmentsQueries.openSignals(read);
+      // Both CD Projekt alerts fired: the % move (waits for a decision) and the close below its 5-session
+      // average (information).
       const alertSignals = open.filter((s) => s.ruleId.startsWith("alert:"));
-      expect(alertSignals).toHaveLength(1);
-      expect(alertSignals[0]?.severity).toBe("action");
-      const [alert] = investmentsQueries.alerts(read, parseDateTime(`${TODAY}T07:00:00Z`));
-      expect(alert?.title).toBe("CDR -8% in 5 sessions");
-      expect(alert?.lastTriggeredAt).not.toBeNull();
+      expect(alertSignals.map((s) => [s.kind, s.severity]).sort()).toEqual([
+        ["alert:change_pct", "action"],
+        ["alert:sma_cross", "info"],
+      ]);
+      const alerts = investmentsQueries.alerts(read, parseDateTime(`${TODAY}T07:00:00Z`));
+      expect(alerts.map((a) => a.title).sort()).toEqual([
+        "CDR -8% in 5 sessions",
+        "CDR below its 5-session average",
+      ]);
+      expect(alerts.every((a) => a.lastTriggeredAt !== null)).toBe(true);
       const notes = investmentsResearch.noteRows(read, "1 = 1", []);
       expect(notes.filter((n) => n.thesisRelation === "weakens")).toHaveLength(1);
       const version = investmentsQueries.latestStrategyVersion(read);
@@ -204,11 +211,17 @@ describe("companion demo", () => {
       expect(cdr?.value?.toString()).toBe("9657.00");
       expect(cdr?.weight).toBeGreaterThan(0.07);
       expect(cdr?.weight).toBeLessThan(0.08);
-      // What the daily evaluation opened on this portfolio: the alert and the concentration rule.
-      expect(open.map((s) => s.ruleId.replace(/^alert:.*/u, "alert:<gid>")).sort()).toEqual([
-        "alert:<gid>",
-        "single_stock_limit",
+      // What the daily evaluation opened on this portfolio: the two alerts and the concentration rule
+      // (tagged_weight and allocation_drift skip while CD Projekt is in no bucket; the deposits are on
+      // plan, the cash is low and no ETF fell 20%).
+      expect(open.map((s) => s.kind).sort()).toEqual([
+        "alert:change_pct",
+        "alert:sma_cross",
+        "position_concentration",
       ]);
+      expect(open.find((s) => s.kind === "position_concentration")?.ruleId).toBe(
+        "single_stock_limit",
+      );
     } finally {
       store.close();
       cacheDb.close();

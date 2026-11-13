@@ -2,13 +2,14 @@
 // name, ticker price, rate and amount is SYNTHETIC: two brokerage accounts (IKE at DIF, a regular one at
 // XTB), six instruments, 36 monthly PLN 1,000 deposits into the IKE (the bank side sends PLN 1,000 to
 // "DOM MAKLERSKI DEMO" on the 11th) on top of opening deposits dated before the bank history, a CD
-// Projekt thesis and an alert, a research run with three notes and a candidate, two journal decisions,
-// and the leader's daily evaluation run once over the seeded prices, so the alert fires and the
-// strategy rules open what they open. Prices are a seeded random walk per instrument pinned to fixed
-// end values (CD Projekt ends at PLN 214.60 after a 9.4% fall over 5 sessions); the same series goes
-// into the device price cache (`seedCompanionPrices`); the phone's own Yahoo refresh skips the demo
-// vaults (`refreshPrices`), so the story holds online too. Runs through the narrow commands entry, plus
-// the leader-only demo-commands entry for the daily evaluation.
+// Projekt thesis and two alerts on it (a % move and a close below its 5-session average), a research run
+// with three notes and a candidate, two journal decisions, and the leader's daily evaluation run once
+// over the seeded prices, so both alerts fire and the strategy rules open what they open. Prices are a
+// seeded random walk per instrument pinned to fixed end values (CD Projekt ends at PLN 214.60 after a
+// 9.4% fall over 5 sessions); the same series goes into the device price cache (`seedCompanionPrices`);
+// the phone's own Yahoo refresh skips the demo vaults (`refreshPrices`), so the story holds online
+// too. Runs through the narrow commands entry, plus the leader-only demo-commands entry for the daily
+// evaluation.
 import { addDays, D, type DateTime, type IsoDate, parseDateTime } from "@cashu/domain";
 import { market, toCurrency } from "@cashu/domain/investments";
 import { strategyTemplate } from "@cashu/domain/investments/strategy";
@@ -30,6 +31,7 @@ import {
 import { dailyEvaluation } from "@cashu/store/investments/demo-commands";
 import type { SqlPriceCache } from "@cashu/store/investments/local";
 import { latestStrategyVersion, strategySnapshot } from "@cashu/store/investments/screen-sources";
+import { readSignalRows } from "@cashu/store/investments/signals-screen";
 import type { Read } from "@cashu/store/query";
 
 type Apply = <I, R>(command: Command<I, R>, input: unknown) => R;
@@ -447,6 +449,17 @@ export function planAnnaInvestments(deps: {
       polarity: "negative",
     }),
   );
+  // A trend alert: CD Projekt closing below its 5-session average (the seeded fall crosses it).
+  step(at(alertDay, 20, 5), () =>
+    apply(createAlert, {
+      kind: "sma_cross",
+      title: "CDR below its 5-session average",
+      params: { window_days: 5, direction: "below" },
+      instrument: gid("CDR"),
+      severity: "info",
+      polarity: "negative",
+    }),
+  );
 
   // Saturday's research run: three notes and a candidate.
   const saturday = lastSaturday(today);
@@ -578,4 +591,15 @@ export function planAnnaInvestments(deps: {
       trigger: "demo",
     });
   });
+}
+
+/**
+ * The alert the demo marks "tell my phone" on this device: the CD Projekt % move, the demo's one action
+ * alert (the 5-session average alert is info). Null before the build fired it.
+ */
+export function companionMarkedAlert(read: Read, now: string): string | null {
+  return (
+    readSignalRows(read, now, "all").find((s) => s.alert !== null && s.severity === "action")
+      ?.alert ?? null
+  );
 }

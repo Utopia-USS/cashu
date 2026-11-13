@@ -5,6 +5,7 @@ import { S } from "@cashu/i18n/investments/v2/Overview.strings";
 import type { FlowFact } from "@cashu/ui";
 import { MONTH_NOM } from "@cashu/ui-logic/core/format";
 import { addDays } from "@cashu/ui-logic/core/time";
+import { allocGeneric } from "@cashu/ui-logic/investments/buckets";
 import {
   bucketLabel,
   dm,
@@ -17,7 +18,6 @@ import {
 } from "@cashu/ui-logic/investments/labels";
 import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import {
-  allocGeneric,
   benchmarkLabel,
   changeSince,
   contributionPp,

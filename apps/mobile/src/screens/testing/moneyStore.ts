@@ -18,8 +18,10 @@ import { DeviceStore, setCurrentVault } from "@cashu/store/device";
 import { SqlPriceCache } from "@cashu/store/investments/local";
 import { createSyncClient, type VaultHandle } from "@cashu/store-react/local";
 import Database from "better-sqlite3";
+import { servicesCloser } from "../../services/lifecycle";
 import { createMoneyQueries, type MoneyQueryContext } from "../../services/moneyQueries";
 import type { Services } from "../../services/services";
+import { memoryAuthenticator } from "../../shell/testing/auth";
 
 export const MONEY_VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa261";
 export const MONEY_VAULT_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbb262";
@@ -92,8 +94,11 @@ export function moneyStore(context: MoneyQueryContext = { prices: null }) {
     [MONEY_VAULT_A, a.store],
     [MONEY_VAULT_B, b.store],
   ]);
+  // Unused by money screens (their queries take `context`); an empty in-memory cache.
+  const prices = new SqlPriceCache(betterSqlite3Driver(new Database(":memory:")));
   const services: Services = {
     client,
+    device,
     moneyQueries: createMoneyQueries(context),
     store: a.store,
     storeOf: (vault) => {
@@ -102,15 +107,32 @@ export function moneyStore(context: MoneyQueryContext = { prices: null }) {
       return store;
     },
     profiles: [
-      { vault: MONEY_VAULT_A, slug: "synthetic-money", name: "Synthetic A", modules: ["budget"] },
-      { vault: MONEY_VAULT_B, slug: "synthetic-money", name: "Synthetic B", modules: ["budget"] },
+      {
+        vault: MONEY_VAULT_A,
+        slug: "synthetic-money",
+        name: "Synthetic A",
+        modules: ["budget"],
+        role: "owner",
+      },
+      {
+        vault: MONEY_VAULT_B,
+        slug: "synthetic-money",
+        name: "Synthetic B",
+        modules: ["budget"],
+        role: "partner",
+      },
     ],
-    // Unused by money screens (their queries take `context`); an empty in-memory cache.
-    prices: new SqlPriceCache(betterSqlite3Driver(new Database(":memory:"))),
+    prices,
     openMs: 0,
     firstLoad: [],
     // Unused by money screens. These tests never claim a crypto self-test ran.
     cryptoSelfTest: Promise.resolve({ checks: [], ok: false, nativeAead: "not_run" }),
+    // better-sqlite3 has no SQLCipher: test files are never encrypted.
+    storage: { cipherVersion: null },
+    // The lock prompts nothing unless a test scripts it; off by default like the demo.
+    auth: memoryAuthenticator(),
+    isDemo: true,
+    close: servicesCloser({ client, vaults: [a.store, b.store], prices, device }),
   };
   return {
     a,
@@ -118,12 +140,7 @@ export function moneyStore(context: MoneyQueryContext = { prices: null }) {
     device,
     client,
     services,
-    close() {
-      client.dispose();
-      device.close();
-      a.store.close();
-      b.store.close();
-    },
+    close: services.close,
   };
 }
 

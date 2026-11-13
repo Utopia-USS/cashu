@@ -1,17 +1,21 @@
-// The Investments tab's Signals view: since the last review, the alerts that fired (waiting for a
-// decision or the decision taken), the price alerts close to their level (public prices, shown in
-// incognito too), the open signals of the strategy's rules, the research of the last two weeks with its
-// relation to the thesis, and the last decisions. Alerts and rules run on the Mac; the phone reads them.
+// The Investments tab's Signals view: since the last review, the alerts that fired (an action alert
+// waiting for a decision, an info alert as a fact, or the decision taken), the price alerts close to their level (public prices, shown in
+// incognito too), the open signals of the strategy's rules (as sentences; an allocation drift of the
+// owner's own bucket never shows, F7), the research of the last two weeks with its relation to the thesis,
+// and the last decisions. Alerts and rules run on the Mac; the phone reads them.
 import { addDays, Decimal, type IsoDate } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
-import { useQuery } from "@cashu/store-react";
+import { markedAlerts } from "@cashu/store/device";
+import { useProfile, useQuery } from "@cashu/store-react";
 import { type TagTone, useUiEnv } from "@cashu/ui/native";
+import { isShownSignal } from "@cashu/ui-logic/investments/buckets";
 import { useServices } from "../../../services/ServicesProvider";
 import { useNow } from "../../../shell/useNow";
 import { localToday } from "../../screenContext";
+import type { DisplayEnv } from "../../today/display";
 import { dayMonth, instantOf, uiLang, weekdayDayMonth, whenLabel } from "../format";
 import type { ReadySignalsProps, SignalsViewProps } from "../investments-contracts";
-import { signalText } from "../signalText";
+import { type SignalSubject, safeText, signalText } from "../signalText";
 import { type ReadySignals, useInvestmentSignals } from "../useInvestmentSignals";
 import { S } from "./Signals.strings";
 
@@ -67,24 +71,36 @@ function relation(note: Note): { tag: string; tone: TagTone } {
   }
 }
 
-function signalsProps(
+/** The Signals view's props from the signals and research reads (pure; exported for its test). */
+export function signalsProps(
   signals: ReadySignals,
   notes: Notes,
   input: {
     readonly today: IsoDate;
     readonly now: Date;
-    readonly locale: string;
+    readonly env: DisplayEnv;
     readonly onAlertPressed: (gid: string) => void;
     readonly onNotePressed: (gid: string) => void;
+    /** Alert gids marked "tell this phone" on this device. */
+    readonly marked: readonly string[];
   },
 ): ReadySignalsProps {
-  const { locale, now, today } = input;
+  const { env, now, today } = input;
+  const { locale } = env;
   const names = new Map<string, string>(
     signals.instruments.map((i) => [i.id, i.name || i.symbol || i.id]),
   );
   const nameOf = (gid: string | null, fallback: string | null) =>
     (gid === null ? null : names.get(gid)) ?? fallback ?? S.portfolio;
   const currencies = new Map<string, string>(signals.instruments.map((i) => [i.id, i.currency]));
+  const baseCurrency =
+    signals.context.status === "ready" ? signals.context.allocation.base_currency : null;
+  /** Who a signal is about, for its sentence ("" for a portfolio-wide one). */
+  const subjectOf = (s: SignalRow, name: string): SignalSubject => ({
+    name,
+    currency: (s.instrument === null ? null : currencies.get(s.instrument)) ?? null,
+    baseCurrency,
+  });
 
   const lastReview = signals.lastReviewAt === null ? null : instantOf(signals.lastReviewAt);
   const sinceMs = lastReview?.getTime() ?? now.getTime() - 7 * 86_400_000;
@@ -102,24 +118,38 @@ function signalsProps(
       const change = num(params.change);
       const days = num(params.window_days);
       const name = nameOf(s.instrument, s.instrumentLabel);
-      const title =
-        s.messageCode === "alert.change_pct" && change !== null && days !== null
-          ? (change < 0 || params.direction === "down" ? S.fell : S.rose)(
-              name,
-              pctText(change, locale),
-              days,
-            )
-          : typeof params.title === "string"
-            ? params.title
-            : s.message;
+      const moved = s.messageCode === "alert.change_pct" && change !== null && days !== null;
+      // Other kinds keep the alert's own title as the row name and read their facts in the sub line.
+      // Titles and engine texts may name the owner's bucket or carry amounts: shown made safe.
+      const sentence = moved
+        ? null
+        : signalText(s, subjectOf(s, s.instrument === null ? "" : name), env);
+      const message = safeText(s.message, env);
+      const title = moved
+        ? (change < 0 || params.direction === "down" ? S.fell : S.rose)(
+            name,
+            pctText(change, locale),
+            days,
+          )
+        : typeof params.title === "string"
+          ? safeText(params.title, env)
+          : (sentence ?? message);
       const decision = s.decisions[0];
-      if (decision === undefined)
+      const marked = s.alert !== null && input.marked.includes(s.alert);
+      if (decision === undefined) {
+        // Only an action alert waits for a decision (as the tab count); an info alert is a fact.
+        const facts =
+          sentence !== null && sentence !== title && sentence !== message
+            ? [sentence]
+            : [polarityLabel(s.polarity), whenLabel(instantOf(s.firstSeenAt), now, locale)];
         return {
           gid: s.gid,
           title,
-          sub: `${polarityLabel(s.polarity)} · ${whenLabel(instantOf(s.firstSeenAt), now, locale)} · ${S.waitingForDecision}`,
+          sub: [...facts, ...(s.severity === "action" ? [S.waitingForDecision] : [])].join(" · "),
           decided: false,
+          marked,
         };
+      }
       return {
         gid: s.gid,
         title: S.noted(name),
@@ -128,6 +158,7 @@ function signalsProps(
             ? S.decideLater
             : actionLabel(decision.action),
         decided: true,
+        marked,
       };
     });
 
@@ -158,16 +189,13 @@ function signalsProps(
 
   // The strategy's rules: open signals that are neither alerts nor research.
   const rules = signals.open
-    .filter((s) => s.alert === null && s.source !== "research")
+    .filter((s) => s.alert === null && s.source !== "research" && isShownSignal(s))
     .map((s) => ({
       gid: s.gid,
       message: signalText(
         s,
-        {
-          name: nameOf(s.instrument, s.instrumentLabel),
-          currency: (s.instrument === null ? null : currencies.get(s.instrument)) ?? null,
-        },
-        locale,
+        subjectOf(s, s.instrument === null ? "" : nameOf(s.instrument, s.instrumentLabel)),
+        env,
       ),
       sub: `${polarityLabel(s.polarity)} · ${whenLabel(instantOf(s.firstSeenAt), now, locale)}`,
       tone:
@@ -235,17 +263,20 @@ export function useSignalsSection(args: {
   readonly openAlert: (signal: string) => void;
   readonly openNote: (note: string) => void;
 }): SignalsViewProps {
-  const { locale } = useUiEnv();
+  const ui = useUiEnv();
+  const { locale } = ui;
   const { moneyQueries } = useServices();
   const { today, now } = useNow();
   const signals = useInvestmentSignals();
   const notes = useQuery(moneyQueries.investments.research.notes, { today, lang: uiLang(locale) });
+  const marked = useQuery(markedAlerts, { vault: useProfile() });
   if (signals.status !== "ready") return { status: "unavailable", message: S.unavailable };
   return signalsProps(signals, notes, {
     today,
     now: new Date(now),
-    locale,
+    env: { locale, privacy: ui.privacy, bananas: ui.bananas ?? null },
     onAlertPressed: args.openAlert,
     onNotePressed: args.openNote,
+    marked,
   });
 }

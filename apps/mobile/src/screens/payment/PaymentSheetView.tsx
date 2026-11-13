@@ -6,47 +6,19 @@ import {
   CategoryGrid,
   EmptyState,
   Figure,
+  GroupSection,
   Icon,
   ListRow,
   Money as MoneyValue,
   NoteLine,
   ToggleRow,
 } from "@cashu/ui/native";
-import type { ReactNode } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { S } from "./Payment.strings";
 import type { PaymentSheetState } from "./usePaymentSheet";
 
 export type PaymentSheetViewProps = PaymentSheetState;
 type Ready = Extract<PaymentSheetState, { kind: "ready" }>;
-
-function Section({
-  title,
-  meta,
-  children,
-}: {
-  title?: string;
-  meta?: string | null;
-  children: ReactNode;
-}) {
-  return (
-    <View className="gap-2">
-      {title !== undefined && (
-        <View className="flex-row items-center justify-between gap-2 px-1">
-          <Text role="heading" className="shrink text-caption font-demi text-fg-muted">
-            {title}
-          </Text>
-          {meta != null && <Text className="shrink text-caption text-accent">{meta}</Text>}
-        </View>
-      )}
-      {children}
-    </View>
-  );
-}
-
-function Group({ children }: { children: ReactNode }) {
-  return <View className="rounded-xl bg-surface-raised px-4">{children}</View>;
-}
 
 function CloseButton({ onClose }: { onClose(): void }) {
   return (
@@ -60,7 +32,8 @@ function Category({ props }: { props: Ready }) {
   const { category, rule } = props;
   if (category === null) return null;
   return (
-    <Section
+    <GroupSection
+      grouped={false}
       title={S.category}
       meta={category.suggestedLabel === null ? null : S.suggested(category.suggestedLabel)}
     >
@@ -82,7 +55,7 @@ function Category({ props }: { props: Ready }) {
         </Text>
       )}
       {rule !== null && (
-        <Group>
+        <GroupSection>
           <ToggleRow
             label={rule.title}
             sub={rule.sub}
@@ -91,24 +64,24 @@ function Category({ props }: { props: Ready }) {
             disabled={!rule.enabled || rule.isSaving}
             {...(rule.fixed === null ? {} : { fixed: true })}
           />
-        </Group>
+        </GroupSection>
       )}
-    </Section>
+    </GroupSection>
   );
 }
 
 function Details({ props }: { props: Ready }) {
   return (
-    <Section title={S.details}>
-      <Group>
+    <GroupSection grouped={false} title={S.details}>
+      <GroupSection>
         <ListRow first name={S.account} value={props.account} />
         <ListRow name={S.date} value={props.dateLabel} />
         {props.statement !== null && <ListRow name={S.statement} sub={props.statement} />}
-      </Group>
+      </GroupSection>
       {props.batch !== null && (
         <Text className="px-1 text-caption text-fg-muted">{props.batch}</Text>
       )}
-    </Section>
+    </GroupSection>
   );
 }
 
@@ -117,18 +90,16 @@ function Earlier({ props }: { props: Ready }) {
     return <NoteLine icon="search">{S.firstPayment(props.payee)}</NoteLine>;
   }
   return (
-    <Section title={S.earlierWith(props.payee)}>
-      <Group>
-        {props.earlier.rows.map((row, i) => (
-          <ListRow
-            key={row.gid}
-            first={i === 0}
-            name={row.dateLabel}
-            value={<MoneyValue value={row.amount} weight="strong" />}
-          />
-        ))}
-      </Group>
-    </Section>
+    <GroupSection title={S.earlierWith(props.payee)}>
+      {props.earlier.rows.map((row, i) => (
+        <ListRow
+          key={row.gid}
+          first={i === 0}
+          name={row.dateLabel}
+          value={<MoneyValue value={row.amount} weight="strong" />}
+        />
+      ))}
+    </GroupSection>
   );
 }
 

@@ -34,6 +34,8 @@ export const S = catalog({
     pl: (n: number) => plCount(n, "koszyk", "koszyki", "koszyków"),
     en: (n: number) => enCount(n, "bucket", "buckets"),
   },
+  /** The owner's own (non-generic) bucket, named without its id (F7-generic). */
+  bucketFallback: { pl: "Koszyk", en: "Bucket" },
   nRules: {
     pl: (n: number) => plCount(n, "reguła", "reguły", "reguł"),
     en: (n: number) => enCount(n, "rule", "rules"),

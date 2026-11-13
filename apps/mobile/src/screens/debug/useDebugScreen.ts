@@ -138,6 +138,7 @@ export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
   return {
     vault: store.vault,
     openMs: ms(services.openMs),
+    cipherVersion: services.storage.cipherVersion,
     load,
     tables: counts.filter((c) => c.rows > 0),
     cursors: store.cursors().size,

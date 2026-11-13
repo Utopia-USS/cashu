@@ -6,6 +6,7 @@ import { formatDecimalValue } from "@cashu/i18n/values";
 import { useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
 import { parseMarkdown, stripFrontmatter } from "@cashu/ui-logic/core/markdown";
+import { isShownSignal, unnameBuckets } from "@cashu/ui-logic/investments/buckets";
 import { RULE_KIND } from "@cashu/ui-logic/investments/v2/logic.strings";
 import { useServices } from "../../../services/ServicesProvider";
 import { localToday } from "../../screenContext";
@@ -60,7 +61,10 @@ function ruleName(rule: Rule, locale: string): string {
       return days === null ? S.ruleOther : S.ruleDeposit(days);
     }
     case "custom":
-      return typeof p.message === "string" && p.message !== "" ? p.message : S.ruleCustom;
+      // The owner's message may name the owner's own bucket (F7).
+      return typeof p.message === "string" && p.message !== ""
+        ? unnameBuckets(p.message)
+        : S.ruleCustom;
     default:
       return S.ruleOther;
   }
@@ -76,7 +80,10 @@ function strategyProps(
   locale: string,
 ): StrategyViewProps {
   if (reader.status !== "current") return { document: null, rules: [], alertsCount: 0 };
-  const firing = new Set(signals.status === "ready" ? signals.open.map((s) => s.ruleId) : []);
+  // A signal that never shows (a drift of the owner's own bucket) does not mark its rule as fired.
+  const firing = new Set(
+    signals.status === "ready" ? signals.open.filter(isShownSignal).map((s) => s.ruleId) : [],
+  );
   const md = reader.version.mdText;
   const counts = signals.status === "ready" ? signals.counts : null;
   return {

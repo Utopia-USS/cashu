@@ -56,8 +56,8 @@ const ready: PortfolioViewProps = {
   },
   allocation: {
     rows: [
-      { key: "g", label: "Global stocks", now: D("0.61"), target: D("0.6"), color: "inv-global" },
-      { key: "p", label: "Polish stocks", now: D("0.16"), target: D("0.15"), color: "inv-pl" },
+      { key: "g", label: "Global equities", now: D("0.61"), target: D("0.6"), color: "inv-global" },
+      { key: "p", label: "Gold", now: D("0.16"), target: D("0.15"), color: "inv-other" },
       { key: "b", label: "Bonds", now: D("0.17"), target: D("0.2"), color: "inv-bonds" },
       { key: "c", label: "Cash", now: D("0.06"), target: D("0.05"), color: "inv-cash" },
     ],
@@ -113,6 +113,10 @@ const meta = { title: "Mobile/Investments/Portfolio", component: PortfolioView, 
 export default meta;
 
 export const Ready = { args: ready };
+/** The owner's own strategy buckets: no targets, no drift, no allocation block (F7, as the desktop). */
+export const OwnBuckets = {
+  args: { ...ready, allocation: { rows: [], drift: null } } satisfies PortfolioViewProps,
+};
 export const StalePrices = { args: { ...ready, pricesStale: 2 } satisfies PortfolioViewProps };
 export const EmptyPortfolio = {
   args: {

@@ -9,14 +9,6 @@ const enWin = (d: Days) => (d == null ? "" : d >= 250 ? "52 weeks" : `${d} sessi
 /** The window as an adjective before "high" / "low": "52-week", "30-session". */
 const enWinAdj = (d: Days) => (d == null ? "" : d >= 250 ? "52-week " : `${d}-session `);
 
-/** Expression bucket functions over a non-generic bucket, shown as a phrase instead of the call. */
-export const BUCKET_FN = catalog({
-  bucket_weight: { pl: "waga koszyka", en: "bucket weight" },
-  bucket_target: { pl: "cel koszyka", en: "bucket target" },
-  bucket_drift_pp: { pl: "dryf koszyka", en: "bucket drift" },
-  bucket_value: { pl: "wartość koszyka", en: "bucket value" },
-});
-
 /** Rule kinds (a rule's strategy id never reaches the UI). */
 export const RULE_KIND = catalog({
   drawdown_from_high: { pl: "transza spadkowa", en: "drawdown tranche" },

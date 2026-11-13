@@ -5,6 +5,7 @@
 import { setLanguageForTests } from "@cashu/i18n";
 import { lastReview } from "@cashu/store/investments/queries";
 import { readReviewDue, undoSavedReview } from "@cashu/store/investments/review-screen";
+import { runQuery } from "@cashu/store/query";
 import { ProfileProvider, StoreProvider } from "@cashu/store-react";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, render, screen } from "@testing-library/react-native";
@@ -14,7 +15,7 @@ import { ServicesProvider } from "../../services/ServicesProvider";
 import { type InvestmentsStore, investmentsStore } from "../testing/investmentsStore";
 import { ReviewDeckView } from "./ReviewDeckView";
 import reviewMeta, * as stories from "./ReviewDeckView.stories";
-import { type ReviewDeckState, useReviewDeck } from "./useReviewDeck";
+import { type ReviewDeckState, shownDecideItems, useReviewDeck } from "./useReviewDeck";
 
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
 
@@ -143,7 +144,10 @@ describe("weekly review deck with the real synchronous store", () => {
     expect(body.rows.map((r) => [r.why, r.facts])).toEqual([
       [
         "CD Projekt fell 9.4% in 5 sessions (PLN\u00a0236.87 → PLN\u00a0214.60)",
-        ["CD Projekt is 7.5% of the portfolio (your limit 5%)"],
+        [
+          "CD Projekt closed below its 5-session average (PLN\u00a0214.60 vs PLN\u00a0223.33)",
+          "CD Projekt is 7.5% of the portfolio (your limit 5%)",
+        ],
       ],
     ]);
 
@@ -289,4 +293,46 @@ it.each(storyList)("renders the %s story through the native View", async (_name,
     </Env>,
   );
   expect(screen.root).toBeOnTheScreen();
+});
+
+describe("the decide rows without the owner's own bucket drift", () => {
+  it("drops a hidden signal per signal: the lead gives way, the facts and the journal lose it", () => {
+    const kit = setup();
+    const result = runQuery(kit.store, kit.services.moneyQueries.investments.review, {
+      today: kit.today,
+      lang: "en",
+      open: true,
+    }).value;
+    if (result.status !== "current") throw new Error("review not current");
+    const item = result.decide.items.find((i) => i.lead !== undefined);
+    if (item?.lead === undefined) throw new Error("no signal-led decide item");
+    const hidden = {
+      ...item.lead,
+      gid: "drift-core",
+      kind: "allocation_drift",
+      message: "Bucket core: 42% against a 35% target",
+      payload: { bucket_id: "core", bucket_generic: false },
+    };
+    const shown = { ...item.lead, gid: "drift-equity", kind: "allocation_drift" };
+    const generic = {
+      ...shown,
+      payload: { bucket_id: "global_equity", bucket_generic: true },
+    };
+    const led = {
+      ...item,
+      lead: hidden,
+      supporting: [generic],
+      signals: ["drift-core", "drift-equity", "ladder-core"],
+    };
+    // The open read knows the ladder row too (an older drift of the same bucket).
+    const open = [hidden, generic, { ...hidden, gid: "ladder-core" }];
+    const [kept] = shownDecideItems([led], open);
+    expect(kept?.lead?.gid).toBe("drift-equity");
+    expect(kept?.supporting).toEqual([]);
+    expect(kept?.signals).toEqual(["drift-equity"]);
+    expect(kept?.why).toBe(generic.message);
+    // An item of hidden signals only is left out; an item without a hidden one stays as it is.
+    expect(shownDecideItems([{ ...led, supporting: [] }], open)).toEqual([]);
+    expect(shownDecideItems([item], open)).toEqual([item]);
+  });
 });

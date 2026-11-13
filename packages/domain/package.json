@@ -10,6 +10,7 @@
     "./budget": "./src/budget/index.ts",
     "./core": "./src/core/index.ts",
     "./core/attention": "./src/core/attention/index.ts",
+    "./core/notifications": "./src/core/notifications/index.ts",
     "./core/workspace": "./src/core/workspace/index.ts",
     "./investments": "./src/investments/index.ts",
     "./investments/review-deck": "./src/investments/views/reviewDeck.ts",

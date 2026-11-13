@@ -1,26 +1,13 @@
-// The profile sheet (prototype `profile` sheet): the profiles on this phone, this phone's incognito
-// switch, what waits on the Mac, the Mac-only note and the app version; Diagnostics and Bench in dev.
-import { Button, Icon, ListRow, NoteLine, ToggleRow } from "@cashu/ui/native";
-import type { ReactNode } from "react";
+// The profile sheet (prototype `profile` sheet): the profiles on this phone, this phone's notifications
+// page, app lock and incognito switches, what waits on the Mac, the Mac-only note, Diagnostics and
+// Bench in dev, this phone with "Remove this phone" last, and the app version.
+import { Button, GroupSection, Icon, ListRow, NoteLine, ToggleRow } from "@cashu/ui/native";
 import { ScrollView, Text, View } from "react-native";
 import { ProfileAvatar } from "../../shell/ProfileAvatar";
 import { S } from "./Profile.strings";
 import type { ProfileSheetState } from "./useProfileSheet";
 
 export type ProfileSheetViewProps = ProfileSheetState;
-
-function Section({ title, children }: { title?: string; children: ReactNode }) {
-  return (
-    <View className="gap-2">
-      {title !== undefined && (
-        <Text role="heading" className="px-1 text-caption font-demi text-fg-muted">
-          {title}
-        </Text>
-      )}
-      <View className="rounded-xl bg-surface-raised px-4">{children}</View>
-    </View>
-  );
-}
 
 export function ProfileSheetView(props: ProfileSheetViewProps) {
   return (
@@ -33,7 +20,7 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
           <Icon name="x" size={20} />
         </Button>
       </View>
-      <Section title={S.profiles}>
+      <GroupSection title={S.profiles}>
         {props.profiles.map((p, i) => (
           <ListRow
             key={p.vault}
@@ -46,21 +33,35 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
             onPress={props.isSwitching ? undefined : () => props.onProfilePicked(p.vault)}
           />
         ))}
-      </Section>
+      </GroupSection>
       {props.switchFailed && (
         <Text accessibilityRole="alert" className="-mt-3 px-1 text-caption text-negative">
           {S.couldNotSwitch}
         </Text>
       )}
-      <Section title={S.thisPhone}>
+      <GroupSection title={S.thisPhone}>
+        <ListRow
+          first
+          name={S.notifications}
+          {...(props.notificationsOff ? { sub: S.notificationsOff } : {})}
+          value={<Icon name="chevron-right" className="text-fg-muted" />}
+          onPress={props.onNotifications}
+        />
+        <ToggleRow
+          label={S.lockLabel(props.lock.capability)}
+          {...(props.lock.capability === "none" ? { sub: S.lockNoneSub } : {})}
+          value={props.lock.enabled}
+          disabled={props.lock.capability === "none" || props.lock.isPending}
+          onChange={props.onLockToggle}
+        />
         <ToggleRow
           label={S.hideAmounts}
           sub={S.hideAmountsSub}
           value={props.incognito}
           onChange={props.onIncognitoToggle}
         />
-      </Section>
-      <Section title={S.waitingOnMac}>
+      </GroupSection>
+      <GroupSection title={S.waitingOnMac}>
         <ListRow
           first
           lead={<Icon name="doc" size={20} className="text-fg-muted" />}
@@ -68,10 +69,10 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
             props.waiting.kind === "proposals" ? S.proposals(props.waiting.count) : S.nothingWaiting
           }
         />
-      </Section>
+      </GroupSection>
       <NoteLine icon="laptop">{S.macOnly}</NoteLine>
       {props.dev && (
-        <Section>
+        <GroupSection>
           <ListRow
             first
             name={S.diagnostics}
@@ -83,8 +84,17 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
             value={<Icon name="chevron-right" className="text-fg-muted" />}
             onPress={props.onBench}
           />
-        </Section>
+        </GroupSection>
       )}
+      <GroupSection>
+        <ListRow first name={props.phone.name} sub={props.phone.sub} />
+        <ListRow
+          name={S.removePhone}
+          sub={S.removePhoneSub}
+          tone="danger"
+          onPress={props.onRemovePhone}
+        />
+      </GroupSection>
       <Text className="text-center text-caption text-fg-muted">{S.version(props.version)}</Text>
     </ScrollView>
   );

@@ -8,12 +8,12 @@ import { inEveryLang, intlLocale, lang } from "@cashu/i18n";
 import { hideAmount } from "../../core/incognito.js";
 import { describePerfNote } from "../../core/messages.js";
 import { localDay, parseServerTime, serverDate } from "../../core/time.js";
+import { isShownSignal, unnameBuckets } from "../buckets.js";
 import {
   ASSET_CLASS,
   bucketLabel,
   DECISION_ACTION,
   dm,
-  GENERIC_BUCKET_IDS,
   isGenericBucket,
   marketPrice,
   micName,
@@ -31,7 +31,6 @@ import {
 import type { FreshReason, Hint, PlanFreshness } from "../types.js";
 import {
   ALERT_KIND,
-  BUCKET_FN as BUCKET_FN_L,
   DIR_WORD,
   FRESH,
   FRESH_REASON,
@@ -110,104 +109,6 @@ export function polarityOf(sig: Pick<SigLike, "polarity" | "kind">): Polarity {
 
 export const isDecided = (sig: Pick<SigLike, "decisions">) => sig.decisions.length > 0;
 
-// ---- generic allocation interface (F7-generic) -------------------------------------------------------------
-// The owner's own strategy buckets are internal knowledge for the agent: the app names, targets and signals only
-// generic buckets (template and plain asset-class ids, labels.ts). A missing server flag counts as generic; an id
-// the app cannot name counts as not generic, so no bucket id is ever rendered raw.
-
-/** Whether a signal shows anywhere in the app (lists, counts, links): every signal except an allocation drift of
- * a non-generic bucket (`payload.bucket_generic === false`, or an id without a generic label). */
-export function isShownSignal(sig: Pick<SigLike, "kind" | "payload">): boolean {
-  if (sig.kind !== "allocation_drift") return true;
-  const id = typeof sig.payload?.bucket_id === "string" ? sig.payload.bucket_id : null;
-  return sig.payload?.bucket_generic !== false && isGenericBucket(id);
-}
-
-/** Expression bucket functions over a non-generic bucket, shown as a phrase instead of the call. */
-const BUCKET_FN: Record<string, string> = BUCKET_FN_L;
-/** ASCII words that may follow "koszyk" in owner-written text and are never bucket ids. */
-const NOT_BUCKET_IDS = new Set([
-  "na",
-  "do",
-  "od",
-  "nad",
-  "pod",
-  "ponad",
-  "w",
-  "z",
-  "i",
-  "o",
-  "za",
-  "przy",
-  "bez",
-  "ma",
-  "jest",
-  "waga",
-  "udzial",
-  "akcji",
-  "obligacji",
-  "gotowki",
-  "przekracza",
-  "spada",
-  "rosnie",
-  "powyzej",
-  "ponizej",
-  "is",
-  "at",
-  "of",
-  "in",
-  "to",
-  "from",
-  "over",
-  "under",
-  "above",
-  "below",
-  "weight",
-  "share",
-  "exceeds",
-  "falls",
-  "rises",
-  "has",
-]);
-const ID_LIKE = /^[A-Za-z][A-Za-z0-9]*(?:[_.-][A-Za-z0-9]+)*$/;
-let labelWords: Set<string> | null = null;
-/** First words of the generic labels (`Akcje`, `Obligacje`, `ETF-y`, ...): already a label, never an id. */
-const isLabelWord = (w: string) => {
-  labelWords ??= new Set(
-    GENERIC_BUCKET_IDS.map((id) => ((bucketLabel(id) ?? "").split(" ")[0] ?? "").toLowerCase()),
-  );
-  return labelWords.has(w.toLowerCase());
-};
-
-/** Texts that may carry the owner's bucket ids, made safe to show (F7-generic, FE-A A2 / A3): server-built prose
- * (`Koszyk core: ...` from a bucket-scoped custom rule, `Koszyk core` as an alert subject; any case) gets the generic
- * label or drops the id (`Koszyk: ...`); expression text (custom-rule default messages `Warunek spełniony: <when>`,
- * custom alert expressions) shows `bucket_drift_pp("core")` as `dryf koszyka` (likewise waga / cel / wartość
- * koszyka) and a `bucket_id == "core"` literal as `"…"`. Generic ids stay as written; idempotent. */
-export function unnameBuckets(text: string): string {
-  return text
-    .replace(
-      /\b(bucket_(?:weight|target|drift_pp|value))\(\s*(["'])([^"']*)\2\s*\)/g,
-      (m, fn: string, _q: string, id: string) => (isGenericBucket(id) ? m : (BUCKET_FN[fn] ?? m)),
-    )
-    .replace(/\bbucket_id(\s*[!=]=\s*)(["'])([^"']*)\2/g, (m, op: string, q: string, id: string) =>
-      isGenericBucket(id) || id === "…" ? m : `bucket_id${op}${q}…${q}`,
-    )
-    .replace(/(["'])([^"']*)\1(\s*[!=]=\s*)bucket_id\b/g, (m, q: string, id: string, op: string) =>
-      isGenericBucket(id) || id === "…" ? m : `${q}…${q}${op}bucket_id`,
-    )
-    .replace(
-      /\b([Kk]oszyk|[Bb]ucket) ([^\s:,;()"']+)(?=([:\s,;)]|$))/g,
-      (m, kw: string, tok: string, next: string) => {
-        if (isLabelWord(tok)) return m;
-        const id = next === ":" || (ID_LIKE.test(tok) && !NOT_BUCKET_IDS.has(tok.toLowerCase()));
-        if (!id) return m;
-        const l = bucketLabel(tok);
-        return l ? `${kw} ${l}` : kw;
-      },
-    );
-}
-
 /** Rule kinds in words (a rule's strategy id never reaches the UI, FE-A A6). */
 export const RULE_KIND_LABEL: Record<string, string> = RULE_KIND;
 export const ruleKindLabel = (kind: string | null | undefined): string =>
@@ -217,19 +118,6 @@ export const ruleKindLabel = (kind: string | null | undefined): string =>
     : T.rule;
 /** Recommendation checks: `plan:plan_no_exit`, `plan:plan_vs_thesis` (the model output vs facts). */
 export const isPlanKind = (kind: string | null | undefined) => !!kind && kind.startsWith("plan:");
-
-/** Whether the allocation's buckets (targets, drift, `Koszyki`) may show: at least one bucket and every bucket
- * generic (`buckets_generic` / `generic` from the server, a missing key = generic, plus a generic label). */
-export function allocGeneric(alloc: {
-  buckets: { bucket_id: string; generic?: boolean | null }[];
-  buckets_generic?: boolean | null;
-}): boolean {
-  return (
-    alloc.buckets.length > 0 &&
-    alloc.buckets_generic !== false &&
-    alloc.buckets.every((b) => b.generic !== false && isGenericBucket(b.bucket_id))
-  );
-}
 
 /** A review digest without the signals that never show (lists by `isShownSignal`, drift events by bucket). */
 export function digestShown<

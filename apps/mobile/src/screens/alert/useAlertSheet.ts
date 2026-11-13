@@ -1,13 +1,20 @@
 // The alert sheet's hook: one fired signal live from the vault (what fired, when, the rule it came
 // from), the position it is about (the public price, the value and share, the result against the
 // owner's average cost), the thesis with the newest research verdict on it, the strategy's drawdown line
-// and the owner's decision. Nothing is preselected: Save stays disabled until a choice; a decision is a
-// journal note (Nothing / Buy more / Sell = held / bought / sold, never a quantity or a price, never a
-// trade); "Decide later" acknowledges the signal, which brings it back in the weekly review. Both close
-// the sheet once written; a refusal shows inline. Navigation stays in the route.
+// and the owner's decision, plus the bell that tells this phone when the alert fires. Nothing is
+// preselected: Save stays disabled until a choice; a decision is a journal note (Nothing / Buy more /
+// Sell = held / bought / sold, never a quantity or a price, never a trade); "Decide later" acknowledges
+// the signal, which brings it back in the weekly review. Both close the sheet once written; a refusal
+// shows inline. Navigation stays in the route.
 import type { core, IsoDate } from "@cashu/domain";
 import { Decimal, Money } from "@cashu/domain";
-import { pricesFetchedAt } from "@cashu/store/device";
+import {
+  markedAlerts,
+  notificationPrefs,
+  pricesFetchedAt,
+  setAlertMarked,
+  setNotificationPrefs,
+} from "@cashu/store/device";
 import {
   conditionalOwnerAcknowledge,
   type ReadySignals,
@@ -19,7 +26,7 @@ import { useUiEnv } from "@cashu/ui/native";
 import { useRef, useState } from "react";
 import { deviceTimeZone } from "../../services/investments";
 import { useServices } from "../../services/ServicesProvider";
-import { signalText } from "../investments/signalText";
+import { type SignalSubject, safeText, signalText } from "../investments/signalText";
 import type { DisplayEnv } from "../today/display";
 import { ACTION, RELATION, S } from "./Alert.strings";
 import {
@@ -79,6 +86,11 @@ export type AlertSheetState =
         } | null;
       } | null;
       readonly strategyLine: string | null;
+      /**
+       * "Tell this phone when it fires" (the bell): this device's mark on the alert behind the signal.
+       * Null for a rule's signal and on a partner's phone (alerts are the owner's).
+       */
+      readonly tellPhone: { readonly on: boolean; onToggle(): void } | null;
       /** The decision already written (or "decide later"), when the signal has one. */
       readonly settled: string | null;
       /** Null once the signal is decided or closed: nothing left to decide here. */
@@ -123,10 +135,11 @@ const num = (value: unknown): number | null =>
 /** The fired fact in words ("CD Projekt fell 9.4% in 5 sessions"), else the signal sentence. */
 export function signalTitle(
   signal: Pick<Signal, "messageCode" | "messageParams" | "message" | "kind" | "payload">,
-  name: string,
-  currency: string | null,
-  locale: string,
+  subject: SignalSubject,
+  env: DisplayEnv,
 ): string {
+  const { name, currency } = subject;
+  const { locale } = env;
   const p = signal.messageParams ?? {};
   const change = num(p.change);
   const days = num(p.window_days);
@@ -140,7 +153,7 @@ export function signalTitle(
     if (signal.messageCode === "alert.price_below") return S.below(name, text);
     if (signal.messageCode === "alert.price_above") return S.above(name, text);
   }
-  return signalText(signal, { name, currency }, locale);
+  return signalText(signal, subject, env);
 }
 
 function tagOf(signal: Signal): { text: string; tone: Tone } {
@@ -167,7 +180,7 @@ export function useAlertSheet(args: {
   const ui = useUiEnv();
   const { locale } = ui;
   const env: DisplayEnv = { locale, privacy: ui.privacy, bananas: ui.bananas ?? null };
-  const { moneyQueries } = useServices();
+  const { moneyQueries, profiles } = useServices();
   const { today, lang } = args;
   const screen = useQuery(moneyQueries.investments.signals, {
     now: args.now,
@@ -186,7 +199,13 @@ export function useAlertSheet(args: {
     instrument: instrumentGid ?? "",
   });
   const markdown = useQuery(strategyMarkdown);
-  const fetchedAt = useQuery(pricesFetchedAt, { vault: useProfile() });
+  const vault = useProfile();
+  const fetchedAt = useQuery(pricesFetchedAt, { vault });
+  const marked = useQuery(markedAlerts, { vault });
+  const prefs = useQuery(notificationPrefs, { vault });
+  const mark = useCommand(setAlertMarked);
+  const choose = useCommand(setNotificationPrefs);
+  const owner = profiles.find((p) => p.vault === vault)?.role !== "partner";
   const decidePosition = useCommand(signalsOwnerCommands.positionDecision);
   const decideSignal = useCommand(signalsOwnerCommands.decide);
   const acknowledge = useCommand(conditionalOwnerAcknowledge);
@@ -210,7 +229,8 @@ export function useAlertSheet(args: {
   const baseCurrency = portfolio.status === "ready" ? portfolio.positions.base_currency : null;
 
   // What fired and when.
-  const rule = alert?.title ?? signal.message;
+  // The alert's title or the engine's text may name the owner's bucket or carry amounts.
+  const rule = safeText(alert?.title ?? signal.message, env);
   const fired = momentText(alert?.lastTriggeredAt ?? signal.firstSeenAt, today, locale);
   const meta = fired.today
     ? S.firedToday(rule, fired.time)
@@ -314,7 +334,7 @@ export function useAlertSheet(args: {
   return {
     kind: "ready",
     tag: tagOf(signal),
-    title: signalTitle(signal, name, instrument?.currency ?? null, locale),
+    title: signalTitle(signal, { name, currency: instrument?.currency ?? null, baseCurrency }, env),
     meta,
     facts,
     thesis:
@@ -335,6 +355,21 @@ export function useAlertSheet(args: {
                   },
           },
     strategyLine: drawdownLine(markdown),
+    tellPhone:
+      signal.alert === null || !owner
+        ? null
+        : {
+            on: marked.includes(signal.alert),
+            onToggle: () => {
+              const alert = signal.alert;
+              if (alert === null) return;
+              const on = !marked.includes(alert);
+              void mark.run({ vault, alert, marked: on });
+              // Marking is asking to be told: the "marked alerts" choice turns on with it.
+              if (on && !prefs.alertsFired)
+                void choose.run({ vault, prefs: { alertsFired: true } });
+            },
+          },
     settled,
     decision:
       open && !decided

@@ -13,13 +13,40 @@
     "android": {
       "package": "dev.cashu.mobile"
     },
-    "plugins": ["expo-router", "expo-sqlite", "expo-secure-store", "expo-localization"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      "expo-secure-store",
+      "expo-localization",
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
+      "expo-task-manager",
+      "expo-background-task",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "cashU uses Face ID to unlock the app."
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "updates": {
       "enabled": false
+    },
+    "locales": {
+      "pl": "./locales/pl.json"
     }
   }
 }

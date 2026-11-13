@@ -1,9 +1,12 @@
 // The alert sheet's hook and View over the synthetic investments vault (the companion fixture's own
 // builders: CD Projekt's -8% alert fired by one daily evaluation, its thesis, Saturday's research): what
 // fired, Save disabled until a choice, a decision written as `decision.recorded` that closes the sheet,
-// "Decide later" as an acknowledgement, the strategy's drawdown line; and every story of the View.
+// "Decide later" as an acknowledgement, the strategy's drawdown line, the bell that marks the alert for
+// this phone; and every story of the View.
 // The calendar is pinned to Thu 12 Nov 2026.
 import { setLanguageForTests } from "@cashu/i18n";
+import { markedAlerts, notificationPrefs } from "@cashu/store/device";
+import type { Read } from "@cashu/store/query";
 import { ProfileProvider, StoreProvider } from "@cashu/store-react";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
@@ -20,6 +23,7 @@ import alertMeta, {
   Missing,
   RuleWithoutThesis,
   SetAsideForReview,
+  TellsThisPhone,
 } from "./AlertSheetView.stories";
 import { drawdownLine } from "./strategyLine";
 import { type AlertSheetState, useAlertSheet } from "./useAlertSheet";
@@ -257,11 +261,52 @@ describe("the strategy's drawdown line", () => {
   });
 });
 
+describe("the alert sheet's bell", () => {
+  const marks = (fixture: InvestmentsStore) => {
+    const read: Read = (sql, ...params) => fixture.device.read(sql, ...params);
+    const vault = fixture.services.profiles[0]?.vault ?? "";
+    return {
+      marked: () => markedAlerts.run(read, { vault }),
+      prefs: () => notificationPrefs.run(read, { vault }),
+    };
+  };
+
+  it("marks the alert for this phone, turns the marked-alerts choice on, and unmarks it", async () => {
+    const { fixture, ready } = await show();
+    const { marked, prefs } = marks(fixture);
+    expect(ready().tellPhone?.on).toBe(false);
+    expect(prefs().alertsFired).toBe(false);
+    await fireEvent.press(screen.getByRole("button", { name: "Tell this phone when it fires" }));
+    expect(marked()).toHaveLength(1);
+    expect(prefs().alertsFired).toBe(true);
+    expect(ready().tellPhone?.on).toBe(true);
+    expect(screen.getByRole("button", { name: "Stop telling this phone" })).toBeSelected();
+    await fireEvent.press(screen.getByRole("button", { name: "Stop telling this phone" }));
+    expect(marked()).toEqual([]);
+    // Unmarking leaves the choice as it is.
+    expect(prefs().alertsFired).toBe(true);
+  });
+
+  it("has no bell on a rule's signal", async () => {
+    const fixture = investmentsStore();
+    closers.push(() => fixture.close());
+    const rule = fixture.store.read<{ gid: string }>(
+      "SELECT gid FROM inv_signals WHERE rule_id NOT LIKE 'alert:%' AND status = 'active'",
+    )[0]?.gid;
+    if (rule === undefined) throw new Error("the synthetic strategy opened no rule signal");
+    // The kit is deterministic: the same signal gid in the sheet's own fixture.
+    const { ready } = await show({ gid: rule });
+    expect(ready().tellPhone).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tell this phone when it fires" })).toBeNull();
+  });
+});
+
 const stories: [string, object, ComponentType[]?][] = [
   ["fired", Fired.args],
   ["choice made", ChoiceMade.args],
   ["could not save", CouldNotSave.args],
   ["set aside for review", SetAsideForReview.args],
+  ["tells this phone", TellsThisPhone.args],
   ["decided", Decided.args],
   ["rule without thesis", RuleWithoutThesis.args],
   ["incognito", Incognito.args],
