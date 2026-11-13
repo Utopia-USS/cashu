@@ -154,34 +154,35 @@ export function AlertSheetView(props: AlertSheetViewProps) {
     );
   }
   const { decision } = props;
+  // The ScrollView is the sheet's root and the footer ends its content: a react-native-screens formSheet
+  // on iOS sizes only a root ScrollView, so a flex-1 ScrollView inside a wrapper View laid out at zero
+  // height and left the sheet blank above the footer.
   return (
-    <View className="flex-1 bg-surface">
-      <ScrollView className="flex-1" contentContainerClassName="gap-5 px-4 pt-6 pb-6">
-        <View className="flex-row items-center justify-between gap-3">
-          <Tag tone={props.tag.tone}>{props.tag.text}</Tag>
-          <CloseButton onClose={props.onClose} />
-        </View>
-        <View className="gap-1.5">
-          <Text role="heading" className="text-headline font-strong text-fg">
-            {props.title}
-          </Text>
-          <Text className="text-caption text-fg-muted">{props.meta}</Text>
-        </View>
-        {props.facts.length > 0 && <Facts items={props.facts.map(factItem)} />}
-        <Thesis props={props} />
-        {props.strategyLine !== null && (
-          <Section title={S.strategySays}>
-            <Quote>{props.strategyLine}</Quote>
-          </Section>
-        )}
-        {props.settled !== null && (
-          <NoteLine icon={decision === null ? "check" : "calendar"}>{props.settled}</NoteLine>
-        )}
-        <Decision props={props} />
-        <NoteLine icon="shield">{S.decisionIsANote}</NoteLine>
-      </ScrollView>
+    <ScrollView className="flex-1 bg-surface" contentContainerClassName="gap-5 px-4 pt-6 pb-10">
+      <View className="flex-row items-center justify-between gap-3">
+        <Tag tone={props.tag.tone}>{props.tag.text}</Tag>
+        <CloseButton onClose={props.onClose} />
+      </View>
+      <View className="gap-1.5">
+        <Text role="heading" className="text-headline font-strong text-fg">
+          {props.title}
+        </Text>
+        <Text className="text-caption text-fg-muted">{props.meta}</Text>
+      </View>
+      {props.facts.length > 0 && <Facts items={props.facts.map(factItem)} />}
+      <Thesis props={props} />
+      {props.strategyLine !== null && (
+        <Section title={S.strategySays}>
+          <Quote>{props.strategyLine}</Quote>
+        </Section>
+      )}
+      {props.settled !== null && (
+        <NoteLine icon={decision === null ? "check" : "calendar"}>{props.settled}</NoteLine>
+      )}
+      <Decision props={props} />
+      <NoteLine icon="shield">{S.decisionIsANote}</NoteLine>
       {decision !== null && (
-        <View className="flex-row gap-2 border-t border-border px-4 pt-3 pb-8">
+        <View className="flex-row gap-2 border-t border-border pt-3">
           {decision.canLater && (
             <Button
               variant="secondary"
@@ -204,6 +205,6 @@ export function AlertSheetView(props: AlertSheetViewProps) {
           </Button>
         </View>
       )}
-    </View>
+    </ScrollView>
   );
 }
