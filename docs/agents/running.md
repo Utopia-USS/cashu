@@ -29,9 +29,12 @@ cashU needs Node >= 24 (.nvmrc) or Electron's Node" (`MissingFts5Error`, `packag
 | Complete handoff gate | `pnpm check:handoff` (default checks, exhaustive tests, architecture) |
 | Generated files | `pnpm --filter @cashu/host gen:connector-schemas --check`, `pnpm --filter @cashu/host skills:sync --check` |
 | Mobile | `pnpm --filter @cashu/mobile ios` / `android` (local dev client), `pnpm --filter @cashu/mobile start` (bundler), `pnpm bundle:check` |
+| Sync relay against the emulator | `pnpm test:emulator`: starts the Firestore and Auth emulators (`firebase emulators:exec`, project `demo-cashu`, offline, nothing deployed) and runs the emulator suites with the real `firestore.rules`. Needs Java 21+ and firebase-tools (`npm install -g firebase-tools`, or `CASHU_FIREBASE=<command>`) |
 
 CI (`.github/workflows/ts.yml`) runs install, `turbo run typecheck lint`, `pnpm test` (4 packages at once), the exhaustive tier,
-`arch:check` and the mobile bundle check on Linux and macOS.
+`arch:check` and the mobile bundle check on Linux and macOS, and in a separate `emulator` job (Linux, Java 21,
+firebase-tools pinned through `CASHU_FIREBASE`) `pnpm test:emulator`. The emulator test files skip themselves in
+`pnpm test`, and the in-memory Firestore fake applies no rules, so only that job tests the security rules.
 
 ## Desktop app on a synthetic demo
 
@@ -62,7 +65,13 @@ local emulator (`firebase.json`: Firestore 8080, Auth 9099, project `demo-cashu`
 (`apps/host/src/relay/config.ts`), the phone's dev build gets `EXPO_PUBLIC_FIRESTORE_EMULATOR_HOST` and
 `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` with the same values (in the environment of `expo start`, or in
 `apps/mobile/.env.local`; template `apps/mobile/.env.example`). With no project variables both use
-`demo-cashu`. A release build ignores the emulator variables; a real project goes in the four plain
+`demo-cashu`. The emulator keeps no data after it stops (`firebase.json` configures no import or export).
+Start the desktop with the two `CASHU_*` variables in the environment of
+`pnpm --filter @cashu/desktop dev` (`apps/desktop/scripts/dev.mjs` passes its environment to the host), switch
+sync on for a demo profile in Settings > Devices, open "Pair a phone" > "Create invitation" and scan the QR in the
+simulator (or "Copy code" and paste it on the phone), then type the phone's six digits on the Mac. How it works:
+[sync-and-mobile.md](sync-and-mobile.md).
+A release build ignores the emulator variables; a real project goes in the four plain
 `EXPO_PUBLIC_FIREBASE_PROJECT_ID` / `_API_KEY` / `_APP_ID` / `_AUTH_DOMAIN` variables (unquoted: Expo's
 `.env` parser cuts a double-quoted value at its first quote, so the older JSON `EXPO_PUBLIC_FIREBASE_CONFIG`
 in quotes arrives as `{\`). Restart Metro with `--clear` after changing them: they are inlined at bundle time.

@@ -65,7 +65,9 @@ jobs:
 
   # The security boundary of the sync relay (S4): firestore.rules and the Firestore relay transport against
   # the Firestore + Auth emulators (project `demo-cashu`, offline, no login, never a real project; nothing
-  # is deployed). The fake Firebase of the `ts` job applies no rules, so only this job tests them.
+  # is deployed), then the end-to-end run of a native host and a Node joiner under those rules (pairing,
+  # sync both ways, ciphertext-only documents, purge; apps/host/src/testing/relayE2e.emulator.test.ts).
+  # The fake Firebase of the `ts` job applies no rules, so only this job tests them.
   emulator:
     name: Firestore rules (emulator)
     runs-on: ubuntu-latest

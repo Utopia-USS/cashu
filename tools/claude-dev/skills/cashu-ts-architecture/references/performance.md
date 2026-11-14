@@ -56,6 +56,14 @@ ceiling had 2 kB left; measured after the raise: iOS 9,998,263 B, Android 9,975,
 Top owners (kB of minified JS, iOS `--report`): react-native-reanimated 615, react-native 594,
 packages/domain/investments 523, expo-router 482, apps/mobile/screens 324, packages/store/investments 289, zod 228.
 
+Phone vault open (M4, B2): every open audits the local log; Ed25519 in pure JS on Hermes (no JIT) made that
+seconds per thousand frames. Three measures: the recovery checkpoint (only frames after the last verified prefix
+are verified), the native verifier port on the phone (`react-native-libsodium`, `packages/sync/src/crypto/ed25519.ts`)
+and yields to the UI every ~8 ms. Measured on V8 (Node 24, a loaded machine, 20,000 one-event frames,
+`CASHU_OPEN_BENCH=1 pnpm --filter @cashu/sync exec vitest run src/devices/openCost.measure.test.ts`): full replay
+42.3 s with @noble, 17.7 s with the native verifier (wasm stand-in), 0.66 s with a checkpoint and no tail, 0.83 s
+with a 100-frame tail. A Hermes release-build measurement on a device is still to be made.
+
 M3 measurements (lead, 2026-11-13; the 60k workload of `packages/store/src/budget/companion-queries.perf.test.ts`
 and `src/perf.test.ts` on the M-series Mac, other sessions running): the phone's hot reads moved to derived tables
 (`budget.months`, `budget.recurring`, `budget.search` FTS5, `merchant_key` column) and now sit far inside the 8 ms

@@ -20,7 +20,7 @@ cashu/
 │   ├── host/           # the local host (one per data dir): stores, `cashu` command tree, MCP sessions, worker,
 │   │                   #   connectors, agent workspaces, Open Banking, Python-data migration
 │   ├── cli/            # the `cashu` shim: thin client of the host (bundled into the app as shim.mjs)
-│   └── mobile/, relay/ # Expo dev client and the sync relay scaffold (in development)
+│   └── mobile/         # Expo phone companion: demo or paired vaults, synced over the relay (in development)
 ├── packages/           # domain, store, sync, i18n, ui, ui-logic, store-react, mcp, market, llm,
 │                       #   host-protocol, node-host, api
 ├── tools/              # arch/ (`pnpm arch:check`), claude-dev/ (dev plugin), node-ts/ (TS source resolver)
@@ -197,6 +197,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Install | `pnpm install --frozen-lockfile` |
 | Typecheck / lint / tests (synthetic data - safe) | `pnpm typecheck`, `pnpm lint`, `pnpm test` (all three: `pnpm check`) |
 | Exhaustive test tier | `pnpm test:exhaustive` |
+| Sync relay rules and wire against the Firebase emulator | `pnpm test:emulator` (Java 21+ and firebase-tools; project `demo-cashu`, offline) |
 | Architecture checks | `pnpm arch:check` (whole repo); `tools/claude-dev/scripts/check-file.sh <file>` (one file) |
 | Full handoff gate | `pnpm check:handoff` (check + exhaustive + arch) |
 | Mobile bundle budget | `pnpm bundle:check` |
@@ -227,7 +228,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 - [docs/agents/strategies.md](docs/agents/strategies.md) - design note: strategies as documents
 - [docs/agents/connector-runtime.md](docs/agents/connector-runtime.md) - design spike: connectors on macOS, Linux and Windows (Deno tier)
 - [docs/agents/connector-sandbox-platforms.md](docs/agents/connector-sandbox-platforms.md) - design spike: connector sandboxes per OS
-- [docs/agents/sync-and-mobile.md](docs/agents/sync-and-mobile.md) - design spike: multi-device sync, mobile app, TypeScript stack
+- [docs/agents/sync-and-mobile.md](docs/agents/sync-and-mobile.md) - multi-device sync: the Firestore relay, pairing, fetch lease, the phone's engine, emulator runs
 - [docs/releasing.md](docs/releasing.md) - releasing cashU.app: CI and local paths, one-time setup, release notes, staging build (owner)
 - [docs/agents/s47-update-operator.md](docs/agents/s47-update-operator.md) - update contract inside the desktop app (Team ID, feed, install sequence)
 - [ONBOARDING.md](ONBOARDING.md) - end-user setup the agent walks through

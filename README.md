@@ -24,7 +24,7 @@ data, alerts, theses and a watchlist, never orders, never price predictions.
 > through this code - you log in (SCA) yourself in the bank's browser. Categorization uses a local
 > offline model by default; the optional cloud mode sends **only merchant names**, after your consent.
 > Network calls happen only for sources you switch on (Open Banking, market prices and rates for
-> investments) and, in an official signed release, the update check of its fixed feed; builds from
+> investments, sync with the phone: encrypted bytes only) and, in an official signed release, the update check of its fixed feed; builds from
 > source never contact an update server.
 
 > 🌐 **Language.** Code, comments, and docs are in English. The **app is in Polish and English**: it
@@ -144,6 +144,15 @@ rate limit), connector fetches, a notification for each new signal your strategy
 The app shows an overview plus a page per enabled module, with Settings for profiles, modules, the AI
 agent, connectors and Open Banking, background work and secrets. The UI is in Polish or English
 (Settings > App > Language).
+
+**Phone companion and sync (in development).** An Expo app for iPhone (Android later) shows a profile's
+Today, activity, investments and net worth, categorizes payments and notifies locally. Without pairing
+it shows a synthetic demo. Sync is off by default and switched on per profile on the Mac (Settings >
+Devices); the phone then pairs by scanning a QR code and typing its six digits into the Mac. Devices
+exchange end-to-end encrypted log segments through a Firebase Firestore relay that sees only opaque
+ids, sizes, times and ciphertext, never a name or an amount; the Mac stays the only device that
+fetches from banks and keeps working when the relay is down. Details:
+[docs/agents/sync-and-mobile.md](docs/agents/sync-and-mobile.md).
 
 ---
 

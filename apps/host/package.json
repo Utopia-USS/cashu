@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "vitest run",
+    "test:emulator": "test -n \"$FIRESTORE_EMULATOR_HOST\" && test -n \"$FIREBASE_AUTH_EMULATOR_HOST\" || { echo 'test:emulator: no Firestore / Auth emulator; run pnpm test:emulator at the repo root' >&2; exit 1; }; vitest run src/testing/relayE2e.emulator.test.ts",
     "gen:connector-schemas": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/genConnectorSchemas.ts",
     "skills:sync": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/syncSkillReferences.ts",
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"

@@ -914,6 +914,15 @@ The fetch leader (S29c R4; rule 6 must not rest on an unstated linearizable remo
   force warning applies; an auto-to-auto pin is unchanged.
 - The leader reports each completed fetch with `lease.fetched`; every device warns the owner when the
   pinned leader has been silent for more than 36 hours (`leaderLiveness`).
+- **Pull evidence and the offline rule (device-local, no event):** a holder acts only within the
+  publish deadline after a pull. In mode `pinned` a pass that reached every remote it could and missed
+  only unreachable ones (network, timeout, 5xx, quota, the host's back-off; never a refusal such as a
+  removed membership) counts as that pull (`LeaseLocal.offlinePull`), so a relay outage pauses sync and
+  not the leader. While the registry holds another device that could be pinned (any device not known
+  as a phone), this holds only for 7 days after the last complete pull (`OFFLINE_LEAD_MAX_MS`), or 7
+  days after the owner's "keep fetching on this Mac" acknowledgement (the host's device-local relay
+  setting, cleared by the next complete pull). A vault with no remote (sync off) reads as offline since
+  its last complete pull, under the same rule. Mode `auto` ignores offline evidence.
 
 Lease state never enters the view fold (6.2 LEADER), so the convergence scenarios do not model it.
 

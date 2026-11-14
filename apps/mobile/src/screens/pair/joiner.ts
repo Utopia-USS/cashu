@@ -70,6 +70,14 @@ function rendezvousOf(projectId: string): string {
   return `fb1:${projectId}`;
 }
 
+/**
+ * The pairing sessions this phone claimed while the app runs (`<relay uid> <session id>`). A session
+ * claimed once is this phone's: whatever later reads as `taken` for it (the Mac closed it after this
+ * phone's abort, and the relay then denies the read; the hello's slot already holds this phone's earlier
+ * hello) means the code was used here, not by another device.
+ */
+const claimedHere = new Set<string>();
+
 const DEFAULT_POLL_MS = 1500;
 const MEMBER_WAIT_MS = 2 * 60_000;
 
@@ -122,6 +130,20 @@ function failureOf(error: unknown): PairFailure {
 }
 
 /**
+ * A code as the owner may have typed or pasted it, back to what the Mac wrote: iOS smart punctuation
+ * curls the quotes as it is typed (single and double, either side, back to straight ones), a copy may
+ * carry non-breaking or zero-width spaces (removed: the code holds no space of its own), and whitespace
+ * or line breaks around it are dropped.
+ */
+function normalizeCode(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
+    .replace(/\u00a0|\u2007|\u202f|\u200b|\u200c|\u200d|\u2060|\ufeff/g, "")
+    .trim();
+}
+
+/**
  * Check a scanned or pasted text before anything leaves the phone: `notACode` (not a cashU invite),
  * a failure (no sync, another project, expired), or the invite.
  */
@@ -132,7 +154,7 @@ function checkInvite(
   | { readonly kind: "notACode" }
   | { readonly kind: "failed"; readonly reason: PairFailure }
   | { readonly kind: "ok"; readonly invite: devices.Invite } {
-  const invite = devices.decodeInvite(qr.trim());
+  const invite = devices.decodeInvite(qr);
   if (invite === undefined) return { kind: "notACode" };
   if (ports.relay === undefined) return { kind: "failed", reason: "no_sync" };
   if (invite.rendezvous !== rendezvousOf(ports.relay.projectId)) {
@@ -204,6 +226,8 @@ export class PhonePairing {
   #joiner: devices.PairingJoiner | undefined;
   /** The claim in flight (an abort can be written only once this phone is the session's joiner). */
   #claim: Promise<void> | undefined;
+  /** This run's session as `claimedHere` keys it, once the relay identity is known. */
+  #session: string | undefined;
   /** The last protocol send in flight: an abort goes after it (both take the link's next number). */
   #sending: Promise<void> = Promise.resolve();
 
@@ -267,8 +291,9 @@ export class PhonePairing {
    * Scan result -> stored vault. `discardUnpushed`: the owner agreed to remove unsent changes of a
    * vault this phone already holds.
    */
-  async start(qr: string, name: string, options: { discardUnpushed: boolean }): Promise<void> {
+  async start(text: string, name: string, options: { discardUnpushed: boolean }): Promise<void> {
     const ports = this.#ports;
+    const qr = normalizeCode(text);
     const checked = checkInvite(qr, ports);
     if (checked.kind === "notACode") {
       this.#dispatch({ type: "notACode" });
@@ -323,7 +348,11 @@ export class PhonePairing {
   #fail(error: unknown): void {
     // After the commit point too (a KeyStore or file error while storing): the flow says it did not
     // finish; a new code from the Mac pairs again (every storing step converges when repeated).
-    this.#dispatch({ type: "failed", reason: failureOf(error) });
+    const reason = failureOf(error);
+    // The one place that tells "taken by another device" from "used on this phone".
+    const here =
+      reason === "taken" && this.#session !== undefined && claimedHere.has(this.#session);
+    this.#dispatch({ type: "failed", reason: here ? "taken_here" : reason });
   }
 
   /** Claim, run the protocol, read the member document: the welcome, nothing stored. */
@@ -341,16 +370,19 @@ export class PhonePairing {
     const identity = crypto.createDeviceIdentity(ports.sodium);
     const started = devices.PairingJoiner.start(
       { sodium: ports.sodium, identity, name },
-      qr.trim(),
+      qr,
       ports.now(),
     );
     if (!started.ok) throw new PairingStopped(protocolFailure(started.reason));
     this.#joiner = started.value.joiner;
+    const sessionId = pairingSessionId(invite);
+    this.#session = `${uid} ${sessionId}`;
+    const session = this.#session;
     const link = new FirestorePairingLink({
       rest: relay.rest,
       uid: async () => uid,
       vault: invite.vaultId,
-      sessionId: pairingSessionId(invite),
+      sessionId,
       side: "joiner",
       now: ports.now,
       sleep,
@@ -360,6 +392,7 @@ export class PhonePairing {
     const claim = link.claim();
     this.#claim = claim.catch(() => undefined);
     await claim;
+    claimedHere.add(session);
     if (this.#cancelled) throw new PairingLinkError("closed");
     let shown = false;
     let received = false;
@@ -372,9 +405,12 @@ export class PhonePairing {
           .catch((error: unknown) => {
             // The hello's slot already holds another message of this phone (only the claimant may write
             // there, and the claim found this phone's uid already in it): an earlier run of this phone
-            // used the code, so it is taken here, not a broken session (and not by another device).
-            if (!received && error instanceof PairingLinkError && error.code === "malformed")
-              throw new PairingStopped("taken_here");
+            // used the code (maybe before the app restarted), so the session is this phone's and the
+            // code is taken (`#fail` says by whom).
+            if (!received && error instanceof PairingLinkError && error.code === "malformed") {
+              claimedHere.add(session);
+              throw new PairingStopped("taken");
+            }
             throw error;
           });
         this.#sending = sent;

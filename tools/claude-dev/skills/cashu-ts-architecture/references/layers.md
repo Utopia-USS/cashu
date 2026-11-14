@@ -86,12 +86,12 @@ client over an authenticated Unix socket (`@cashu/host-protocol`, platform glue 
 | Electron main (`apps/desktop`) | windows, tray, menus, deep links, auto-update; one host session per renderer frame (`HostRelay`), relayed without parsing; starts the host when none answers (detached, Electron in Node mode) | renderer over the typed preload bridge and its store MessagePort; the host as a `ui` client |
 | Electron renderer (sandboxed, `contextIsolation`) | React UI only; never opens SQLite | the host's store channel v5 (`@cashu/host-protocol/store`) through main's relay |
 | `cashu` shim (`apps/cli`; CLI, `cashu mcp`) | native data dir resolution, connect-or-start, argv / stdio relay | the host as a `cli` or `mcp` client (`cli.exec`, `mcp.open` + lines) |
-| Expo app (Hermes) | UI and the store engine in-process (sync SQLite driver) | the relay / folder transport |
+| Expo app (Hermes) | UI, the store and the sync engine in-process (sync SQLite driver, SQLCipher) | the sync relay (Firestore over REST) |
 
 Only the host (and the Expo app, in-process) opens stores. depcruise `only-host-opens-stores`: an app
 other than `apps/host` and `apps/mobile` imports no SQLite binding (`node:sqlite`, `better-sqlite3`,
 `expo-sqlite`, op-sqlite) and not node-host's driver entry (`@cashu/node-host/sqlite`); test code is
-exempt. The Python outbox bridge, carrier loop and their parity harness live in `apps/host/src/sync`;
+exempt. The host's sync relay lives in `apps/host/src/relay` (pairing in `apps/host/src/pairing`);
 the SQLite driver is available only through node-host's dedicated `sqlite` entry.
 Inside the host, a store file opens only under the
 `WriterLease` (apps/host `lease.ts`), which wraps the held machine lock that the exclusive open

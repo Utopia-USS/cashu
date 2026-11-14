@@ -10,7 +10,7 @@ tags: testing, vitest, vectors, convergence, renderHook, storybook, e2e
 |---|---|---|
 | domain | behaviour of the rules | vitest; behaviour tests per rule; small curated vector files (`test/vectors`) for primitives, whose expected values are the spec |
 | store | events, gids, materializers, queries, commands, invalidation | schema tests (valid / invalid), gid vectors, convergence (same event set in N shuffled orders and with duplicates gives identical view hashes), command tests on the in-memory store, a test that each command's touched tables re-run the queries that read them |
-| sync | crypto, log, transports | vectors, tamper tests, multi-device simulations, a contract suite every carrier passes |
+| sync | crypto, log, transports, the relay's security rules | vectors, tamper tests, multi-device simulations, a contract suite every carrier passes; the Firestore rules and wire shapes against the emulator (`*.emulator.test.ts`) |
 | ui-logic + screen hooks | feature and screen hooks | `renderHook` inside the real in-memory store provider (never a mocked store); drive commands, assert the returned state |
 | ui + Views | components and Views | Storybook stories (every variant and phase) run as tests by the Vitest addon, with the a11y addon; React Native Testing Library for native-only behaviour; Playwright screenshots of stories for visual regression (see `cashu-ui`) |
 | apps | screens end to end | desktop: Playwright on the Electron window with demo data; mobile: Maestro flows in CI, agent-device for agent runs; never real data |
@@ -28,13 +28,15 @@ Rules:
 
 ## Test tiers
 
-Two tiers, one per-test timeout: vitest's default 5 s in both. A test that needs more time is split,
+Two tiers, one per-test timeout: vitest's default 5 s in both. A third, the emulator tier, needs the
+Firebase emulators running and is outside `pnpm test`. A test that needs more time is split,
 never given a longer budget.
 
 | Tier | Files | Command | Runs |
 |---|---|---|---|
 | default (fast) | every `*.test.ts(x)` except the exhaustive ones | `pnpm test` (turbo, 4 packages at once; or `vitest run` in a package) | on every change, before a commit, in CI |
 | exhaustive | `*.exhaustive.test.ts(x)` | `pnpm test:exhaustive` (turbo task `test:exhaustive`, `--concurrency=1`) | in CI (`.github/workflows/ts.yml`) and in the pre-handoff gate `pnpm check:handoff` |
+| emulator | `*.emulator.test.ts` (they skip themselves without `FIRESTORE_EMULATOR_HOST` and `FIREBASE_AUTH_EMULATOR_HOST`) | `pnpm test:emulator` (starts the Firestore and Auth emulators, project `demo-cashu`; Java 21+, firebase-tools) | in the CI `emulator` job; by hand after a change to `firestore.rules` or the relay's REST shapes |
 
 `pnpm test:exhaustive` runs one package at a time (`--concurrency=1`): each suite is seconds of CPU and
 vitest already spreads its files over every core, so running packages side by side only oversubscribes

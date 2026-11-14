@@ -112,6 +112,25 @@ The MCP server lives in `packages/mcp/src/` (read the module comments before edi
   `apps/host/src/connectorRuntime.ts`. After editing a doc a skill copies, run
   `pnpm --filter @cashu/host skills:sync` ([skills.md](skills.md)).
 
+## Changing sync, the relay or pairing
+
+- Read [sync-and-mobile.md](sync-and-mobile.md) first: the commit point of pairing, the lease's offline
+  rule and the purge order are load-bearing.
+- Security rules (`/firestore.rules`): keep the header's access budget current and add an allowed and a
+  denied case to `packages/sync/src/transports/firestore/rules.emulator.test.ts`; run
+  `pnpm test:emulator` (the default tier's fake applies no rules).
+- A new relay document or field: the layout in `transports/firestore/layout.ts`, the rules' field
+  whitelist, and only opaque ids, sizes, counters, times or ciphertext in it.
+- A change to what a log frame yields on open (frame acceptance, registry or lease fold, decoders,
+  caps): bump `SYNC_RULES_VERSION` in `packages/sync/src/engine.ts` in the same change, or the phone's
+  recovery checkpoint vouches for frames under rules it never checked.
+- A new host RPC for the desktop: `packages/host-protocol/src/relay.ts` or `pairing/messages.ts`
+  (value-free results: no uid, device id or error text unless the schema says so), the host in
+  `apps/host/src/relay/` or `pairing/`, the window in `apps/desktop/renderer/screens/devices/` or
+  `pairing/`.
+- Phone side: the engine in `apps/mobile/src/services/vaultEngine.ts` is platform-free and tested in
+  Node (`vaultEngine.test.ts`); keep it so.
+
 ## Packaging
 
 `node apps/desktop/scripts/package-macos.mjs <arm64|x64>` builds an ad hoc cashU.app for development;

@@ -11,6 +11,7 @@ import {
   pairingSessionId,
   devices as syncDevices,
 } from "@cashu/sync";
+import { type FirestoreRest, FirestoreRestError } from "@cashu/sync/engine";
 import { createFakeFirebase, type FakeFirebase } from "@cashu/sync/testing/firestore";
 import Database from "better-sqlite3";
 import { memoryKeyStore, runtime } from "../../selftest/testing/runtime";
@@ -36,9 +37,37 @@ function tables(log: SqlDriver): string[] {
     .map((row) => row.name);
 }
 
+/**
+ * The relay's read rule for a pairing session, which the fake does not run: a session that is gone (the
+ * Mac closed it) has no data the rule could match, so the read is denied rather than answered as missing
+ * (`firestore.rules`, `pairings/{sid}` allow get).
+ */
+function withPairingReadRule(rest: FirestoreRest): FirestoreRest {
+  return new Proxy(rest, {
+    get(target, key) {
+      if (key === "get") {
+        return async (path: string) => {
+          const doc = await target.get(path);
+          if (doc === undefined && /\/pairings\/[^/]+$/.test(path)) {
+            throw new FirestoreRestError("permission-denied", 403, "get");
+          }
+          return doc;
+        };
+      }
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 /** The phone: its relay identity, KeyStore and log file, with every durable write recorded. */
-async function createPhone(fake: FakeFirebase, over: Partial<PairingPorts> = {}) {
+async function createPhone(
+  fake: FakeFirebase,
+  over: Partial<PairingPorts> = {},
+  options: { readonly rules?: boolean } = {},
+) {
   const user = await relayUser(fake);
+  const rest = options.rules ? withPairingReadRule(user.rest) : user.rest;
   const inner = memoryKeyStore(sodium);
   const sets: string[] = [];
   const keyStore: crypto.KeyStore = {
@@ -55,7 +84,7 @@ async function createPhone(fake: FakeFirebase, over: Partial<PairingPorts> = {})
   let state: PairState = initialPairState(NAME);
   const ports: PairingPorts = {
     sodium,
-    relay: { projectId: "demo-cashu", rest: user.rest, uid: () => user.auth.uid() },
+    relay: { projectId: "demo-cashu", rest, uid: () => user.auth.uid() },
     now: () => Date.now(),
     sleep: quick,
     pollMs: 5,
@@ -318,6 +347,28 @@ describe("a re-pairing, a cancel the Mac hears and a wipe mid-pairing", () => {
     await invite.link.close();
   });
 
+  it("says this phone used the code when it pastes it again after closing the six digits", async () => {
+    // QA run 4: paste, Connect, the X on the six digits (the Mac hears the abort and closes the session),
+    // the same code pasted again -> it said "Another device already used this code".
+    const invite = await openInvite(mac, sodium);
+    const phone = await createPhone(fake, {}, { rules: true });
+    const mac$ = invite.run().finally(() => invite.link.close());
+    await phone
+      .pairing((event, self) => {
+        if (event.type === "sas") self.cancel();
+      })
+      .start(invite.qr, NAME, { discardUnpushed: false });
+    expect(await mac$).toEqual({ ok: false, admitted: false });
+    const failures: PairEvent[] = [];
+    await phone
+      .pairing((event) => {
+        if (event.type === "failed") failures.push(event);
+      })
+      .start(invite.qr, NAME, { discardUnpushed: false });
+    expect(failures).toEqual([{ type: "failed", reason: "taken_here" }]);
+    expect(phone.durable()).toEqual(NOTHING);
+  });
+
   it("stores nothing more once the phone is wiped, even after the Mac admitted it", async () => {
     const phone = await createPhone(fake);
     const invite = await openInvite(mac, sodium);
@@ -348,6 +399,29 @@ describe("the checks before anything leaves the phone", () => {
     await phone.pairing().start("https://example.com/not-a-code", NAME, { discardUnpushed: false });
     expect(phone.state()).toMatchObject({ kind: "scan", notACode: true });
     expect(fake.counters).toEqual(before);
+  });
+
+  it("pairs with a code typed by hand: curled quotes, invisible spaces and line breaks", async () => {
+    const invite = await openInvite(mac, sodium);
+    // iOS smart punctuation curls the quotes as the code is typed; a copy may carry invisible spaces.
+    let opening = true;
+    const typed = `\n  ${invite.qr
+      .replace(/"/g, () => {
+        opening = !opening;
+        return opening ? "\u201d" : "\u201c";
+      })
+      .replace(/:/g, ":\u00a0")
+      .replace(/,/g, ",\u200b")}\u00a0\n`;
+    expect(typed).not.toContain('"');
+    const phone = await createPhone(fake);
+    const pairing = phone.pairing((event) => {
+      if (event.type === "sas") invite.typeCode(event.sas);
+    });
+    const mac$ = invite.run();
+    await pairing.start(typed, NAME, { discardUnpushed: false });
+    // Checked before awaiting the Mac: a code the phone refuses leaves the Mac waiting for the digits.
+    expect(phone.state()).toEqual({ kind: "role", vault: mac.vault, role: "owner" });
+    expect(await mac$).toEqual({ ok: true, admitted: true });
   });
 
   it("refuses a code of another sync project, an expired code and a build without sync", async () => {

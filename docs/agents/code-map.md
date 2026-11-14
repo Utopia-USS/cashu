@@ -19,7 +19,7 @@ Apps compose packages and never import another app.
 | Path | Layer | Purpose |
 |---|---|---|
 | `packages/domain/` | Domain | Pure core/module types, validation, calculations, bank parsers, categorization and investments rules; no IO or external runtime imports. |
-| `packages/sync/` | Sync | Event log, HLC, crypto, carrier/transport interfaces and device membership; depends on domain. |
+| `packages/sync/` | Sync | Event log, HLC, crypto, carrier/transport interfaces, the folder and Firestore relay transports, device membership, pairing and the fetch lease; depends on domain. |
 | `packages/market/` | Market | Leader-only HTTP market/calendar sources (Yahoo, stooq, NBP) behind an injected fetch; parsing contracts live in domain. |
 | `packages/llm/` | LLM | Ollama and Anthropic clients for categorization behind ports. |
 | `packages/store/` | Store | Event schemas, materializers, queries, commands and services per module; vault and device stores. |
@@ -34,8 +34,7 @@ Apps compose packages and never import another app.
 | `apps/host/` | Apps | One local host per data dir: exclusive stores, CLI and MCP sessions, worker, connectors, workspaces, banking, sync, Python-data migration. |
 | `apps/desktop/` | Apps | Electron main/preload, React renderer, e2e suite, macOS packaging and native helpers. |
 | `apps/cli/` | Apps | The `cashu` shim: a thin client of the host; bundled into the app as `shim.mjs`. |
-| `apps/mobile/` | Apps | Expo/Hermes companion app: tabs Today / Activity / Investments / Net worth by module (`app/(tabs)/`), sheets (`app/sheet/`) and full-screen flows (`app/modal/`), screen hook + View per screen under `src/screens/`, the shell (`src/shell/`: tab header, incognito, `useNow`, privacy cover), the two-vault synthetic fixture (`src/fixture/`), NBP rates into the device price cache (`src/services/rates.ts`). |
-| `apps/relay/` | Apps | Sync relay scaffold. |
+| `apps/mobile/` | Apps | Expo/Hermes companion app: tabs Today / Activity / Investments / Net worth by module (`app/(tabs)/`), sheets (`app/sheet/`) and full-screen flows (`app/modal/`), screen hook + View per screen under `src/screens/`, the shell (`src/shell/`: tab header, incognito, `useNow`, privacy cover), the two-vault synthetic demo (`src/fixture/`), NBP rates into the device price cache (`src/services/rates.ts`), each vault's sync engine and private log database (`src/services/vaultEngine.ts`, `vaultBootstrap.ts`), the sync triggers and banner (`src/sync/`), pairing (`src/screens/pair/`, `app/modal/pair.tsx`), the relay config (`src/platform/relayConfig.ts`), local notifications (`src/notifications/`). Sync and pairing: [sync-and-mobile.md](sync-and-mobile.md). |
 | `tools/arch/` | Development tooling | `pnpm arch:check`: runner, dependency graph, ESLint (react-hooks), Knip, sherif and the guard tests (`src/guards/`). |
 | `tools/claude-dev/` | Development tooling | Repo-local TS architecture / UI / dev-design skills and the file-check hook; not shipped to profile workspaces. |
 | `tools/node-ts/` | Development tooling | Resolver for running workspace TS sources with Node type stripping (`resolveTs.ts`). |
@@ -69,8 +68,21 @@ Apps compose packages and never import another app.
 | `materialize.ts`, `rebuild.ts`, `upcast.ts` | applying events to views, view rebuilds on a changed fingerprint, event upcasters |
 | `query.ts`, `subscribe.ts`, `command.ts` | `defineQuery`, the change hub (live queries), commands and durable command attempts |
 | `core/`, `budget/`, `assets/`, `loans/`, `investments/` | each module's views, queries, commands and services (profiles, profile modules, proposals, net worth book, prices, strategy documents, ...) |
-| `device/` | the device-local store (no event log) |
+| `device/` | the device-local store (no event log): settings, audit, connector runs, the phone's paired vaults (`paired.ts`), the Mac's per-vault relay setting (`relay.ts`) |
+| `sync/` (`@cashu/store/sync`) | the SQLite own log of the phone (`logTransport.ts`), device authority and names from the registry, clock guard, the recovery checkpoint store |
 | `sql/` | system tables (`SYSTEM_SCHEMA_VERSION`) |
+
+## `packages/sync/src/`
+
+| Path | Purpose |
+|---|---|
+| `engine.ts`, `carrier.ts`, `engine-entry.ts` | the sync engine (local log, remotes, passes, recovery checkpoint, pull status for the lease); `@cashu/sync/engine` is the phone's lean entry |
+| `carriers/ownlog/`, `segment.ts`, `hlc.ts` | the own-log format (sealed segments, manifest, codec), segments, the hybrid logical clock |
+| `crypto/` | libsodium / @noble crypto, keyrings, wraps, frame heads, the Ed25519 verifier port (`ed25519.ts`), recovery identity |
+| `devices/` | device registry, certificates, revocation and key rotation, pairing protocol (`pairing.ts`, `pairingInviter.ts`, `pairingJoiner.ts`, `pairingLink.ts`), the fetch lease (`lease.ts`, `leaseFold.ts`), catch-up and liveness |
+| `transports/folder/` | the folder transport (the Mac's local log) |
+| `transports/firestore/` | the sync relay over Firestore REST: `transport.ts`, `rest.ts`, `auth.ts` (anonymous identity), `relayAdmin.ts` (vault, members, recovery), `pairingLink.ts`, `layout.ts`; the emulator suites (`*.emulator.test.ts`) |
+| `testing/` | fakes (`firestore-fake.ts`, memory carriers, relay simulation) and the carrier contract suite |
 
 ## `packages/mcp/src/`
 
@@ -97,7 +109,8 @@ Apps compose packages and never import another app.
 | `banking/` | Enable Banking client, consent callback, sync into the budget |
 | `classification/` | categorization providers (Ollama, Anthropic with owner consent) |
 | `workspace/` | per-profile agent workspace (managed CLAUDE.md, `.mcp.json`, `.claude/settings.json`, skills); `skillReferences.ts` = the reference copies inside skills |
-| `market/`, `notifications/`, `proposals/`, `sync/`, `pairing/`, `devices/` | market data wiring and price cache; OS notifications; proposal approval; sync carrier; device pairing over the sync relay (QR + six digits, relay membership of phones and its removal after a revocation) |
+| `market/`, `notifications/`, `proposals/`, `devices/` | market data wiring and price cache; OS notifications; proposal approval; device list, revocation and fetch-leader RPCs |
+| `relay/`, `pairing/`, `nativeVault/`, `sync/keys/` | the sync relay per vault (config, anonymous identity, triggers and back-off, purge, reconnect, the owner's keep-fetching override); device pairing over the relay (QR + six digits, the membership commit point, the admission journal, relay membership of phones and its removal after a revocation); per-vault sync passes, fetch authority, pairing admission and revocation; the device authority loader |
 | `*Screen.ts` | screen data the renderer asks for (overview, investments, signals, review, research, strategies, proposals, settings) |
 | `testing/` | synthetic hosts and demos (`devDemo.ts`, `seedOverviewDemo.ts`, ...) |
 | `scripts/genConnectorSchemas.ts`, `scripts/syncSkillReferences.ts` | `gen:connector-schemas` and `skills:sync` (`--check` verifies) |

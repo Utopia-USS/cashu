@@ -430,7 +430,9 @@ export interface StuckRecord {
  *   the latest. Never set by a failed pass, a rollback, an upgrade need, a reachable remote left
  *   undelivered (an offset conflict) or a remote that refused (membership gone, identity lost,
  *   protocol failure): those are `incomplete`;
- * - `incomplete`: no pass yet, no remote at all, or the last pass failed for another reason.
+ *   A vault with no remote at all also reads `offline` (nobody to reach: `since` is the last
+ *   complete pull, else when the engine opened);
+ * - `incomplete`: no pass yet, or the last pass failed for another reason.
  */
 export type PullStatus =
   | { readonly kind: "pulled" }

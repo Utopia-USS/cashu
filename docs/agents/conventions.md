@@ -77,30 +77,35 @@ Every change to `packages/`, `apps/`, `tools/` or the docs.
    `packages/store/src/testing/`, `packages/node-host/src/testing/` (fixture hosts) and
    `apps/host/src/testing/` (synthetic hosts and demos). Testing rules:
    `tools/claude-dev/skills/cashu-ts-architecture/references/testing.md`.
+10. The sync relay's security rules (`/firestore.rules`) are tested only against the Firebase emulator
+   (`*.emulator.test.ts`, `pnpm test:emulator`, the CI `emulator` job): the in-memory fake applies no
+   rules. A change to the rules or to the REST wire shapes needs an allowed and a denied emulator case.
+   The emulator runs the `demo-cashu` project only; never a real Firebase project, never its config in
+   the repository (`apps/mobile/.env.local` and the host's relay config file stay outside git).
 
 ### UI copy (minimal and glanceable, in Polish and English)
 
 Before adding or changing a string:
 
-10. A screen, card or widget never explains what it is for: the title and the data say it. No
+11. A screen, card or widget never explains what it is for: the title and the data say it. No
     paragraph under a heading; context needed less than monthly goes into a tooltip (`title` on the
     label, switch or button), never an inline muted paragraph.
-11. Labels are 1-3 word nouns (table headers one word where possible); buttons are 1-2 word verbs
+12. Labels are 1-3 word nouns (table headers one word where possible); buttons are 1-2 word verbs
     (Zapisz / Save, Importuj / Import, Cofnij / Undo); the object is implied by the card. The English
     copy follows the same rules ([localization.md](localization.md)).
-12. Empty state = one line (a state, not an apology) + one action button. Errors say what to do in the
+13. Empty state = one line (a state, not an apology) + one action button. Errors say what to do in the
     same line: "Nie udało się X: {detail}" or "{problem}. {action}." (no "Próbuję ponownie", no
     apology).
-13. Only two kinds of notes, one sentence each: privacy / safety (what the agent sees, that in-app
+14. Only two kinds of notes, one sentence each: privacy / safety (what the agent sees, that in-app
     analyses never leave the machine, an agent write is always a proposal approved in the app) and
     irreversible actions. "Nothing leaves the machine" only where literally true (the app's own
     analyses); never imply that what an agent gets through MCP stays local: MCP tool results go to the
     Claude API. Shared copy lives in one catalog entry, never two versions on two screens.
-14. Numbers first: `12 400 zł · 3 konta`. Status words are single adjectives / short tags (gotowy,
+15. Numbers first: `12 400 zł · 3 konta`. Status words are single adjectives / short tags (gotowy,
     w toku, nieaktualne). Refresh mechanics stay invisible ("co 5 s", "na żywo", "odświeża się").
-15. Backend codes get labels in `packages/ui-logic/src/core/messages.ts` (strategy issues, import
+16. Backend codes get labels in `packages/ui-logic/src/core/messages.ts` (strategy issues, import
     warnings, proposals, error codes, `perf.<code>`, `worker.<code>`).
-16. When you change UI copy or structure, keep the e2e specs (`apps/desktop/e2e/desktop-specs/`) on
+17. When you change UI copy or structure, keep the e2e specs (`apps/desktop/e2e/desktop-specs/`) on
     roles, labels and aria names rather than long texts, and update the matching spec in the same
     change. Why: long texts change often and make the specs brittle.
 
@@ -118,6 +123,9 @@ Before adding or changing a string:
 | Create a real OS keychain item or touch the real data dir from a test or a dev run | only `cashu-next-test.*` keys and temp / demo data dirs |
 | Use `useMemo` / `useCallback` / `memo` | the React Compiler memoizes; Biome bans them |
 | Loosen an `arch:check` rule to get green | fix the cause the check names |
+| Put a name, an amount or any readable value into a sync relay document, or a relay value (token, uid, path, bytes) into a log or error message | the relay sees ciphertext and opaque ids only ([sync-and-mobile.md](sync-and-mobile.md)) |
+| Point a test, the emulator scripts or a dev build at a real Firebase project | emulator project `demo-cashu` only; the real config never enters the repository |
+| Show the word "relay" in UI copy | the owner sees "sync"; the relay is an implementation detail |
 
 ## See also
 

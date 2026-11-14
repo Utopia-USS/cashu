@@ -34,7 +34,10 @@ relative to those unless they start with `apps/` or `packages/`).
    snapshots (`core/networth.ts`, `core/valuation.ts`); a module values the accounts it owns through
    its `NetWorthContributor` (`<module>/networth.ts`: loans, vehicles, cash pool, brokerage), plugged
    into the store through `StoreModule.netWorth`. Sign, liquidity and chart bucket come from the
-   account type registry (`core/accountTypes.ts`). Why: a raw sum across currencies is a
+   account type registry (`core/accountTypes.ts`). A cash pool is worth the sum of its rows in its
+   own currency; a row in another currency (only a foreign or malformed event writes one) counts in
+   that currency's net worth as a part of the pool (`cashPoolPartId`), on the desktop and the phone
+   alike, and the cash drawer shows the pool's own currency only. Why: a raw sum across currencies is a
    meaningless number. The one exception, the owner's decision of 2026-11-09: the Overview converts
    every other currency into the headline one at the NBP mid rate (`core/converted.ts`: today's
    rate for the hero, each day's rate for the chart; rates from the device's price cache through
@@ -97,6 +100,14 @@ relative to those unless they start with `apps/` or `packages/`).
     `upgrade.test.ts`, `view-upgrade.test.ts`. The app has no import of the old Python app's data: the
     agent brings it over through the import paths (import-builder skill, "Old cashU (Python) data").
     The `genesis` event origin stays in the schema (events written by the retired 0.5.0 bridge).
+16. **Sync carries ciphertext only; one device fetches.** With sync switched on for a vault, its log
+    frames reach the sync relay (Firestore) only sealed, under opaque 32-hex ids and anonymous uids,
+    never with a name, an IBAN or an amount; a phone holds a vault's key only after it was paired for
+    that vault. Bank fetches, price fetches, connector runs and the daily worker run only on the pinned
+    fetch leader (the Mac that created the vault, `packages/sync/src/devices/lease.ts`); a relay outage
+    pauses sync, never the leader. The phone's derived budget tables exist only on a store opened with
+    `StoreOptions.companionReads`. Why: data-safety rules 3, 6 and 7 hold with several devices. Design:
+    [sync-and-mobile.md](sync-and-mobile.md).
 
 ## How to apply
 

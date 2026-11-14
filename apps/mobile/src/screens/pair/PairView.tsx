@@ -68,8 +68,9 @@ function Waiting({ line, sub }: { line: string; sub?: string }) {
 }
 
 /**
- * The pasted code: a long machine string, so no capitals, autocorrect or spellcheck, and a field that
- * grows with the text (no inner scrolling) so a paste shows from its first character.
+ * The pasted code: a long machine string, so no capitals, autocorrect, spellcheck or smart insertion of
+ * spaces (React Native has no switch for iOS smart quotes; the flow straightens them, `normalizeCode`),
+ * and a field that grows with the text (no inner scrolling) so a paste shows from its first character.
  */
 function CodeField(props: { value: string; onChange: (text: string) => void; invalid: boolean }) {
   return (
@@ -84,6 +85,7 @@ function CodeField(props: { value: string; onChange: (text: string) => void; inv
         autoCorrect={false}
         spellCheck={false}
         autoComplete="off"
+        smartInsertDelete={false}
         multiline
         scrollEnabled={false}
         textAlignVertical="top"
