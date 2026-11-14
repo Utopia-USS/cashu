@@ -37,6 +37,13 @@ export function cashReadOutput(io: CommandIo, state: CashCliSnapshot): boolean {
   if (table === null) return false;
   const line = `Cash: ${cashMoney(state.balance, state.currency)}`;
   printConsole(io, line, { spans: [{ start: 0, end: 5, style: { bold: true } }] });
+  // A pool's rows in another currency: their own line, named as net worth names the part.
+  for (const part of state.parts) {
+    const label = `${part.name}:`;
+    printConsole(io, `${label} ${cashMoney(part.balance, part.currency)}`, {
+      spans: [{ start: 0, end: label.length, style: { bold: true } }],
+    });
+  }
   io.stdout(table);
   return true;
 }

@@ -13,9 +13,19 @@ export interface CashCliRow {
   readonly amount: Decimal;
   readonly currency: string;
 }
-export interface CashCliSnapshot {
+/** The pool's rows in one other currency: their own balance, never added to the pool's. */
+export interface CashCliPart {
+  /** `budget.netWorthLineMeta` name: the pool's name plus the currency code, as net worth shows it. */
+  readonly name: string;
   readonly currency: string;
   readonly balance: Decimal;
+}
+export interface CashCliSnapshot {
+  readonly currency: string;
+  /** Sum of the pool's rows in its own currency only (data-safety rule 5, `budget.cashContributor`). */
+  readonly balance: Decimal;
+  /** The pool's parts in other currencies, by currency code; empty for a single-currency pool. */
+  readonly parts: readonly CashCliPart[];
   readonly rows: readonly CashCliRow[];
 }
 
@@ -28,8 +38,8 @@ export function cashCliSnapshot(
     requestedCurrency === null
       ? budget.budgetBaseCurrency(profileOf(read)?.baseCurrency)
       : pyUpper(requestedCurrency);
-  const account = read<{ id: number; currency: string }>(
-    `SELECT id, currency FROM accounts WHERE bank = ? AND external_id = ? ORDER BY id LIMIT 1`,
+  const account = read<{ id: number; gid: string; name: string; currency: string }>(
+    `SELECT id, gid, name, currency FROM accounts WHERE bank = ? AND external_id = ? ORDER BY id LIMIT 1`,
     MANUAL_INSTITUTION,
     `cash:${currency}`,
   )[0];
@@ -49,11 +59,24 @@ export function cashCliSnapshot(
   );
   // Event-backed timestamps and keys keep same-day ties stable across independent folds.
   // Their order may differ from old Python ids after genesis; no legacy id is reconstructed.
-  let balance = D("0");
-  for (const t of transactions) balance = balance.add(D(t.amount));
+  // Per currency, as net worth counts a pool: a row in another currency is a separate part.
+  const sums = new Map<string, Decimal>([[account.currency, D("0")]]);
+  for (const t of transactions)
+    sums.set(t.currency, (sums.get(t.currency) ?? D("0")).add(D(t.amount)));
+  const pool = { name: account.name };
+  const parts = [...sums.entries()]
+    .filter(([cur]) => cur !== account.currency)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([cur, partBalance]) => {
+      const meta = budget.netWorthLineMeta(budget.cashPoolPartId(account.gid, cur), (gid) =>
+        gid === account.gid ? pool : undefined,
+      );
+      return { name: meta?.name ?? account.name, currency: cur, balance: partBalance };
+    });
   return {
     currency: account.currency,
-    balance,
+    balance: sums.get(account.currency) ?? D("0"),
+    parts,
     rows: transactions.slice(0, 40).map((t) => ({ ...t, amount: D(t.amount) })),
   };
 }
