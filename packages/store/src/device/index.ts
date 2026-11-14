@@ -22,7 +22,12 @@ export {
   savePairedVault,
 } from "./paired.js";
 export {
+  type RelayMemberEntry,
+  type RelayMemberRole,
   type RelaySetting,
+  relayDeviceRole,
+  relayMemberRole,
+  relayMemberUid,
   relaySetting,
   relaySettingKey,
   relaySettingSchema,

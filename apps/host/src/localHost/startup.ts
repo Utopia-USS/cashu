@@ -111,9 +111,8 @@ export function hostFeatures(input: {
     ...(options.connectorCatalog !== undefined ? [NATIVE_CONNECTORS_FEATURE] : []),
     ...(nativeMode && options.banking !== undefined ? [NATIVE_BANKING_FEATURE] : []),
     ...(nativeMode ? [NATIVE_DEVICES_FEATURE] : []),
-    ...(nativeMode && options.lan !== undefined && options.lan.kind !== "off"
-      ? [NATIVE_PAIRING_FEATURE]
-      : []),
+    // Pairing runs over the sync relay: an invite without it is refused `no_config` / `relay_off`.
+    ...(nativeMode ? [NATIVE_PAIRING_FEATURE] : []),
     ...(nativeMode ? [NOTIFICATION_INTENT_FEATURE] : []),
     ...(nativeMode ? [NATIVE_RELAY_FEATURE] : []),
     "admin.handover",

@@ -84,6 +84,7 @@ export {
   OFFLINE_LEAD_MAX_MS,
   type OwnLeaseRecord,
   offlinePullAt,
+  peerCouldLead,
   pinEventFor,
   supportsAutoHandover,
   termEndFor,

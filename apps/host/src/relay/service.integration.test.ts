@@ -41,8 +41,9 @@ it("enables the vault at the relay, pushes its history on reopen and own writes 
   expect(await client.call("native.relay.status", { vault: env.vault })).toEqual({
     configured: true,
     enabled: false,
-    status: {},
     devices: 0,
+    identityLost: false,
+    canReconnect: false,
   });
   expect(host0.relay.pending()).toBe(0);
   client.close();
@@ -56,7 +57,7 @@ it("enables the vault at the relay, pushes its history on reopen and own writes 
   expect(setting).toMatchObject({
     enabled: true,
     project: "demo-cashu",
-    memberUids: { [device]: uid },
+    memberUids: { [device]: { uid, role: "admin" } },
   });
   const docs = env.fake.documents(`vaults/${env.vault}`);
   expect(docs.get(`vaults/${env.vault}`)?.fields.admins).toEqual({
@@ -91,12 +92,12 @@ it("backs off while the relay is unreachable and pushes once it answers again", 
   await rename(host, env.vault, "While offline");
   env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
   await until(() => host.relay.pending() === 0);
-  expect(host.relay.status(env.vault).status.lastError).toBe("unavailable");
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("unavailable");
   expect(env.timers.pendingDelays()).toContain(RELAY_BACKOFF_START_MS);
   env.fake.faults.reset();
   env.timers.advance(RELAY_BACKOFF_START_MS);
   await until(() => host.relay.pending() === 0 && relayBytes(env.fake, env.vault) > before);
-  expect(host.relay.status(env.vault).status.lastError).toBeUndefined();
+  expect(host.relay.transportStatus(env.vault).lastError).toBeUndefined();
 });
 
 it("pushes own writes before the idle exit", async () => {
@@ -129,9 +130,9 @@ it("reports a replaced relay identity for good: the new uid is no member, nothin
   const pausedSince = host.relay.status(env.vault).pausedSince as number;
   expect(pausedSince).toBeGreaterThanOrEqual(failedFrom);
   expect(pausedSince).toBeLessThanOrEqual(Date.now());
-  expect(host.relay.status(env.vault)).toMatchObject({
-    status: { lastError: "relay-identity-lost" },
-  });
+  // Reconnecting needs the vault's recovery secret, which these options do not keep.
+  expect(host.relay.status(env.vault)).toMatchObject({ identityLost: true, canReconnect: false });
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("relay-identity-lost");
 
   // The next passes start after the loss, but the rules refuse the new uid: the flag stays, nothing
   // reaches the relay, and the vault keeps taking local writes.
@@ -143,10 +144,8 @@ it("reports a replaced relay identity for good: the new uid is no member, nothin
   await until(() => host.relay.pending() === 0);
   await vaultQueueDrained(host, env.vault);
   expect(identityLostAt()).toBeDefined();
-  expect(host.relay.status(env.vault)).toMatchObject({
-    status: { lastError: "relay-identity-lost" },
-    pausedSince,
-  });
+  expect(host.relay.status(env.vault)).toMatchObject({ identityLost: true, pausedSince });
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("relay-identity-lost");
   expect(relayBytes(env.fake, env.vault)).toBe(pushed);
   expect(host.stores.vaults.get(env.vault)?.native?.isCurrent()).toBe(true);
   await rename(host, env.vault, "Still local");
@@ -166,7 +165,8 @@ it("refuses every pass at once while a back-off runs, reports the pause and clea
   const paused = (await client.call("native.relay.status", { vault: env.vault })) as {
     pausedSince?: number;
   };
-  expect(paused).toMatchObject({ enabled: true, status: { lastError: "unavailable" } });
+  expect(paused).toMatchObject({ enabled: true, identityLost: false });
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("unavailable");
   const failedAt = paused.pausedSince as number;
   expect(failedAt).toBeGreaterThanOrEqual(failedFrom);
   expect(failedAt).toBeLessThanOrEqual(Date.now());
@@ -261,7 +261,7 @@ it("doubles the back-off to its cap while reads answer and every append times ou
     gaps.push((uplink.commitsAt[attempts] ?? 0) - last);
   }
   expect(gaps).toEqual(expected);
-  expect(host.relay.status(env.vault).status.lastError).toBe("unavailable");
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("unavailable");
 });
 
 it("waits out a 1 h back-off when the relay's quota is exhausted", async () => {
@@ -272,8 +272,14 @@ it("waits out a 1 h back-off when the relay's quota is exhausted", async () => {
   await rename(host, env.vault, "Over quota");
   env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
   await until(() => host.relay.pending() === 0);
-  expect(host.relay.status(env.vault).status.lastError).toBe("quota");
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("quota");
   expect(env.timers.pendingDelays()).toContain(RELAY_QUOTA_BACKOFF_MS);
+  // The row's quota line: the hour's end on the relay clock.
+  const quotaUntil = host.relay.status(env.vault).quotaUntil as number;
+  expect(quotaUntil - env.timers.now()).toBeGreaterThan(
+    RELAY_QUOTA_BACKOFF_MS - RELAY_PUSH_DEBOUNCE_MS,
+  );
+  expect(quotaUntil - env.timers.now()).toBeLessThanOrEqual(RELAY_QUOTA_BACKOFF_MS);
   const failed = relayRequests(env.fake);
   // Pull ticks and further writes inside the hour reach nothing.
   await rename(host, env.vault, "Still over quota");
@@ -283,7 +289,8 @@ it("waits out a 1 h back-off when the relay's quota is exhausted", async () => {
   env.fake.faults.reset();
   env.timers.advance(RELAY_PUSH_DEBOUNCE_MS + 1);
   await until(() => host.relay.pending() === 0 && relayBytes(env.fake, env.vault) > before);
-  expect(host.relay.status(env.vault).status.lastError).toBeUndefined();
+  expect(host.relay.transportStatus(env.vault).lastError).toBeUndefined();
+  expect(host.relay.status(env.vault)).not.toHaveProperty("quotaUntil");
 });
 
 it("keeps a pull at least 60 s after the previous pass", async () => {
@@ -297,6 +304,13 @@ it("keeps a pull at least 60 s after the previous pass", async () => {
   env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
   await until(() => host.relay.pending() === 0);
   await vaultQueueDrained(host, env.vault);
+  // The member reconciliation that follows a pass reaching the relay lists members (a runQuery too):
+  // counted only once it is done.
+  let settled = -1;
+  while (settled !== env.fake.counters.runQuery) {
+    settled = env.fake.counters.runQuery;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   const pushed = env.fake.counters.runQuery;
   env.timers.advance(lead);
   await vaultQueueDrained(host, env.vault);
@@ -385,10 +399,16 @@ it("refuses without a config, when another admin owns the vault and while offlin
   expect(await client.call("native.relay.status", { vault: bare.vault })).toEqual({
     configured: false,
     enabled: false,
-    status: {},
     devices: 0,
+    identityLost: false,
+    canReconnect: false,
   });
-  for (const method of ["native.relay.enable", "native.relay.disable", "native.relay.purge"])
+  for (const method of [
+    "native.relay.enable",
+    "native.relay.disable",
+    "native.relay.purge",
+    "native.relay.reconnect",
+  ])
     expect(await client.call(method, { vault: bare.vault })).toEqual({
       kind: "refused",
       reason: "no_config",
@@ -499,7 +519,7 @@ it("a removed Mac (member doc deleted) is never offline, not even through the ba
   env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
   await until(() => host.relay.pending() === 0);
   await vaultQueueDrained(host, env.vault);
-  expect(host.relay.status(env.vault).status.lastError).toBe("forbidden");
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("forbidden");
   expect(pullKind(host, env.vault)).toBe("incomplete");
   // Another caller's pass inside the back-off is refused at once, with the refusal's reason.
   const requests = relayRequests(env.fake);
@@ -513,7 +533,7 @@ it("a quota day is an outage: offline, and the back-off answer says so (G1)", as
   const host = await enabled(env);
   env.fake.faults.quota(1_000);
   await host.syncVault(env.vault);
-  expect(host.relay.status(env.vault).status.lastError).toBe("quota");
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("quota");
   expect(pullKind(host, env.vault)).toBe("offline");
   const requests = relayRequests(env.fake);
   await host.syncVault(env.vault);

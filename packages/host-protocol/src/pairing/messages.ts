@@ -14,6 +14,9 @@ const refusal = z.strictObject({
     "invalid",
     "busy",
     "outcome_unknown",
+    // The vault's sync is switched off on this Mac / this build has no sync config (invite only).
+    "relay_off",
+    "no_config",
   ]),
 });
 
@@ -56,13 +59,22 @@ export const pairingConfirmResultSchema = z.union([
     operationId,
     device: z.string().regex(/^[0-9a-f]{32}$/),
   }),
+  /**
+   * The phone is admitted (member of the vault, device.added in the log) but its first sync has not
+   * reached this Mac yet: the desktop says so and polls `inspect` until `completed`.
+   */
+  z.strictObject({
+    kind: z.literal("waiting_for_phone"),
+    operationId,
+    device: z.string().regex(/^[0-9a-f]{32}$/),
+  }),
   z.strictObject({ kind: z.literal("outcome_unknown"), operationId }),
   refusal,
 ]);
 export const pairingInspectParamsSchema = operation;
 export const pairingInspectResultSchema = z.union([
   z.strictObject({
-    kind: z.enum(["pending", "completed", "outcome_unknown", "not_started"]),
+    kind: z.enum(["pending", "waiting_for_phone", "completed", "outcome_unknown", "not_started"]),
     operationId,
   }),
   refusal,

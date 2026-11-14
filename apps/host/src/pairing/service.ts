@@ -1,522 +1,361 @@
-import { randomBytes } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
-import { createServer, type Server } from "node:https";
-import { networkInterfaces } from "node:os";
+// Device pairing over the sync relay (M4): the Mac shows the QR, the joiner (a phone) claims the
+// session at the relay and the pairing protocol (`devices.runInviter`) runs over a
+// `FirestorePairingLink` of this Mac's relay identity. The link only moves sealed boxes; every
+// security property comes from the protocol.
+//
+// ONE commit point: the joiner's relay membership (`members/{joinerUid}`, role `member`), written once
+// the owner typed the six digits and the welcome and all its pages were written to the session. Before
+// it, every cancel, expiry or failure closes the link (the session document and its messages are
+// deleted) and leaves nothing that blocks a new invite: the in-memory invite ends, the journal keeps
+// only an idle invite record (pruned after a day) and the joiner, which stores nothing before it read
+// its own membership, keeps nothing either. Every check that can refuse runs BEFORE the membership, in
+// the same turn of the vault queue as the membership write and the append (nativeVault/pairing.ts
+// `pairingAdmit`), behind a durable `admitting` row. After it nothing refuses: the `device.added`
+// append is keyed in the journal and retried until it lands (reopen included), an unknown membership
+// outcome is resolved from the relay's member list (members.ts), and a member document no registry
+// device and no live row explains is removed. The outcome the desktop reads comes from that persisted
+// state, never from one message of the joiner: `completed` once the joiner's first signed head reached
+// this Mac through the relay, `waiting_for_phone` while the admission is done but the phone has not
+// synced yet.
+//
+// Session bound: the QR is good for its 5 minutes (the protocol's invite TTL, the first claim), but the
+// relay session must outlive the whole exchange, since the relay refuses every message after its
+// `expiresAt`: QR expiry + the 2-minute code window + PAIRING_WELCOME_WINDOW_MS (3 minutes) for the
+// welcome pages, i.e. 10 minutes after the invite. A welcome is not started with less than that window
+// left; one the session's end still cuts off (a stalled relay) fails before the commit point, so the
+// host ends clean (link closed, invite released, nothing appended) and a new code pairs again.
 import type {
   PairingCancelResult,
   PairingConfirmResult,
   PairingInspectResult,
   PairingInviteResult,
 } from "@cashu/host-protocol";
-import {
-  encodeLanDescriptor,
-  LAN_CARRIER_PATH,
-  LAN_CHALLENGE_PATH,
-  LAN_MAX_WIRE_BYTES,
-  LAN_PAIR_PATH,
-  LAN_PAIR_RESUME_PATH,
-  lanAuthBody,
-  lanCarrierReplySchema,
-  lanCarrierRequestSchema,
-  lanChallengeRequestSchema,
-  lanPairResumeSchema,
-  type PairExchangeReply,
-  pairExchangeReplySchema,
-  pairExchangeSchema,
-} from "@cashu/host-protocol/pairing-lan";
 import { mintUlid } from "@cashu/store";
-import { crypto, devices } from "@cashu/sync";
+import {
+  devices,
+  type FirestorePairingLink,
+  FirestoreRestError,
+  PairingLinkError,
+  pairingSessionId,
+} from "@cashu/sync";
 import type { NativeVaultSession } from "../nativeVault.js";
-import { loadLanTlsIdentity } from "./tls.js";
+import type { HostRelay } from "../relay/service.js";
 
 const MAX_INVITES = 1;
-const CHALLENGE_TTL = 30_000;
-const WELCOME_TTL = 24 * 60 * 60 * 1000;
-const POLL_MS = 10_000;
+/** Reserved after the code for writing the welcome and its pages to the session. */
+export const PAIRING_WELCOME_WINDOW_MS = 3 * 60_000;
+/** How long past the code window a joiner that sent its hello but never revealed is waited for. */
+const REVEAL_GRACE_MS = 60_000;
+/**
+ * How long a finished session stays at the relay so the joiner can read the last pages: the link's
+ * own grace past `expiresAt` (no write is accepted after it, so nothing new can arrive).
+ */
+const RETIRE_GRACE_MS = 60_000;
+const PRUNE_EVERY_MS = 15_000;
 
 type CodeResolver = (value: string | undefined) => void;
-type Challenge = {
-  vault: string;
-  device: string;
-  purpose: "carrier" | "resume";
-  session?: string;
-  expiresAt: number;
-};
-
-function reply(res: ServerResponse, body: unknown, status = 200): void {
-  const encoded = Buffer.from(JSON.stringify(body));
-  res.writeHead(status, {
-    "content-type": "application/json",
-    "cache-control": "no-store",
-    "content-length": String(encoded.length),
-  });
-  res.end(encoded);
-}
-
-async function readJson(req: IncomingMessage, cap: number): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > cap) throw new Error("too_large");
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
-}
-
-class Exchange implements devices.PairingLink {
-  readonly #incoming: Uint8Array[] = [];
-  readonly #outgoing: Uint8Array[] = [];
-  #receive?: (value: Uint8Array) => void;
-  #send?: (value: Uint8Array) => void;
-  #closed = false;
-  #nextSeq = 0;
-  #last?: { readonly encoded: string; readonly reply: PairExchangeReply };
-  #busy = false;
-  #drain?: () => void;
-  #replay: Uint8Array[];
-  #replayAt = 0;
-
-  constructor(replay: readonly Uint8Array[] = []) {
-    const total = replay.reduce((size, value) => size + value.byteLength, 0);
-    if (
-      replay.length > 1025 ||
-      total > 72 * 1024 * 1024 ||
-      replay.some((value) => value.length === 0 || value.length > 4 * 1024 * 1024)
-    )
-      throw new Error("pairing_receipt_too_large");
-    this.#replay = [...replay];
-  }
-
-  async send(message: Uint8Array): Promise<void> {
-    if (this.#closed) throw new Error("pairing_closed");
-    if (message.length === 0 || message.length > 4 * 1024 * 1024)
-      throw new Error("pairing_message_too_large");
-    while (this.#outgoing.length >= 2 && !this.#closed)
-      await new Promise<void>((resolve) => {
-        this.#drain = resolve;
-      });
-    if (this.#closed) throw new Error("pairing_closed");
-    const waiter = this.#send;
-    this.#send = undefined;
-    if (waiter) waiter(message);
-    else this.#outgoing.push(message);
-  }
-
-  async receive(): Promise<Uint8Array> {
-    if (this.#closed) throw new Error("pairing_closed");
-    const value = this.#incoming.shift();
-    if (value) return value;
-    return new Promise((resolve) => {
-      this.#receive = resolve;
-    });
-  }
-
-  close(): void {
-    this.#closed = true;
-    this.#receive?.(new Uint8Array());
-    this.#receive = undefined;
-    this.#send?.(new Uint8Array());
-    this.#send = undefined;
-    this.#drain?.();
-    this.#drain = undefined;
-    this.#incoming.length = 0;
-    this.#outgoing.length = 0;
-    this.#replay.length = 0;
-    this.#last = undefined;
-  }
-
-  async exchange(input: {
-    v: 1;
-    session: string;
-    seq: number;
-    kind: "send" | "poll";
-    body?: string;
-  }): Promise<PairExchangeReply> {
-    if (this.#closed) return { v: 1, seq: input.seq, kind: "closed", code: "cancelled" };
-    const encoded = JSON.stringify(input);
-    if (input.seq === this.#nextSeq - 1 && this.#last?.encoded === encoded) return this.#last.reply;
-    if (input.seq !== this.#nextSeq || this.#busy)
-      return { v: 1, seq: input.seq, kind: "closed", code: "invalid" };
-    this.#busy = true;
-    try {
-      if (input.kind === "send") {
-        const message = Buffer.from(input.body ?? "", "base64url");
-        if (message.length === 0 || message.length > 4 * 1024 * 1024 || this.#incoming.length >= 1)
-          return { v: 1, seq: input.seq, kind: "closed", code: "invalid" };
-        const waiter = this.#receive;
-        this.#receive = undefined;
-        if (waiter) waiter(message);
-        else this.#incoming.push(message);
-      }
-      let outbound = this.#outgoing.shift();
-      if (outbound) {
-        this.#drain?.();
-        this.#drain = undefined;
-      }
-      if (!outbound && this.#replayAt < this.#replay.length)
-        outbound = this.#replay[this.#replayAt++];
-      if (!outbound)
-        outbound = await new Promise<Uint8Array>((resolve) => {
-          const timer = setTimeout(() => {
-            this.#send = undefined;
-            resolve(new Uint8Array());
-          }, POLL_MS);
-          this.#send = (value) => {
-            clearTimeout(timer);
-            resolve(value);
-          };
-        });
-      const result: PairExchangeReply =
-        outbound.length > 0
-          ? {
-              v: 1,
-              seq: input.seq,
-              kind: "message",
-              body: Buffer.from(outbound).toString("base64url"),
-            }
-          : {
-              v: 1,
-              seq: input.seq,
-              kind: this.#closed ? "closed" : "pending",
-              ...(this.#closed ? { code: "cancelled" as const } : {}),
-            };
-      this.#last = { encoded, reply: result };
-      this.#nextSeq += 1;
-      return result;
-    } finally {
-      this.#busy = false;
-    }
-  }
-}
 
 interface LiveInvite {
   readonly vault: string;
   readonly operationId: string;
-  readonly link: Exchange;
-  readonly expiresAt: number;
-  retireAt?: number;
+  readonly link: FirestorePairingLink;
+  /** The QR's own expiry (no claim, no hello after it). */
+  readonly qrExpiresAt: number;
+  /** The relay session's expiry (see the header). */
+  readonly sessionExpiresAt: number;
+  /** The relay uid that claimed the session, bound when its hello was accepted. */
+  joinerUid?: string;
+  joinerDevice?: string;
+  helloAt?: number;
   code?: CodeResolver;
   earlyCode?: string;
+  /** The owner typed a code: the commit may be under way, cancel is refused. */
   dispatched?: boolean;
   codeResult?: (result: PairingConfirmResult) => void;
   outcome?: PairingConfirmResult;
+  /** The membership may have been written (the commit point may have passed). */
+  committed?: boolean;
+  /** When the session is closed at the relay and the invite forgotten. */
+  retireAt?: number;
+  closing?: Promise<void>;
 }
 
-export interface LanPairingService {
+export interface PairingService {
   invite(vault: string): Promise<PairingInviteResult>;
   confirm(vault: string, operationId: string, code: string): Promise<PairingConfirmResult>;
   inspect(vault: string, operationId: string): Promise<PairingInspectResult>;
   cancel(vault: string, operationId: string): Promise<PairingCancelResult>;
+  /** Ends every invite and deletes its relay session (before the relay closes). */
   close(): Promise<void>;
-  /** Active owner pairing or verified paired requests only; unauthenticated traffic is excluded. */
+  /** Invites still waiting for a joiner or the owner (the host does not idle out meanwhile). */
   pending(): number;
-  readonly address: { readonly ip: string; readonly port: number; readonly spki: string };
 }
 
-export function localLanIp(): string | undefined {
-  const values = Object.values(networkInterfaces())
-    .flatMap((entries) => entries ?? [])
-    .filter((entry) => entry.family === "IPv4" && !entry.internal)
-    .map((entry) => entry.address)
-    .sort();
-  return values.find((ip) => {
-    try {
-      encodeLanDescriptor({ v: 1, ip, port: 1, spki: "0".repeat(64) });
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
-
-export async function startLanPairingService(input: {
-  readonly dataDir: string;
-  readonly ip: string;
-  readonly port: number;
-  /** Resolve the current checked session for every request; host sessions may be replaced. */
+export interface PairingServiceInput {
+  /** The current checked session of a vault (host sessions may be replaced). */
   readonly vault: (vaultId: string) => NativeVaultSession | undefined;
-  readonly now?: () => number;
-}): Promise<LanPairingService> {
-  const now = input.now ?? Date.now;
-  const tls = await loadLanTlsIdentity(input.dataDir, input.ip, now());
+  readonly relay: Pick<
+    HostRelay,
+    | "configured"
+    | "projectId"
+    | "status"
+    | "pairingLink"
+    | "addMember"
+    | "listMembers"
+    | "requestPull"
+    | "pruneExpiredPairings"
+  >;
+  readonly now: () => number;
+  /** Value-free warnings (an event name and the error class). */
+  readonly warn: (event: string, error: unknown) => void;
+  /** Test seam: the prune timer (default every 15 s, unref'd). */
+  readonly every?: (ms: number, run: () => void) => () => void;
+}
+
+const nodeEvery = (ms: number, run: () => void): (() => void) => {
+  const timer = setInterval(run, ms);
+  timer.unref();
+  return () => clearInterval(timer);
+};
+
+export function createPairingService(input: PairingServiceInput): PairingService {
+  const { relay, now, warn } = input;
   const invites = new Map<string, LiveInvite>();
-  const challenges = new Map<string, Challenge>();
   let closed = false;
   let starting = false;
-  let inFlight = 0;
-  let authorizedCarrier = 0;
-  const rates = new Map<string, { start: number; count: number }>();
-  const prune = () => {
-    for (const [nonce, challenge] of challenges)
-      if (challenge.expiresAt < now()) challenges.delete(nonce);
-    for (const [session, live] of invites)
-      if (now() > (live.retireAt ?? live.expiresAt)) {
-        live.code?.(undefined);
-        live.codeResult?.({ kind: "refused", code: "expired" });
-        live.link.close();
-        invites.delete(session);
-      }
-    for (const [peer, rate] of rates) if (now() - rate.start >= 60_000) rates.delete(peer);
-  };
-  const cleanup = setInterval(prune, 60_000);
-  cleanup.unref();
-  const server: Server = createServer(
-    { key: tls.key, cert: tls.cert, requestTimeout: 35_000, headersTimeout: 10_000 },
-    (req, res) => {
-      const peer = req.socket.remoteAddress ?? "unknown";
-      const previousRate = rates.get(peer);
-      const rate =
-        !previousRate || now() - previousRate.start >= 60_000
-          ? { start: now(), count: 0 }
-          : previousRate;
-      rate.count += 1;
-      rates.set(peer, rate);
-      if (
-        inFlight >= 2 ||
-        rate.count > 240 ||
-        (req.headers["content-length"] !== undefined &&
-          (!/^\d+$/.test(req.headers["content-length"] as string) ||
-            Number(req.headers["content-length"]) >
-              (req.url === LAN_CARRIER_PATH ? LAN_MAX_WIRE_BYTES : 6 * 1024 * 1024)))
-      ) {
-        reply(res, { v: 1, kind: "refused", code: "busy" }, 429);
-        req.resume();
-        return;
-      }
-      inFlight += 1;
-      const deadline = setTimeout(() => req.destroy(), 35_000);
-      void (async () => {
-        prune();
-        if (
-          closed ||
-          req.method !== "POST" ||
-          typeof req.url !== "string" ||
-          req.url.includes("?")
-        ) {
-          reply(res, { kind: "refused", code: "invalid" }, 404);
-          return;
-        }
-        const path = req.url;
-        if (
-          ![LAN_PAIR_PATH, LAN_PAIR_RESUME_PATH, LAN_CHALLENGE_PATH, LAN_CARRIER_PATH].includes(
-            path,
-          )
-        ) {
-          reply(res, { kind: "refused", code: "invalid" }, 404);
-          return;
-        }
-        const raw = await readJson(
-          req,
-          path === LAN_CARRIER_PATH ? LAN_MAX_WIRE_BYTES : 6 * 1024 * 1024,
-        );
-        if (path === LAN_PAIR_PATH) {
-          const parsed = pairExchangeSchema.safeParse(raw);
-          if (!parsed.success) {
-            reply(res, { v: 1, kind: "closed", code: "invalid" }, 400);
-            return;
-          }
-          const live = invites.get(parsed.data.session);
-          if (!live || now() > (live.retireAt ?? live.expiresAt)) {
-            reply(res, { v: 1, seq: parsed.data.seq, kind: "closed", code: "expired" });
-            return;
-          }
-          reply(res, pairExchangeReplySchema.parse(await live.link.exchange(parsed.data)));
-          return;
-        }
-        if (path === LAN_CHALLENGE_PATH) {
-          const parsed = lanChallengeRequestSchema.safeParse(raw);
-          if (!parsed.success) {
-            reply(res, { v: 1, kind: "refused", code: "invalid" }, 400);
-            return;
-          }
-          const known = input.vault(parsed.data.vault);
-          if (
-            challenges.size > 1024 ||
-            !known ||
-            !(await known.pairingKnown(
-              parsed.data.device,
-              parsed.data.purpose,
-              parsed.data.session,
-            ))
-          ) {
-            reply(res, { v: 1, kind: "refused", code: "unavailable" });
-            return;
-          }
-          const nonce = randomBytes(32).toString("hex");
-          const challenge: Challenge = {
-            vault: parsed.data.vault,
-            device: parsed.data.device,
-            purpose: parsed.data.purpose,
-            ...(parsed.data.session === undefined ? {} : { session: parsed.data.session }),
-            expiresAt: now() + CHALLENGE_TTL,
-          };
-          challenges.set(nonce, challenge);
-          reply(res, { v: 1, nonce, expiresAt: challenge.expiresAt });
-          return;
-        }
-        if (path === LAN_CARRIER_PATH) {
-          const parsed = lanCarrierRequestSchema.safeParse(raw);
-          if (!parsed.success) {
-            reply(res, { v: 1, kind: "refused", code: "invalid" }, 400);
-            return;
-          }
-          const request = parsed.data;
-          const challenge = challenges.get(request.auth.nonce);
-          challenges.delete(request.auth.nonce);
-          if (
-            !challenge ||
-            challenge.purpose !== "carrier" ||
-            challenge.vault !== request.vault ||
-            challenge.device !== request.device ||
-            challenge.expiresAt < now()
-          ) {
-            reply(res, { v: 1, kind: "refused", code: "unauthorized" });
-            return;
-          }
-          const vault = input.vault(request.vault);
-          if (!vault) {
-            reply(res, { v: 1, kind: "refused", code: "unavailable" });
-            return;
-          }
-          let authorized = false;
-          try {
-            const result = await vault.carrierRequest(request, challenge.expiresAt, () => {
-              authorized = true;
-              authorizedCarrier += 1;
-            });
-            reply(res, lanCarrierReplySchema.parse(result));
-          } finally {
-            if (authorized) authorizedCarrier -= 1;
-          }
-          return;
-        }
-        const parsed = lanPairResumeSchema.safeParse(raw);
-        if (!parsed.success) {
-          reply(res, { v: 1, kind: "refused", code: "invalid" }, 400);
-          return;
-        }
-        const request = parsed.data;
-        const challenge = challenges.get(request.auth.nonce);
-        challenges.delete(request.auth.nonce);
-        const vault = input.vault(request.vault);
-        if (
-          !challenge ||
-          challenge.purpose !== "resume" ||
-          challenge.vault !== request.vault ||
-          challenge.device !== request.device ||
-          challenge.session !== request.session ||
-          challenge.expiresAt < now() ||
-          !vault
-        ) {
-          reply(res, { v: 1, kind: "refused", code: "unauthorized" });
-          return;
-        }
-        const attempt = await vault.pairingAttempt(request.session);
-        if (
-          !attempt ||
-          attempt.vault !== request.vault ||
-          attempt.device !== request.device ||
-          attempt.phase !== "completed" ||
-          attempt.committedAt === undefined ||
-          now() > attempt.committedAt + WELCOME_TTL
-        ) {
-          reply(res, { v: 1, kind: "refused", code: "expired" });
-          return;
-        }
-        const body = lanAuthBody({
-          purpose: "resume",
-          path: LAN_PAIR_RESUME_PATH,
-          method: "resume",
-          vault: request.vault,
-          device: request.device,
-          session: request.session,
-          nonce: request.auth.nonce,
-          expiresAt: challenge.expiresAt,
-        });
-        const key = Buffer.from(attempt.signKey, "hex");
-        if (
-          !crypto.verifyContextSignature(
-            "cashu/lan-auth/v1",
-            body,
-            Buffer.from(request.auth.signature, "hex"),
-            key,
-          ) ||
-          !(await vault.pairingTrust(
-            request.device,
-            key,
-            Buffer.from(attempt.boxKey, "hex"),
-            Buffer.from(attempt.certificate, "hex"),
-          ))
-        ) {
-          reply(res, { v: 1, kind: "refused", code: "unauthorized" });
-          return;
-        }
-        if (attempt.welcome.length === 0) {
-          reply(res, { v: 1, kind: "refused", code: "expired" });
-          return;
-        }
-        const previous = invites.get(request.session);
-        previous?.link.close();
-        const link = new Exchange([attempt.welcome, ...attempt.pages]);
-        invites.set(request.session, {
-          vault: request.vault,
-          operationId: attempt.operationId,
-          link,
-          expiresAt: attempt.committedAt + WELCOME_TTL,
-          retireAt: attempt.committedAt + WELCOME_TTL,
-          outcome: { kind: "completed", operationId: attempt.operationId, device: request.device },
-        });
-        reply(res, { v: 1, kind: "ready", firstSeq: 0 });
-      })()
-        .catch(() => {
-          if (!res.headersSent) reply(res, { v: 1, kind: "refused", code: "unknown" }, 503);
-        })
-        .finally(() => {
-          clearTimeout(deadline);
-          inFlight -= 1;
-        });
-    },
-  );
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(input.port, input.ip, () => {
-      server.off("error", reject);
-      resolve();
+
+  const active = (live: LiveInvite) => live.outcome === undefined;
+
+  /** Closes the relay session once (its messages and document are deleted); never throws. */
+  const closeLink = (live: LiveInvite): Promise<void> => {
+    live.closing ??= live.link.close().catch((error: unknown) => {
+      // The session expires at the relay anyway (no write is accepted after it).
+      warn("pairing.close-failed", error);
     });
-  });
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("lan_address_unavailable");
-  const descriptor = tls.descriptor(address.port);
-  const rendezvous = encodeLanDescriptor(descriptor, input.ip === "127.0.0.1");
+    return live.closing;
+  };
+
+  /** Ends an invite that is still running (cancel, expiry): no commit happened, nothing is kept. */
+  const abandon = (live: LiveInvite, code: "expired" | "invalid"): Promise<void> => {
+    live.outcome = { kind: "refused", code };
+    live.retireAt = now();
+    live.code?.(undefined);
+    live.code = undefined;
+    live.codeResult?.(live.outcome);
+    live.codeResult = undefined;
+    return closeLink(live);
+  };
+
+  const prune = () => {
+    const at = now();
+    for (const [operationId, live] of invites) {
+      if (active(live)) {
+        if (live.dispatched) {
+          // The commit may be running; only the relay session's end stops it (the link refuses).
+          continue;
+        }
+        const deadline =
+          live.helloAt === undefined
+            ? live.qrExpiresAt
+            : Math.min(live.sessionExpiresAt, live.helloAt + devices.SAS_TTL_MS + REVEAL_GRACE_MS);
+        if (at > deadline) void abandon(live, "expired");
+        continue;
+      }
+      if (live.retireAt !== undefined && at >= live.retireAt) {
+        void closeLink(live);
+        invites.delete(operationId);
+      }
+    }
+  };
+  const stopPruning = (input.every ?? nodeEvery)(PRUNE_EVERY_MS, prune);
+
+  /**
+   * The commit, after the whole welcome was written: `pairingAdmit` runs every refusable check, the
+   * relay preflight and the durable `admitting` row, then the joiner's relay membership (the commit
+   * point) and the keyed append. Throws when nothing was admitted or the outcome is unknown.
+   */
+  const commit = async (
+    live: LiveInvite,
+    vault: NativeVaultSession,
+    session: string,
+    welcome: devices.InviterWelcome,
+    authority: string,
+    qr: string,
+  ): Promise<void> => {
+    const uid = live.joinerUid;
+    const device = welcome.device.deviceId;
+    if (uid === undefined || device !== live.joinerDevice) throw new Error("pairing_unbound");
+    const admitted = await vault.pairingAdmit(
+      { session, operationId: live.operationId, welcome, authority, qr, uid },
+      {
+        preflight: async () => {
+          await relay.listMembers(live.vault);
+        },
+        admit: async () => {
+          // An earlier pairing of the same phone (same uid, older device) is overwritten in place:
+          // the member document is keyed by the uid, the relay drops the stale setting entry.
+          live.committed = true;
+          try {
+            await relay.addMember(live.vault, { device, uid, role: "member" });
+            return "admitted";
+          } catch (error) {
+            warn("pairing.member-write-failed", error);
+            // A refusal the relay answered wrote nothing; anything else may still land.
+            if (
+              (error instanceof FirestoreRestError &&
+                (error.code === "permission-denied" || error.code === "invalid-argument")) ||
+              (error instanceof Error && error.message === "relay_off")
+            )
+              return "absent";
+            return "unknown";
+          }
+        },
+      },
+    );
+    if (admitted === "outcome_unknown") {
+      live.outcome = { kind: "outcome_unknown", operationId: live.operationId };
+      throw new Error("pairing_admit_unknown");
+    }
+    if (admitted === "refused") {
+      live.committed = false;
+      throw new Error("pairing_admit_refused");
+    }
+    // The phone's first pull finds its device.added; its first push is what `completed` waits for.
+    relay.requestPull(live.vault);
+  };
+
+  /** The persisted outcome of a finished run (the journal is the source of truth after the commit). */
+  const settle = async (
+    live: LiveInvite,
+    vault: NativeVaultSession,
+    result: devices.PairingStep<devices.InviterWelcome> | undefined,
+    failure: "expired" | "unavailable",
+  ): Promise<void> => {
+    if (live.outcome?.kind === "refused" && !live.committed) {
+      // Cancelled or expired meanwhile: the session is closed already.
+      await closeLink(live);
+      return;
+    }
+    let persisted: Awaited<ReturnType<NativeVaultSession["pairingOperation"]>>;
+    try {
+      persisted = await vault.pairingOperation(live.operationId);
+    } catch (error) {
+      warn("pairing.outcome-unread", error);
+      persisted = undefined;
+    }
+    live.outcome =
+      persisted?.phase === "completed"
+        ? persisted.joinerSeen
+          ? { kind: "completed", operationId: live.operationId, device: persisted.device }
+          : { kind: "waiting_for_phone", operationId: live.operationId, device: persisted.device }
+        : persisted?.phase === "may_append" ||
+            persisted?.phase === "admitting" ||
+            live.outcome?.kind === "outcome_unknown"
+          ? { kind: "outcome_unknown", operationId: live.operationId }
+          : {
+              kind: "refused",
+              // A protocol refusal (wrong codes, an abort) vs the session's end or a relay failure.
+              code:
+                result === undefined || result.ok
+                  ? failure
+                  : result.reason === "expired"
+                    ? "expired"
+                    : "invalid",
+            };
+    live.codeResult?.(live.outcome);
+    live.codeResult = undefined;
+    if (
+      (live.outcome.kind === "completed" || live.outcome.kind === "waiting_for_phone") &&
+      result?.ok === true
+    ) {
+      // The joiner may still be reading the pages: the session stays until it could not take more.
+      live.retireAt = live.sessionExpiresAt + RETIRE_GRACE_MS;
+      return;
+    }
+    live.retireAt = now();
+    await closeLink(live);
+  };
+
+  const run = async (
+    live: LiveInvite,
+    vault: NativeVaultSession,
+    inviter: devices.PairingInviter,
+    authority: string,
+    qr: string,
+  ): Promise<void> => {
+    let result: devices.PairingStep<devices.InviterWelcome> | undefined;
+    let failure: "expired" | "unavailable" = "unavailable";
+    try {
+      result = await devices.runInviter(inviter, live.link, {
+        now,
+        eid: () => mintUlid(now()),
+        afterHello: async (joiner) => {
+          // The link accepted the hello only from the session's claimant: that uid is the joiner.
+          const uid = await live.link.joinerUid();
+          if (uid === undefined) throw new Error("pairing_unclaimed");
+          if (!(await vault.pairingBindJoiner(inviter.session, joiner)))
+            throw new Error("pairing_hello_unavailable");
+          live.joinerUid = uid;
+          live.joinerDevice = joiner.deviceId;
+          live.helloAt = now();
+        },
+        enterCode: (attemptsLeft) =>
+          new Promise((resolve) => {
+            if (attemptsLeft <= 0 || live.outcome !== undefined) {
+              resolve(undefined);
+              return;
+            }
+            if (live.earlyCode !== undefined) {
+              const code = live.earlyCode;
+              live.earlyCode = undefined;
+              resolve(code);
+              return;
+            }
+            // A wrong code: the owner may type again (the protocol counts the attempts).
+            live.codeResult?.({ kind: "refused", code: "invalid" });
+            live.codeResult = undefined;
+            live.dispatched = false;
+            live.code = resolve;
+          }),
+        beforeWelcome: async () => {
+          // Not started when the session could end before its last page is written.
+          if (now() + PAIRING_WELCOME_WINDOW_MS > live.sessionExpiresAt)
+            throw new Error("pairing_window_short");
+        },
+      });
+      if (result.ok) await commit(live, vault, inviter.session, result.value, authority, qr);
+    } catch (error) {
+      // The link failed (expired, closed, relay unreachable) or the commit could not run: the
+      // persisted state decides below.
+      warn("pairing.link-ended", error);
+      if (
+        (error instanceof PairingLinkError && error.code === "expired") ||
+        now() >= live.sessionExpiresAt
+      )
+        failure = "expired";
+    }
+    await settle(live, vault, result, failure);
+  };
+
   return {
-    address: { ip: input.ip, port: address.port, spki: tls.spki },
-    pending: () =>
-      authorizedCarrier +
-      (starting ? 1 : 0) +
-      [...invites.values()].filter((item) => !item.outcome && now() <= item.expiresAt).length,
+    pending: () => [...invites.values()].filter(active).length + (starting ? 1 : 0),
+
     async invite(vaultId) {
       prune();
-      if (
-        closed ||
-        starting ||
-        [...invites.values()].filter((item) => !item.outcome && now() <= item.expiresAt).length >=
-          MAX_INVITES
-      )
+      if (closed || starting || [...invites.values()].filter(active).length >= MAX_INVITES)
         return { kind: "refused", code: "busy" };
       starting = true;
       try {
-        // One terminal receipt may remain in memory for a live joiner's final polls. A new
-        // invitation releases it; committed bytes remain available through signed cold resume.
-        for (const [session, terminal] of invites) {
-          if (!terminal.outcome) continue;
-          terminal.link.close();
-          invites.delete(session);
-        }
         const vault = input.vault(vaultId);
         if (!vault) return { kind: "refused", code: "unavailable" };
-        const created = await vault.pairingStart(rendezvous);
+        if (!relay.configured || relay.projectId === undefined)
+          return { kind: "refused", code: "no_config" };
+        if (!relay.status(vaultId).enabled) return { kind: "refused", code: "relay_off" };
+        // Sessions a crash or a failed close left behind (no live one is past its end + grace).
+        void relay
+          .pruneExpiredPairings(vaultId, RETIRE_GRACE_MS)
+          .catch((error: unknown) => warn("pairing.prune-failed", error));
+        const created = await vault.pairingStart(`fb1:${relay.projectId}`);
         if (!created.ok)
           return {
             kind: "refused",
@@ -528,8 +367,22 @@ export async function startLanPairingService(input: {
                   : "unavailable",
           };
         const { inviter, qr, authority } = created.value;
-        if (closed) {
+        const qrExpiresAt = inviter.invite.expiresAt;
+        const sessionExpiresAt = qrExpiresAt + devices.SAS_TTL_MS + PAIRING_WELCOME_WINDOW_MS;
+        let link: FirestorePairingLink;
+        try {
+          link = relay.pairingLink(vaultId, pairingSessionId(inviter.invite));
+        } catch {
           inviter.reject();
+          return { kind: "refused", code: "relay_off" };
+        }
+        try {
+          await link.open(sessionExpiresAt);
+        } catch (error) {
+          // Nothing was created at the relay that a later invite could meet (a new QR, a new id).
+          warn("pairing.open-failed", error);
+          inviter.reject();
+          await link.close().catch(() => {});
           return { kind: "refused", code: "unavailable" };
         }
         const operationId = mintUlid(now());
@@ -539,98 +392,39 @@ export async function startLanPairingService(input: {
             inviter.session,
             operationId,
             qr,
-            inviter.invite.expiresAt,
+            qrExpiresAt,
           );
-        } catch {
-          // No QR was published; the ephemeral inviter must not remain usable.
+        } catch (error) {
+          warn("pairing.register-failed", error);
         }
         if (!registered || closed) {
           inviter.reject();
+          await link.close().catch(() => {});
           return { kind: "refused", code: "unavailable" };
         }
-        const link = new Exchange();
         const live: LiveInvite = {
           vault: vaultId,
           operationId,
           link,
-          expiresAt: inviter.invite.expiresAt,
+          qrExpiresAt,
+          sessionExpiresAt,
         };
-        invites.set(inviter.session, live);
-        void devices
-          .runInviter(inviter, link, {
-            now,
-            eid: () => mintUlid(now()),
-            afterHello: async (joiner) => {
-              if (!(await vault.pairingBindJoiner(inviter.session, joiner)))
-                throw new Error("pairing_hello_unavailable");
-            },
-            enterCode: (attemptsLeft) =>
-              new Promise((resolve) => {
-                if (attemptsLeft <= 0) {
-                  resolve(undefined);
-                  return;
-                }
-                if (live.earlyCode !== undefined) {
-                  const code = live.earlyCode;
-                  live.earlyCode = undefined;
-                  resolve(code);
-                  return;
-                }
-                live.codeResult?.({ kind: "refused", code: "invalid" });
-                live.codeResult = undefined;
-                live.code = resolve;
-              }),
-            beforeWelcome: async (welcome) => {
-              const outcome = await vault.pairingAppend({
-                session: inviter.session,
-                operationId,
-                welcome,
-                authority,
-                qr,
-                rendezvous,
-              });
-              if (outcome === "outcome_unknown")
-                live.outcome = { kind: "outcome_unknown", operationId };
-              if (outcome !== "completed") throw new Error("pairing_append_unavailable");
-            },
-          })
-          .then(async (result) => {
-            const persisted = await vault.pairingOperation(operationId);
-            live.outcome =
-              persisted?.phase === "completed"
-                ? { kind: "completed", operationId, device: persisted.device }
-                : persisted?.phase === "may_append"
-                  ? { kind: "outcome_unknown", operationId }
-                  : result.ok
-                    ? { kind: "outcome_unknown", operationId }
-                    : {
-                        kind: "refused",
-                        code: result.reason === "expired" ? "expired" : "invalid",
-                      };
-            live.retireAt = now() + WELCOME_TTL;
-            live.codeResult?.(live.outcome);
-            live.codeResult = undefined;
-          })
-          .catch(() => {
-            live.outcome = { kind: "outcome_unknown", operationId };
-            live.retireAt = now() + WELCOME_TTL;
-            live.codeResult?.(live.outcome);
-            live.codeResult = undefined;
-          });
-        return { kind: "ready", operationId, qr, expiresAt: inviter.invite.expiresAt };
+        invites.set(operationId, live);
+        void run(live, vault, inviter, authority, qr);
+        return { kind: "ready", operationId, qr, expiresAt: qrExpiresAt };
       } finally {
         starting = false;
       }
     },
+
     confirm(vault, operationId, code) {
-      const live = [...invites.values()].find(
-        (item) => item.vault === vault && item.operationId === operationId,
-      );
-      if (!live || !/^[0-9]{6}$/.test(code))
+      const live = invites.get(operationId);
+      if (!live || live.vault !== vault || !/^[0-9]{6}$/.test(code))
         return Promise.resolve({ kind: "refused", code: "invalid" });
       if (live.outcome) return Promise.resolve(live.outcome);
-      if (now() > live.expiresAt) return Promise.resolve({ kind: "refused", code: "unavailable" });
-      if (live.codeResult || live.earlyCode !== undefined)
+      if (now() > live.sessionExpiresAt)
+        return Promise.resolve({ kind: "refused", code: "expired" });
+      if (live.codeResult || live.earlyCode !== undefined || live.dispatched)
         return Promise.resolve({ kind: "refused", code: "busy" });
       live.dispatched = true;
       return new Promise((resolve) => {
@@ -641,55 +435,52 @@ export async function startLanPairingService(input: {
         else live.earlyCode = code;
       });
     },
-    async inspect(vault, operationId) {
-      const live = [...invites.values()].find(
-        (item) => item.vault === vault && item.operationId === operationId,
-      );
-      if (!live) {
-        const persisted = await input.vault(vault)?.pairingOperation(operationId);
-        if (!persisted) return { kind: "refused", code: "invalid" };
-        return {
-          kind:
-            persisted.phase === "completed"
-              ? "completed"
-              : persisted.phase === "not_started"
-                ? "not_started"
-                : "outcome_unknown",
-          operationId,
-        };
+
+    async inspect(vaultId, operationId) {
+      const live = invites.get(operationId);
+      if (live !== undefined && live.vault !== vaultId) return { kind: "refused", code: "invalid" };
+      const persisted = await input.vault(vaultId)?.pairingOperation(operationId);
+      if (persisted?.phase === "completed") {
+        if (persisted.joinerSeen) return { kind: "completed", operationId };
+        // The admission is done; the phone's first sync has not reached this Mac yet.
+        relay.requestPull(vaultId);
+        return { kind: "waiting_for_phone", operationId };
       }
-      const persisted = await input.vault(vault)?.pairingOperation(operationId);
-      if (persisted?.phase === "completed") return { kind: "completed", operationId };
-      if (persisted?.phase === "may_append") return { kind: "outcome_unknown", operationId };
-      if (live.outcome?.kind === "completed") return { kind: "completed", operationId };
+      if (persisted?.phase === "may_append" || persisted?.phase === "admitting")
+        return { kind: "outcome_unknown", operationId };
+      if (live === undefined) {
+        if (!persisted) return { kind: "refused", code: "invalid" };
+        return { kind: "not_started", operationId };
+      }
+      if (live.outcome?.kind === "completed" || live.outcome?.kind === "waiting_for_phone")
+        return { kind: live.outcome.kind, operationId };
       if (live.outcome?.kind === "outcome_unknown") return { kind: "outcome_unknown", operationId };
       if (live.outcome?.kind === "refused") return { kind: "not_started", operationId };
       return { kind: "pending", operationId };
     },
-    async cancel(vault, operationId) {
-      const live = [...invites.entries()].find(
-        ([, item]) => item.vault === vault && item.operationId === operationId,
-      );
-      if (!live) return { kind: "refused" };
-      const persisted = await input.vault(vault)?.pairingOperation(operationId);
-      if (persisted || live[1].outcome || live[1].dispatched) return { kind: "refused" };
-      live[1].code?.(undefined);
-      live[1].codeResult?.({ kind: "refused", code: "invalid" });
-      live[1].link.close();
-      live[1].outcome = { kind: "refused", code: "invalid" };
-      live[1].retireAt = now() + WELCOME_TTL;
+
+    async cancel(vaultId, operationId) {
+      const live = invites.get(operationId);
+      if (!live || live.vault !== vaultId) return { kind: "refused" };
+      if (live.outcome || live.dispatched || live.committed) return { kind: "refused" };
+      await abandon(live, "invalid");
       return { kind: "cancelled" };
     },
+
     async close() {
       closed = true;
-      clearInterval(cleanup);
+      stopPruning();
+      const closing: Promise<void>[] = [];
       for (const live of invites.values()) {
-        live.code?.(undefined);
-        live.link.close();
+        if (active(live)) {
+          live.outcome = { kind: "refused", code: "unavailable" };
+          live.code?.(undefined);
+          live.codeResult?.(live.outcome);
+        }
+        closing.push(closeLink(live));
       }
       invites.clear();
-      challenges.clear();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await Promise.all(closing);
     },
   };
 }

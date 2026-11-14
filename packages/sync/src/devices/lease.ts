@@ -137,13 +137,17 @@ export interface LeaseLocal {
    * explicit action, so the worst case of acting on the last known state is one extra fetch per Mac
    * until they see each other. Mode auto ignores it (its safety rests on timing). Absent: no such pass.
    * Bounded (G2, `offlinePullAt`): while the registry holds another device that could be pinned
-   * (`peerCanLead`), only for OFFLINE_LEAD_MAX_MS after the last complete pull (`lastCompleteAt`,
-   * persisted by the host; unknown = no grace). Without such a device nobody else can lead, so no bound.
+   * (`peerCanLead`, see `peerCouldLead`), only for OFFLINE_LEAD_MAX_MS after the last complete pull
+   * (`lastCompleteAt`, persisted by the host; unknown = no grace). Without such a device nobody else
+   * can lead, so no bound. `acknowledgedAt`: the owner's "keep fetching on this Mac" (the host's
+   * device-local relay setting, cleared by the next complete pull): the bound then counts from the
+   * later of the two, so the owner is asked again OFFLINE_LEAD_MAX_MS after acknowledging.
    */
   readonly offlinePull?: {
     readonly since: number;
     readonly reachedAt: number;
     readonly lastCompleteAt?: number;
+    readonly acknowledgedAt?: number;
     readonly peerCanLead: boolean;
   };
   /**
@@ -221,22 +225,46 @@ function pulledRecently(pullAt: number | undefined, now: number, config: LeaseCo
 /**
  * G2: how long after its last complete pull a pinned leader may go on acting on offline evidence
  * while another device could have been pinned meanwhile (a second Mac). Covers a provider outage, a
- * quota day and a holiday; after it the leader stops until a pass reaches every remote again (or the
- * owner turns sync off for the vault, which removes the unreachable remote).
+ * quota day and a holiday; after it the leader stops until a pass reaches every remote again. Turning
+ * sync off keeps this bound: with no remote the pull reads `offline` since the last complete pull (kept
+ * with the switch), so another device that could lead still stops this one after 7 days. Phones never
+ * lead (`peerCouldLead`): a Mac whose other devices are all known phones has no bound at all, whether
+ * sync is on or off; their kind is kept apart from the relay membership, so a purge, a removal or a
+ * re-pair never makes a phone count as a possible leader again.
  */
 export const OFFLINE_LEAD_MAX_MS = 7 * 24 * 60 * 60_000;
 
 /**
  * The time the offline evidence vouches for (`offlinePull.reachedAt`), or undefined when there is
- * none or its bound ran out (`LeaseLocal.offlinePull`). Pure; the caller still checks recency.
+ * none or its bound ran out (`LeaseLocal.offlinePull`). The bound runs OFFLINE_LEAD_MAX_MS from the
+ * later of the last complete pull and the owner's acknowledgement; a time from the future (a clock
+ * that went back) counts as neither. The acknowledgement only moves the start of this bound: it never
+ * stands in for the offline pass itself, so a refusal for any other reason (this Mac removed at the
+ * relay, its identity lost: an incomplete pass) and mode auto are untouched. Pure; the caller still
+ * checks recency.
  */
 export function offlinePullAt(offline: LeaseLocal["offlinePull"], now: number): number | undefined {
   if (offline === undefined) return undefined;
   if (!offline.peerCanLead) return offline.reachedAt;
-  const last = offline.lastCompleteAt;
-  return last !== undefined && last <= now && now - last <= OFFLINE_LEAD_MAX_MS
+  const within = (at: number | undefined) =>
+    at !== undefined && at <= now && now - at <= OFFLINE_LEAD_MAX_MS;
+  return within(offline.lastCompleteAt) || within(offline.acknowledgedAt)
     ? offline.reachedAt
     : undefined;
+}
+
+/**
+ * G2: whether another device could be pinned, for `offlinePull.peerCanLead`. `others`: the registry's
+ * other trusted, non-revoked devices (the targets `leaderPrepare` accepts). `roleOf`: the caller's
+ * knowledge of a device's kind (the host's relay membership: `admin` a Mac, `member` a phone, which
+ * never leads); undefined = unknown, and an unknown device counts as one that could lead. Pure.
+ */
+export function peerCouldLead(
+  others: Iterable<string>,
+  roleOf: (device: string) => "admin" | "member" | undefined = () => undefined,
+): boolean {
+  for (const device of others) if (roleOf(device) !== "member") return true;
+  return false;
 }
 
 /** Mode pinned: this device is the designated leader and nobody has to hand over first. */

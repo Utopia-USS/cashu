@@ -97,3 +97,22 @@ it("remembers why the back-off runs, for the gate's answer (G1)", () => {
   policy.succeeded("write");
   expect(policy.blockedReason).toBe("outage");
 });
+
+it("reports the quota's end only while the quota back-off runs, and a reset clears every back-off", () => {
+  const policy = new RelayPolicy();
+  expect(policy.quotaUntil(0)).toBeUndefined();
+  policy.failed("quota", 1_000, "outage", "write");
+  expect(policy.quotaUntil(1_000)).toBe(1_000 + 60 * 60_000);
+  expect(policy.quotaUntil(1_000 + 60 * 60_000)).toBeUndefined();
+  // An outage after it is not a quota.
+  policy.failed("unavailable", 2_000, "outage", "read");
+  expect(policy.quotaUntil(2_000)).toBeUndefined();
+  policy.failed("unavailable", 3_000, "identity-lost", "write");
+  expect(policy.allows("push", 3_000)).toBe(false);
+  policy.reset();
+  expect(policy.allows("push", 3_000)).toBe(true);
+  expect(policy.blockedReason).toBe("outage");
+  // The failure counts restarted: the next outage waits the first step again.
+  policy.failed("unavailable", 4_000, "outage", "write");
+  expect(policy.blockedUntil - 4_000).toBe(60_000);
+});

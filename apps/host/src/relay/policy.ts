@@ -38,6 +38,8 @@ export class RelayPolicy {
   readonly #failures: Record<RelayDirection, number> = { read: 0, write: 0 };
   #blockedUntil = 0;
   #reason: TransportUnavailableReason = "outage";
+  /** The running back-off was armed by an exhausted quota. */
+  #quota = false;
 
   /** The earliest time a pass for `reason` may start (`now` or later). */
   nextAt(reason: RelayPassReason, now: number): number {
@@ -65,6 +67,14 @@ export class RelayPolicy {
     if (this.#failures.read > 0 || this.#failures.write > 0) return;
     this.#blockedUntil = 0;
     this.#reason = "outage";
+    this.#quota = false;
+  }
+
+  /** The cause of the back-off is gone (this Mac reconnected): the next pass may start at once. */
+  reset(): void {
+    this.#failures.read = 0;
+    this.#failures.write = 0;
+    this.succeeded("read");
   }
 
   failed(
@@ -74,6 +84,7 @@ export class RelayPolicy {
     direction: RelayDirection,
   ): void {
     this.#reason = reason;
+    this.#quota = kind === "quota";
     if (kind === "quota") {
       this.#blockedUntil = now + RELAY_QUOTA_BACKOFF_MS;
       return;
@@ -89,6 +100,11 @@ export class RelayPolicy {
   /** When the back-off of the last failure ends (0 when none is running). */
   get blockedUntil(): number {
     return this.#blockedUntil;
+  }
+
+  /** When the quota back-off ends; undefined unless the running back-off is the quota's. */
+  quotaUntil(now: number): number | undefined {
+    return this.#quota && this.#blockedUntil > now ? this.#blockedUntil : undefined;
   }
 
   /** Why the last failure happened (`outage` when none did). */

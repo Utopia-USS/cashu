@@ -25,6 +25,11 @@ const EMULATORS = {
 };
 const bytes = (text: string) => new TextEncoder().encode(text);
 
+/** The test seam that keeps every wiring off the real keychain (identity and recovery secrets). */
+const refuseKeychain = (): never => {
+  throw new Error("test_keychain_only");
+};
+
 function wiring(input: {
   readonly file?: string;
   readonly env?: Record<string, string>;
@@ -43,7 +48,9 @@ function wiring(input: {
       read.push(path);
       return input.file === undefined ? undefined : bytes(input.file);
     },
-    ...(input.secret === undefined ? {} : { secret: input.secret }),
+    // Never the OS keychain: a test that needs a secret passes its own; the default refuses.
+    secret: input.secret ?? refuseKeychain,
+    recoverySecrets: refuseKeychain,
   });
   return { options, stderr, read };
 }
@@ -103,6 +110,14 @@ const LOCKED: readonly [string, () => RelayAuthSecret][] = [
     }),
   ],
 ];
+
+it("never reaches the OS keychain: the wiring carries the test seams", () => {
+  const options = wiring({ env: EMULATORS }).options;
+  if (options === undefined) throw new Error("no relay options");
+  const lock = {} as Parameters<HostRelayOptions["authStore"]>[0];
+  expect(() => options.authStore(lock)).toThrow("test_keychain_only");
+  expect(() => options.recoverySecrets?.(lock)).toThrow("test_keychain_only");
+});
 
 it.each(LOCKED)("starts and answers offline with %s", async (_case, secret) => {
   const env = await harness.setup();

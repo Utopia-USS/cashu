@@ -7,7 +7,6 @@
   "description": "The local host protocol: frames, the mutual handshake, roles, versioning and the store channel v2, shared by the host and its clients.",
   "exports": {
     ".": "./src/index.ts",
-    "./pairing-lan": "./src/pairing/lan.ts",
     "./startup-failure": "./src/startupFailure/index.ts",
     "./store": "./src/store/index.ts",
     "./update-bridge": "./src/updateBridge.ts"

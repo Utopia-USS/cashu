@@ -1,5 +1,5 @@
-// `native.relay.*`: the sync relay of one vault (relay/service.ts). `status` reads; `enable`, `disable`
-// and `purge` are owner actions from Settings. A switch that changed the vault's engine remotes reopens
+// `native.relay.*`: the sync relay of one vault (relay/service.ts). `status` reads; `enable`, `disable`,
+// `purge`, `reconnect`, `keepFetching` (the G2 override) and `syncNow` are owner actions from Settings. A switch that changed the vault's engine remotes reopens
 // the vaults through the handover after the reply (the engine reads its remotes once at open), also
 // when a purge is refused after it already turned the switch off.
 import {
@@ -12,7 +12,7 @@ import {
   uiRelayAllowed,
 } from "@cashu/host-protocol";
 import type { HostSession } from "@cashu/node-host";
-import type { HostRelay, RelayOutcome } from "../relay/service.js";
+import { HIDDEN_STATUS, type HostRelay, type RelayOutcome } from "../relay/service.js";
 import {
   type RequestFrame,
   type RequestScope,
@@ -57,10 +57,10 @@ export function serveRelayRequest(
         result: relayStatusResultSchema.parse(
           parsed.success
             ? relay.status(parsed.data.vault)
-            : { configured: relay.configured, enabled: false, status: {}, devices: 0 },
+            : { ...HIDDEN_STATUS, configured: relay.configured },
         ),
       }),
-      { configured: relay.configured, enabled: false, status: {}, devices: 0 },
+      { ...HIDDEN_STATUS, configured: relay.configured },
     );
     return;
   }
@@ -71,7 +71,13 @@ export function serveRelayRequest(
         ? (vault) => relay.disable(vault)
         : frame.method === "native.relay.purge"
           ? (vault) => relay.purge(vault)
-          : undefined;
+          : frame.method === "native.relay.reconnect"
+            ? (vault) => relay.reconnect(vault)
+            : frame.method === "native.relay.keepFetching"
+              ? (vault) => relay.keepFetching(vault)
+              : frame.method === "native.relay.syncNow"
+                ? (vault) => relay.syncNow(vault)
+                : undefined;
   const parsed = relayActionParamsSchema.safeParse(frame.params);
   serveTrackedRequest(
     scope,

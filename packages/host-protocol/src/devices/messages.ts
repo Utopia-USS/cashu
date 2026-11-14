@@ -83,6 +83,20 @@ export const deviceListResultSchema = z.discriminatedUnion("kind", [
       lastActivityAt: z.number().int().nonnegative().nullable(),
       silentForMs: z.number().int().nonnegative(),
       warn: z.boolean(),
+      /**
+       * This device is the pinned fetch leader but bank fetches are paused: its passes reached no
+       * remote (an outage, or sync off) for longer than the offline bound while another device could
+       * lead (sync lease.ts OFFLINE_LEAD_MAX_MS). Absent otherwise.
+       */
+      paused: z.literal("offline_too_long").optional(),
+      /**
+       * With `paused`: the other device that could lead (not known as a phone), the lowest id when
+       * there are several. The owner's override names it ("Make sure your other Mac ... doesn't fetch").
+       */
+      pausedPeer: z
+        .string()
+        .regex(/^[0-9a-f]{32}$/)
+        .optional(),
     }),
     keyProvenance: z.strictObject({
       source: z.enum(["own", "wrap", "pairing", "unknown"]),

@@ -10,13 +10,13 @@ import type { createNativeCreationService } from "../nativeCreation.js";
 import { serveNativeCreationRequest } from "../nativeCreationRpc.js";
 import type { privateNotificationIntents } from "../notifications/intentLedger.js";
 import type { IntentVaultAuthority } from "../notifications/resolve.js";
+import type { PairingService } from "../pairing/service.js";
 import { serveNativePairingRequest } from "../pairingRpc.js";
 import type { HostRelay } from "../relay/service.js";
 import { type StoreChannelOptions, serveStoreChannel } from "../storeChannel.js";
 import type { HostStores } from "../stores.js";
 import { serveBankingRequest } from "./bankingRpc.js";
 import { serveDevicesRequest } from "./devicesRpc.js";
-import type { LanServing } from "./lan.js";
 import { serveNotificationRequest } from "./notificationRpc.js";
 import type { LocalHostOptions } from "./options.js";
 import { serveRelayRequest } from "./relayRpc.js";
@@ -32,7 +32,8 @@ interface HostRpcDeps extends RequestScope {
   readonly banking: (() => BankingRuntime | undefined) | undefined;
   readonly creation: ReturnType<typeof createNativeCreationService> | undefined;
   readonly devices: DeviceService;
-  readonly lan: LanServing;
+  /** Device pairing over the sync relay; absent in safe mode and on a synthetic harness. */
+  readonly pairing: PairingService | undefined;
   readonly relay: HostRelay;
   readonly notificationIntents: ReturnType<typeof privateNotificationIntents> | undefined;
   readonly notificationAuthority: IntentVaultAuthority;
@@ -106,8 +107,7 @@ function routeHostRpc(
       session,
       frame,
       isStopping: rpc.closing,
-      currentService: rpc.lan.current,
-      ensureService: rpc.lan.ensure,
+      service: rpc.pairing,
       requestSet: rpc.inFlightRequests,
       armIdle: rpc.armIdle,
       handover: rpc.handover,

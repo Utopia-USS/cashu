@@ -11,7 +11,14 @@ type DeviceReads = Pick<NativeVaultSession, "deviceList" | "leaderPrepare">;
 
 export function deviceReads(
   context: NativeVaultContext,
-  guards: Pick<SessionGuards, "isCurrent" | "canRunSideEffects" | "canFetchPublicMarket">,
+  guards: Pick<
+    SessionGuards,
+    | "isCurrent"
+    | "canRunSideEffects"
+    | "canFetchPublicMarket"
+    | "offlineTooLong"
+    | "peerThatCouldLead"
+  >,
 ): DeviceReads {
   const { entry, engine, candidate, attempts, provenance, queue, state, now } = context;
   const deviceList: DeviceReads["deviceList"] = () =>
@@ -24,6 +31,8 @@ export function deviceReads(
         firstSeen: (eid) => candidate.devices.firstSeen(eid),
       });
       const activeProvenance = provenance.get(candidate.ring.active.kid);
+      const paused = guards.offlineTooLong();
+      const pausedPeer = paused ? guards.peerThatCouldLead() : undefined;
       const records = [...candidate.devices.registry.devices.values()].sort((a, b) =>
         a.deviceId.localeCompare(b.deviceId),
       );
@@ -47,6 +56,9 @@ export function deviceReads(
           lastActivityAt: liveness.lastActivityAt ?? null,
           silentForMs: liveness.silentForMs,
           warn: liveness.warn,
+          // The G2 offline bound refuses this pinned leader: shown, never silent.
+          ...(paused ? { paused: "offline_too_long" as const } : {}),
+          ...(pausedPeer === undefined ? {} : { pausedPeer }),
         },
         keyProvenance: {
           source: activeProvenance?.source ?? "unknown",

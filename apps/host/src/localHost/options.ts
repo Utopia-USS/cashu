@@ -42,11 +42,6 @@ import type { UpdateProvider } from "../updateScreen.js";
 import type { WorkerBindings, WorkerHostContext } from "../worker/contracts.js";
 import type { WorkspaceProvider } from "../workspace/index.js";
 
-/** Local LAN serving: off, loopback (tests, port 0 by default) or one private IPv4 (8517 by default). */
-type LanOption =
-  | { readonly kind: "off" }
-  | { readonly kind: "loopback" | "local"; readonly port?: number };
-
 /** Where the host's vaults come from. */
 type VaultSourceOption =
   /** An isolated test harness (synthetic stores, refuses the real cashU locations). */
@@ -78,8 +73,6 @@ type WorkerFactory = (
 type McpAuthority<T> = (context: ToolContext<NativeToolStore>) => T;
 
 export interface LocalHostOptions {
-  /** Explicit local LAN serving. Tests use loopback and port 0; production binds one private IPv4. */
-  readonly lan?: LanOption;
   /** Explicit isolated test harness or an injected exact-vault native authority. */
   readonly vaultSource?: VaultSourceOption;
   /**

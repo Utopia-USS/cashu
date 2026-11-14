@@ -35,8 +35,6 @@ export interface Flavor {
   readonly urlScheme: string;
   /** MCP server names `<prefix>-<profile slug>` in the setup and reconnect lines. */
   readonly mcpServerPrefix: string;
-  /** TCP port of the LAN pairing listener (two flavors on one Mac must not share it). */
-  readonly lanPairingPort: number;
   /** Whether the build seals the pinned release feed; false: the updater reports unavailable. */
   readonly updateFeed: boolean;
   /** Whether this flavor's default data dir is the one the retired Python app used (in-place import). */
@@ -77,7 +75,6 @@ function load(): Readonly<Record<FlavorId, Flavor>> {
       STRING_KEYS.some((key) => typeof entry[key] !== "string" || entry[key] === "") ||
       typeof dataDirName?.darwin !== "string" ||
       typeof dataDirName.linux !== "string" ||
-      !Number.isInteger(entry.lanPairingPort) ||
       typeof entry.updateFeed !== "boolean" ||
       typeof entry.inheritsPythonInstall !== "boolean" ||
       (entry.iconBadge !== null && (typeof entry.iconBadge !== "string" || entry.iconBadge === ""))

@@ -4,12 +4,11 @@ import type {
   RevokeCommitResult,
   RevokeInspectResult,
 } from "@cashu/host-protocol";
-import type { LanCarrierReply, LanCarrierRequest } from "@cashu/host-protocol/pairing-lan";
 import type { Store } from "@cashu/store";
 import type { crypto, devices, PullHistory, SyncEngine, SyncResult, Transport } from "@cashu/sync";
 import type { SqlAttemptJournal } from "../attemptJournal.js";
 import type { NativeBlobPublication } from "../nativeBlobs.js";
-import type { PairingReads } from "../pairing/readCapability.js";
+import type { PairingAttempt } from "../pairing/journal.js";
 import type { StrategyDirectoryAuthority } from "../proposals/strategyFiles.js";
 import type { WriteQueue } from "../queue.js";
 import type { NativeVaultInventoryEntry } from "../sync/keys/deviceAuthority.js";
@@ -29,6 +28,16 @@ export interface NativeVaultSource {
    * absent: none kept (the engine starts without one).
    */
   pullHistory?(entry: NativeVaultInventoryEntry): PullHistory | undefined;
+  /**
+   * G2: a device's kind as the vault's relay membership knows it (`admin` a Mac, `member` a phone),
+   * read live; undefined (or absent): unknown, and the lease treats that device as one that could lead.
+   */
+  relayRole?(entry: NativeVaultInventoryEntry, device: string): "admin" | "member" | undefined;
+  /**
+   * G2 override: when the owner acknowledged the offline bound for this vault ("keep fetching on this
+   * Mac"), read live; undefined (or absent): never, or cleared by a complete pull since.
+   */
+  offlineLeadAck?(entry: NativeVaultInventoryEntry): number | undefined;
   /** S6 tests: own bytes one pass pushes at most (`SyncEngineOptions.maxPushBytesPerPass`). */
   readonly maxPushBytesPerPass?: number;
 }
@@ -81,7 +90,7 @@ export type FetchAuthorityIssue =
   | "fetch_pull_incomplete"
   | "fetch_authority_unavailable";
 
-export interface NativeVaultSession extends PairingReads {
+export interface NativeVaultSession {
   readonly id: string;
   readonly store: Store;
   readonly engine: SyncEngine;
@@ -181,19 +190,66 @@ export interface NativeVaultSession extends PairingReads {
       readonly boxPublicKey: Uint8Array;
     },
   ): Promise<boolean>;
-  pairingAppend(input: {
-    readonly session: string;
-    readonly operationId: string;
-    readonly welcome: devices.InviterWelcome;
-    readonly authority: string;
-    readonly qr: string;
-    readonly rendezvous: string;
-  }): Promise<"completed" | "outcome_unknown" | "refused">;
-  carrierRequest(
-    request: LanCarrierRequest,
-    expiresAt: number,
-    onAuthorized?: () => void,
-  ): Promise<LanCarrierReply>;
+  /**
+   * Admits the joiner (pairing/service.ts): every refusable check, `membership.preflight` (the relay
+   * answers), a durable `admitting` row, `membership.admit` (the joiner's relay membership: the ONE
+   * commit point), then the keyed `device.added` append, pushed once. `refused`: nothing was admitted
+   * (no membership written, or provably none). `outcome_unknown`: the membership or the append has no
+   * known outcome; the row converges (`pairingResolve`, `pairingResume`), never to a refusal after
+   * the membership exists.
+   */
+  pairingAdmit(
+    input: {
+      readonly session: string;
+      readonly operationId: string;
+      readonly welcome: devices.InviterWelcome;
+      readonly authority: string;
+      readonly qr: string;
+      /** The joiner's relay uid (bound at its hello). */
+      readonly uid: string;
+    },
+    membership: {
+      /** Throws when the relay cannot be reached (nothing is journalled then). */
+      preflight(): Promise<void>;
+      /** Writes the membership: `absent` only when it provably was not written. */
+      admit(): Promise<"admitted" | "absent" | "unknown">;
+    },
+  ): Promise<"completed" | "outcome_unknown" | "refused">;
+  /**
+   * For the relay reconciliation: which of `members` (device ids) the registry holds, and the live
+   * admission rows (`admitting`, `may_append`). Undefined when the session is not current.
+   */
+  pairingAdmissions(members: readonly string[]): Promise<
+    | {
+        readonly registered: ReadonlySet<string>;
+        readonly live: readonly {
+          readonly session: string;
+          readonly device: string;
+          readonly phase: PairingAttempt["phase"];
+          readonly uid?: string;
+          readonly touchedAt?: number;
+        }[];
+      }
+    | undefined
+  >;
+  /**
+   * Resolves an `admitting` row from a relay member list read at `listedAt`: `present` drives it on
+   * (the append), `absent` ends it `not_started` only when the list was read after the write ended.
+   */
+  pairingResolve(
+    session: string,
+    membership: "present" | "absent",
+    listedAt: number,
+  ): Promise<void>;
+  /** Retries every owed append (`may_append`): at open and after each relay pass. */
+  pairingResume(): Promise<void>;
+  /**
+   * The keyed pairing attempt of `operationId`, a pending one settled from the log first;
+   * `joinerSeen`: the joiner's first signed head is in this Mac's log (it synced once).
+   */
+  pairingOperation(
+    operationId: string,
+  ): Promise<(PairingAttempt & { readonly joinerSeen: boolean }) | undefined>;
   invalidate(): void;
   close(): Promise<void>;
 }

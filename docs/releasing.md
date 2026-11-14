@@ -227,8 +227,7 @@ bundle `io.utopiasoft.cashu.staging`, data dir `~/Library/Application Support/ca
 profile wizard, never looks at the Python data or the Python agents, and keeps its own keychain items.
 Two things stay shared on purpose: the Enable Banking redirect `https://127.0.0.1:18888` (registered with
 Enable Banking), so do not run a bank connection in both apps at the same moment; and the MCP name prefix,
-so a prod profile slug starting with `staging-` would clash with a staging MCP name. The LAN pairing port
-is per app (8517 prod, 8518 staging), so the two can later pair as two devices.
+so a prod profile slug starting with `staging-` would clash with a staging MCP name.
 
 
 ```bash

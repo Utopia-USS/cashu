@@ -136,12 +136,25 @@ describe("D6: pull status", () => {
     });
   });
 
-  it("a vault without remotes never reports offline", async () => {
+  it("a vault without remotes (sync off) is offline from the engine's open, never pulled", async () => {
     const clock = new ManualClock(T0);
     const a = await open(A, [], clock);
+    expect(pullOf(a)).toEqual({ kind: "incomplete" }); // no pass yet
+    clock.advance(60_000);
     await a.write([ev("a1")]);
     await a.sync();
-    expect(pullOf(a)).toEqual({ kind: "incomplete" });
+    expect(pullOf(a)).toEqual({ kind: "offline", since: T0, reachedAt: T0 + 60_000 });
+    clock.advance(60_000);
+    await a.sync();
+    expect(pullOf(a)).toEqual({ kind: "offline", since: T0, reachedAt: T0 + 120_000 });
+    // No complete pull is ever claimed, and no pause is reported.
+    expect(a.fetchLeaseEvidence(always, always).lastPullAt).toBeUndefined();
+    expect(a.pullHistory()).toEqual({});
+    // With a complete pull from the time sync was on, the offline status starts there.
+    const b = await open(A, [], clock, { pullHistory: { lastCompleteAt: T0 - 86_400_000 } });
+    await b.sync();
+    expect(pullOf(b)).toEqual({ kind: "offline", since: T0 - 86_400_000, reachedAt: T0 + 120_000 });
+    expect(b.pullHistory()).toEqual({ lastCompleteAt: T0 - 86_400_000 });
   });
 
   it("a rollback or an upgrade need is never offline, even with the relay down", async () => {
@@ -301,7 +314,7 @@ describe("G2 / G5: pull history", () => {
     expect(a.pullHistory()).toEqual({ lastCompleteAt: T0 + 180_000 });
   });
 
-  it("starts from the history handed in at open; a pass that throws pauses too; no remotes: none", async () => {
+  it("starts from the history handed in at open; a pass that throws pauses too; no remotes: no pause", async () => {
     const clock = new ManualClock(T0);
     let broken = true;
     const lan = new MemoryTransport();
@@ -327,7 +340,8 @@ describe("G2 / G5: pull history", () => {
       pullHistory: { lastCompleteAt: T0, pausedSince: T0 },
     });
     await alone.sync();
-    expect(alone.pullHistory()).toEqual({});
+    // The last complete pull stays (the offline bound of a vault whose sync is off); a pause does not.
+    expect(alone.pullHistory()).toEqual({ lastCompleteAt: T0 });
   });
 });
 

@@ -210,17 +210,13 @@ export {
   NATIVE_RELAY_METHODS,
   type RelayActionParams,
   type RelayActionResult,
-  type RelayErrorKindValue,
   type RelayRefusalReason,
   type RelayStatusParams,
   type RelayStatusResult,
-  type RelayStatusValue,
   relayActionParamsSchema,
   relayActionResultSchema,
-  relayErrorKindSchema,
   relayStatusParamsSchema,
   relayStatusResultSchema,
-  relayStatusSchema,
   uiRelayAllowed,
 } from "./relay.js";
 export {

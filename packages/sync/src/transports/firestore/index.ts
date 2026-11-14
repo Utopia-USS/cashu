@@ -8,6 +8,15 @@ export {
   type IdentityEndpoint,
 } from "./auth.js";
 export {
+  FirestorePairingLink,
+  type FirestorePairingLinkOptions,
+  MAX_PAIRING_PARTS,
+  PAIRING_PART_BYTES,
+  PairingLinkError,
+  type PairingLinkErrorCode,
+  pairingSessionId,
+} from "./pairingLink.js";
+export {
   type CreateVaultOutcome,
   FirestoreRelayAdmin,
   type FirestoreRelayAdminOptions,

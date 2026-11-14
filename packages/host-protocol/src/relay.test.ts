@@ -10,7 +10,16 @@ import { roleAllows } from "./roles.js";
 
 const VAULT = "0123456789abcdef0123456789abcdef";
 
-it("admits only the four exact UI relay methods behind the feature", () => {
+it("admits only the five exact UI relay methods behind the feature", () => {
+  expect(NATIVE_RELAY_METHODS).toEqual([
+    "native.relay.status",
+    "native.relay.enable",
+    "native.relay.disable",
+    "native.relay.purge",
+    "native.relay.reconnect",
+    "native.relay.keepFetching",
+    "native.relay.syncNow",
+  ]);
   for (const method of NATIVE_RELAY_METHODS) {
     expect(uiRelayAllowed(method, 8, [NATIVE_RELAY_FEATURE])).toBe(true);
     expect(uiRelayAllowed(method, 7, [NATIVE_RELAY_FEATURE])).toBe(false);
@@ -25,23 +34,23 @@ it("admits only the four exact UI relay methods behind the feature", () => {
 });
 
 it("parses the status and action results and refuses anything else", () => {
-  expect(
-    relayStatusResultSchema.parse({
-      configured: true,
-      enabled: true,
-      status: { lastOk: 2, lastError: "quota", lastErrorAt: 3 },
-      devices: 2,
-      lastSyncAt: 2,
-    }).status.lastError,
-  ).toBe("quota");
-  expect(
-    relayStatusResultSchema.safeParse({
-      configured: true,
-      enabled: true,
-      status: { lastError: "boom" },
-      devices: 0,
-    }).success,
-  ).toBe(false);
+  const row = {
+    configured: true,
+    enabled: true,
+    devices: 2,
+    lastSyncAt: 2,
+    quotaUntil: 9,
+    identityLost: true,
+    canReconnect: true,
+  };
+  expect(relayStatusResultSchema.parse(row)).toEqual(row);
+  // The row carries what the copy needs and nothing more: no raw transport status, no uid.
+  for (const extra of [{ status: { lastError: "quota" } }, { uid: "u" }, { lastError: "quota" }])
+    expect(relayStatusResultSchema.safeParse({ ...row, ...extra }).success).toBe(false);
+  // The two flags are required booleans.
+  const { canReconnect: _c, ...noFlag } = row;
+  expect(relayStatusResultSchema.safeParse(noFlag).success).toBe(false);
+  expect(relayStatusResultSchema.safeParse({ ...row, quotaUntil: -1 }).success).toBe(false);
   expect(relayActionResultSchema.parse({ kind: "refused", reason: "not_admin" })).toEqual({
     kind: "refused",
     reason: "not_admin",
@@ -51,6 +60,10 @@ it("parses the status and action results and refuses anything else", () => {
     kind: "refused",
     reason: "retry",
   });
+  // Reconnect without the vault's recovery secret.
+  expect(
+    relayActionResultSchema.parse({ kind: "refused", reason: "no_recovery_secret" }).kind,
+  ).toBe("refused");
   expect(relayActionResultSchema.safeParse({ kind: "refused", reason: "nope" }).success).toBe(
     false,
   );
@@ -61,8 +74,9 @@ it("carries the paused-since time and a value-free stuck summary, nothing else",
   const base = {
     configured: true,
     enabled: true,
-    status: { lastError: "unavailable" },
     devices: 1,
+    identityLost: false,
+    canReconnect: false,
   };
   const parsed = relayStatusResultSchema.parse({
     ...base,
@@ -71,12 +85,39 @@ it("carries the paused-since time and a value-free stuck summary, nothing else",
   });
   expect(parsed.pausedSince).toBe(1_000);
   expect(parsed.stuck).toEqual({ waiting: 1, rejected: 0, final: 2, since: 900, passes: 4 });
-  // No device ids, codes or positions travel: the summary is strict.
-  expect(
-    relayStatusResultSchema.safeParse({
-      ...base,
-      stuck: { waiting: 1, rejected: 0, final: 0, passes: 1, device: "d".repeat(32) },
-    }).success,
-  ).toBe(false);
+  // One writer's device id may travel (W3-7 item 4: the window names it from its device list); no
+  // names, codes or positions: the summary is strict.
+  const named = { waiting: 1, rejected: 0, final: 0, passes: 1, device: "d".repeat(32) };
+  expect(relayStatusResultSchema.parse({ ...base, stuck: named }).stuck).toEqual(named);
+  for (const bad of [
+    { ...named, device: "Phone of Anna" },
+    { ...named, code: "key_missing" },
+    { ...named, seg: 1, offset: 0 },
+  ])
+    expect(relayStatusResultSchema.safeParse({ ...base, stuck: bad }).success).toBe(false);
   expect(relayStatusResultSchema.safeParse({ ...base, pausedSince: -1 }).success).toBe(false);
+});
+
+it("carries failing membership removals as a count, a time and device ids only", () => {
+  const base = {
+    configured: true,
+    enabled: true,
+    devices: 2,
+    identityLost: false,
+    canReconnect: false,
+  };
+  const id = "a".repeat(32);
+  const failing = { ...base, removalsFailing: { devices: 1, since: 5, ids: [id] } };
+  expect(relayStatusResultSchema.parse(failing)).toEqual(failing);
+  for (const bad of [
+    { devices: 0, since: 5, ids: [id] },
+    { devices: 1, ids: [id] },
+    { devices: 1, since: 5 },
+    { devices: 1, since: 5, ids: [] },
+    { devices: 1, since: 5, ids: ["Phone of Anna"] },
+    { devices: 1, since: 5, ids: [id], device: "d" },
+  ])
+    expect(relayStatusResultSchema.safeParse({ ...base, removalsFailing: bad }).success).toBe(
+      false,
+    );
 });

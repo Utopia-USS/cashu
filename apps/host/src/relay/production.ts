@@ -1,11 +1,16 @@
 // The production host's relay wiring (main.ts): the config of this data dir (relay/config.ts) and the
-// identity in the OS keychain (@cashu/node-host/relay-auth). A bad config file is reported by its code
+// identity and the vaults' recovery secrets in the OS keychain (@cashu/node-host/relay-auth). A bad config file is reported by its code
 // only and leaves the host without a relay (`no_config`); a keychain that cannot be reached is touched
 // only on the first relay request (service.ts builds the auth store lazily), so it fails that request
 // (`offline`) and never the host start. A test build (e2e) takes the local emulators only: a config
 // that names a real project never reaches it, whatever the shell exported.
 import type { HostLock } from "@cashu/node-host";
-import { createProductionRelayAuthSecret, type RelayAuthSecret } from "@cashu/node-host/relay-auth";
+import {
+  createProductionRelayAuthSecret,
+  createProductionRelayRecoverySecrets,
+  type RelayAuthSecret,
+  type RelayRecoverySecrets,
+} from "@cashu/node-host/relay-auth";
 import { secretAuthStore } from "./auth.js";
 import { loadRelayConfig, type RelayConfigInput } from "./config.js";
 import type { HostRelayOptions } from "./service.js";
@@ -23,6 +28,11 @@ export interface ProductionRelayInput {
     readonly dataDir: string;
     readonly lock: HostLock;
   }) => RelayAuthSecret;
+  /** Test seam: the vaults' recovery secrets (default: the OS keychain, beside the identity). */
+  readonly recoverySecrets?: (authority: {
+    readonly dataDir: string;
+    readonly lock: HostLock;
+  }) => RelayRecoverySecrets;
   /** Test seam: the config file's bytes. */
   readonly readFile?: RelayConfigInput["readFile"];
 }
@@ -43,8 +53,10 @@ export function productionRelayOptions(input: ProductionRelayInput): HostRelayOp
   if (config.kind === "absent") return undefined;
   if (input.testBuild && config.relay.target !== "emulator") return undefined;
   const secret = input.secret ?? createProductionRelayAuthSecret;
+  const recovery = input.recoverySecrets ?? createProductionRelayRecoverySecrets;
   return {
     endpoints: config.relay,
     authStore: (lock) => secretAuthStore(secret({ dataDir: input.dataDir, lock })),
+    recoverySecrets: (lock) => recovery({ dataDir: input.dataDir, lock }),
   };
 }

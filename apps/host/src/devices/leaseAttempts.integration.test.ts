@@ -15,6 +15,23 @@ import { startLocalHost } from "../host.js";
 import { loadDeviceAuthority } from "../sync/keys/deviceAuthority.js";
 import { nativeVaultFixture } from "../testing/nativeVaultFixture.js";
 
+const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The fixture's source with a persisted last complete pull (from a time the vault's sync was on): the
+ * offline bound of a vault whose sync is now off (no remote), while another device could lead.
+ */
+function withLastCompletePull(
+  fixture: Awaited<ReturnType<typeof nativeVaultFixture>>,
+  lastCompleteAt: number,
+) {
+  return {
+    kind: "native" as const,
+    provider: { ...fixture.vaultSource.provider, pullHistory: () => ({ lastCompleteAt }) },
+  };
+}
+
+// Sync off (no remote) and the only device that can lead: it fetches and reports from a fresh vault.
 it("records a checked native fetch as an authenticated durable lease event", async () => {
   const fixture = await nativeVaultFixture({ modules: ["budget"] });
   const host = await startLocalHost({
@@ -48,6 +65,7 @@ it("records a checked native fetch as an authenticated durable lease event", asy
   }
 });
 
+// Two devices, sync off: this one leads within the offline bound after its last complete pull.
 it("routes a typed owner re-pin through the native UI socket and inspects its durable result", async () => {
   const fixture = await nativeVaultFixture({ modules: ["budget"], pairPeer: true });
   const host = await startLocalHost({
@@ -55,7 +73,7 @@ it("routes a typed owner re-pin through the native UI socket and inspects its du
     home: fixture.home,
     build: "test",
     launcher: false,
-    vaultSource: fixture.vaultSource,
+    vaultSource: withLastCompletePull(fixture, Date.now() - DAY),
   });
   const ui = await connectHost({ dataDir: fixture.dataDir, role: "ui", build: "test" });
   try {
@@ -119,7 +137,7 @@ it("refuses a self-authored non-force handover while an old-leader fetch is in f
     home: fixture.home,
     build: "test",
     launcher: false,
-    vaultSource: fixture.vaultSource,
+    vaultSource: withLastCompletePull(fixture, Date.now() - DAY),
   });
   try {
     const vault = host.stores.vaults.get(fixture.vaultId);
@@ -353,3 +371,32 @@ it("keeps a force pin's unknown outcome inspectable across native reopen", async
     fixture.cleanup();
   }
 });
+
+it.each([
+  ["no complete pull was ever recorded", undefined, false],
+  ["the last complete pull is a day old", DAY, true],
+  ["the last complete pull is 8 days old", 8 * DAY, false],
+] as const)(
+  "two devices that could lead, sync off: %s -> fetch %s",
+  async (_case, age, allowed) => {
+    const fixture = await nativeVaultFixture({ modules: ["budget"], pairPeer: true });
+    const host = await startLocalHost({
+      dataDir: fixture.dataDir,
+      home: fixture.home,
+      build: "test",
+      launcher: false,
+      vaultSource:
+        age === undefined ? fixture.vaultSource : withLastCompletePull(fixture, Date.now() - age),
+    });
+    try {
+      const vault = host.stores.vaults.get(fixture.vaultId);
+      if (vault?.mode !== "native") throw new Error("synthetic native vault unavailable");
+      await vault.native.sync();
+      expect(vault.native.canFetchPublicMarket()).toBe(allowed);
+      expect(await vault.native.recordFetch()).toBe(allowed ? "completed" : "not_started");
+    } finally {
+      await host.stop();
+      fixture.cleanup();
+    }
+  },
+);

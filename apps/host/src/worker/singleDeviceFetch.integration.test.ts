@@ -336,7 +336,12 @@ it("keeps fetch authority through a daily run longer than the lease's pull deadl
 it("never runs a pass through this path on a device the lease does not name", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
-  const { fixture, host, vault, passes } = await singleDeviceHost(() => time, { pairPeer: true });
+  // Two devices share a carrier here: with sync off (no remote) and no complete pull ever recorded,
+  // the creator would not lead at all while the peer could (the offline rule, guards.ts).
+  const { fixture, host, vault, passes } = await singleDeviceHost(() => time, {
+    pairPeer: true,
+    remotes: [new MemoryTransport()],
+  });
   try {
     await idle(host);
     const peer = fixture.peerDevice;

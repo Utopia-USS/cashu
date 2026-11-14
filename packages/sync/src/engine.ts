@@ -509,6 +509,8 @@ class OwnLogEngine implements SyncEngine {
   /** G2 / G5: the last complete pull and the pause after it (`PullHistory`). */
   #lastCompleteAt: number | undefined;
   #pausedSince: number | undefined;
+  /** When this engine opened: the start of a remote-less vault's `offline` status without a pull. */
+  readonly #openedAt: number;
   /** Writer streams held at a frame (D7), loaded from the gate state store on the first pass. */
   #stuck = new Map<DeviceId, StuckRecord>();
   #stuckLoaded = false;
@@ -569,6 +571,7 @@ class OwnLogEngine implements SyncEngine {
     this.#foreignWalls = guard === null ? null : { ...guard };
     this.#gateState = o.gateState;
     this.#physical = o.physicalClock ?? systemClock;
+    this.#openedAt = this.#physical.now();
     this.#clock = new HybridClock(o.device, {
       ...(o.physicalClock ? { physical: o.physicalClock } : {}),
       ...(o.maxDriftMs === undefined ? {} : { maxDriftMs: o.maxDriftMs }),
@@ -593,10 +596,12 @@ class OwnLogEngine implements SyncEngine {
             sliceMs: Math.max(1, host.sliceMs ?? DEFAULT_YIELD_SLICE_MS),
           };
     const history = o.pullHistory;
-    if (this.#remotes.length > 0 && history !== undefined) {
+    if (history !== undefined) {
+      // A vault without remotes keeps the last complete pull it had (its offline bound) but no pause.
       if (Number.isSafeInteger(history.lastCompleteAt))
         this.#lastCompleteAt = history.lastCompleteAt;
-      if (Number.isSafeInteger(history.pausedSince)) this.#pausedSince = history.pausedSince;
+      if (this.#remotes.length > 0 && Number.isSafeInteger(history.pausedSince))
+        this.#pausedSince = history.pausedSince;
     }
   }
 
@@ -1434,7 +1439,8 @@ class OwnLogEngine implements SyncEngine {
    * previous evidence, which still proves that earlier pull and ages out by the lease's own
    * deadline. A pass that rolled back or needs an upgrade drops it. Next to it the pass records WHY
    * (`#pull`, carrier.ts `PullStatus`): a pass that missed only unreachable remotes is `offline`, which
-   * the pinned lease accepts (D6, lease.ts); anything else that is not a complete pull is `incomplete`.
+   * the pinned lease accepts (D6, lease.ts), and so is every pass of an engine without any remote;
+   * anything else that is not a complete pull is `incomplete`.
    * Only a true outage is unreachable (errors.ts `isTransportOutage`): a remote that refused this
    * device (membership gone, identity lost) or answered something unusable makes the pass
    * `incomplete`, so a removed Mac stops leading at once (G1). A pass whose only shortfall is the push
@@ -1591,6 +1597,14 @@ class OwnLogEngine implements SyncEngine {
       this.#lastPullAt = undefined;
       this.#pull = { kind: "incomplete" };
       this.#paused(passStart);
+    } else if (this.#remotes.length === 0) {
+      // No remote at all (sync off): nobody can be reached, the status an unreachable relay gives,
+      // never a complete pull. The pinned lease's offline rule decides (D6 / G2, lease.ts): a sole
+      // possible leader holds, one with another device that could lead only within the bound after
+      // the last complete pull. `since`: that pull, else when this engine opened.
+      const since =
+        this.#pull.kind === "offline" ? this.#pull.since : (this.#lastCompleteAt ?? this.#openedAt);
+      this.#pull = { kind: "offline", since, reachedAt: passStart };
     } else if (
       result.offlineRemotes > 0 &&
       !reachableUndelivered &&

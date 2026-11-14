@@ -30,7 +30,6 @@ import { pinnedLanguage } from "./language.js";
 import type { WriterLease } from "./lease.js";
 import { hostedCommands } from "./localHost/commands.js";
 import { adminStatus, applySliced, syncVault } from "./localHost/handle.js";
-import { createLanServing } from "./localHost/lan.js";
 import { createHostLifecycle, type ExitReason } from "./localHost/lifecycle.js";
 import { marketAuthorities, startMarket } from "./localHost/market.js";
 import { createMcpSessions } from "./localHost/mcp.js";
@@ -42,7 +41,9 @@ import { createUiSessions } from "./localHost/uiSession.js";
 import { startHostWorker } from "./localHost/worker.js";
 import { errorName, fileLog } from "./log.js";
 import { ConnectorProposalReceipts } from "./mcp/connectorReceipt.js";
-import type { LanPairingService } from "./pairing/service.js";
+import { removeLegacyLanCarrier } from "./nativeVault/paths.js";
+import { relayMemberUids, startMemberSweep } from "./pairing/members.js";
+import { createPairingService, type PairingService } from "./pairing/service.js";
 import { startStrategyFollower } from "./proposals/strategyFollow.js";
 import { servedCommands } from "./registry.js";
 import { createHostRelay, type HostRelay } from "./relay/service.js";
@@ -59,7 +60,8 @@ const DEFAULT_LINGER_MS = 10 * 60 * 1000;
 interface StartedServices {
   market?: ReturnType<typeof startMarket>;
   devices?: ReturnType<typeof createDeviceService>;
-  lan?: ReturnType<typeof createLanServing>;
+  pairing?: PairingService;
+  memberSweep?: ReturnType<typeof startMemberSweep>;
   notifications?: ReturnType<typeof hostNotifications>;
   worker?: ReturnType<typeof startHostWorker>;
   mcp?: ReturnType<typeof createMcpSessions>;
@@ -69,8 +71,8 @@ interface StartedServices {
 
 export interface LocalHost {
   readonly server: RunningHost;
-  /** Present only when the bounded LAN listener was actually bound. */
-  readonly lan?: LanPairingService;
+  /** Device pairing over the sync relay; absent in safe mode and on a synthetic harness. */
+  readonly pairing?: PairingService;
   readonly lease: WriterLease;
   readonly stores: HostStores;
   readonly safeMode: boolean;
@@ -160,19 +162,21 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     bundlePath: options.bundlePath,
     bundleCheckMs: options.bundleCheckMs,
     busy: () =>
-      (started.lan?.pending() ?? 0) > 0 ||
+      (started.pairing?.pending() ?? 0) > 0 ||
       (started.worker?.pending ?? 0) > 0 ||
       (creation?.pending() ?? 0) > 0 ||
       (started.devices?.pending() ?? 0) > 0 ||
       (started.relay?.pending() ?? 0) > 0,
     beforeIdleExit: (signal) => started.relay?.finalPush({ signal }) ?? Promise.resolve(),
     release: async (reason) => {
+      // Pairing first: its open relay sessions are deleted with the relay client still up.
+      started.memberSweep?.close();
+      await started.pairing?.close();
       started.relay?.close();
       await started.mcp?.stop(reason);
       started.strategyFollower?.close();
       await started.strategyFollower?.settled();
       await started.worker?.stop();
-      await started.lan?.close();
       started.notifications?.capability?.dispose();
       started.devices?.close();
       await Promise.allSettled([...lifecycle.inFlightRequests]);
@@ -225,24 +229,42 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     });
     if (safeMode) log.warn("host.safe-mode", { recentCrashes: record.recentCrashes });
 
+    if (nativeMode) {
+      // The LAN carrier's folder of older builds (a copy of each vault's own sealed log) goes once.
+      try {
+        if (removeLegacyLanCarrier(server.paths.dataDir) === "removed")
+          log.info("host.lan-carrier-removed", {});
+      } catch (error) {
+        log.warn("host.lan-carrier-unremoved", { error: errorName(error) });
+      }
+    }
     const devices = createDeviceService(stores, now);
     started.devices = devices;
     // Safe mode runs no network work: no relay passes (the switch and status still answer).
     started.relay = relay;
     if (!safeMode) relay.start({ stores, closing: lifecycle.closing });
-    const lan = createLanServing({
-      option: options.lan,
-      nativeMode,
-      safeMode,
-      dataDir: server.paths.dataDir,
-      stores,
-      now,
-      log,
-      stopRequested: lifecycle.stopRequested,
-      onStarted: lifecycle.armIdle,
-    });
-    started.lan = lan;
-    await lan.resumeIfPaired();
+    // Pairing and the membership of revoked devices go through the relay: no network in safe mode.
+    const memberUids = relayMemberUids(() => stores);
+    const pairingWarn = (event: string, error: unknown) =>
+      log.warn(event, { error: errorName(error) });
+    const pairing =
+      nativeMode && !safeMode
+        ? createPairingService({
+            vault: (id) => stores.vaults.get(id)?.native,
+            relay,
+            now,
+            warn: pairingWarn,
+          })
+        : undefined;
+    started.pairing = pairing;
+    if (nativeMode && !safeMode && relay.configured)
+      started.memberSweep = startMemberSweep({
+        stores,
+        relay,
+        memberUids,
+        now,
+        warn: pairingWarn,
+      });
     const notifications = hostNotifications({
       intents: notificationIntents,
       stores,
@@ -315,7 +337,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         banking: options.banking,
         creation,
         devices,
-        lan,
+        pairing,
         relay,
         notificationIntents,
         notificationAuthority: notifications.authority,
@@ -396,9 +418,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     lifecycle.armIdle();
     return {
       server,
-      get lan() {
-        return lan.current();
-      },
+      ...(pairing === undefined ? {} : { pairing }),
       lease,
       stores,
       safeMode,

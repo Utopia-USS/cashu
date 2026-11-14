@@ -16,7 +16,7 @@ import {
   visibilityOf,
 } from "../testing/devices/leaseSim.js";
 import type { SimDevice } from "../testing/devices/testkit.js";
-import { holdsLease, type LeaseConfig, type LeaseLocal } from "./lease.js";
+import { holdsLease, type LeaseConfig, type LeaseLocal, peerCouldLead } from "./lease.js";
 
 const DAY = 24 * 60 * MIN;
 
@@ -28,7 +28,7 @@ function offline(
   d: SimDevice,
   ago = 0,
   since = d.now() - 10 * MIN,
-  bound: { peerCanLead: boolean; lastCompleteAt?: number } = {
+  bound: { peerCanLead: boolean; lastCompleteAt?: number; acknowledgedAt?: number } = {
     peerCanLead: true,
     lastCompleteAt: since - MIN,
   },
@@ -122,6 +122,82 @@ describe("G2: the offline lead is bounded while another device could lead", () =
   });
 });
 
+describe("G2: the owner's override (keep fetching on this Mac)", () => {
+  it("bound hit -> refused; acknowledged -> allowed for 7 days -> refused again", async () => {
+    const { a } = await devices([0, 0, 0], { mode: "pinned" });
+    a.sync();
+    advance(a, 2 * config.publishDeadlineMs);
+    const now = a.now();
+    const last = now - 8 * DAY;
+    const at = (acknowledgedAt?: number) =>
+      offline(a, 0, now - MIN, {
+        peerCanLead: true,
+        lastCompleteAt: last,
+        ...(acknowledgedAt === undefined ? {} : { acknowledgedAt }),
+      });
+    expect(holdsWith(a, at())).toBe(false);
+    // Acknowledged just now, 3 days ago, exactly 7 days ago (literal days, not the constant).
+    expect(holdsWith(a, at(now))).toBe(true);
+    expect(holdsWith(a, at(now - 3 * DAY))).toBe(true);
+    expect(holdsWith(a, at(now - 7 * DAY))).toBe(true);
+    expect(holdsWith(a, at(now - 7 * DAY - 1))).toBe(false);
+    // An acknowledgement from the future (a clock that went back) proves nothing.
+    expect(holdsWith(a, at(now + MIN))).toBe(false);
+    // Without any complete pull ever recorded the acknowledgement alone starts the bound.
+    expect(
+      holdsWith(a, offline(a, 0, now - MIN, { peerCanLead: true, acknowledgedAt: now - DAY })),
+    ).toBe(true);
+  });
+
+  it("never stands in for the offline pass: stale or missing evidence stays refused", async () => {
+    const { a, b } = await devices([0, 0, 0], { mode: "pinned" });
+    a.sync();
+    b.sync();
+    advance(a, 2 * config.publishDeadlineMs);
+    const now = a.now();
+    const bound = { peerCanLead: true, lastCompleteAt: now - 8 * DAY, acknowledgedAt: now };
+    // An incomplete pass (this Mac removed at the relay, identity lost) carries no offline pull.
+    expect(holdsWith(a, a.local())).toBe(false);
+    // An old offline pass stays too old.
+    expect(holdsWith(a, offline(a, config.publishDeadlineMs + 1, now - DAY, bound))).toBe(false);
+    // A device that is not the pinned leader gains nothing.
+    expect(holdsWith(b, offline(b, 0, b.now() - MIN, { ...bound, acknowledgedAt: b.now() }))).toBe(
+      false,
+    );
+  });
+});
+
+describe("G2: which other device could lead (device kind from the host's relay membership)", () => {
+  const roles =
+    (known: Record<string, "admin" | "member">) =>
+    (device: string): "admin" | "member" | undefined =>
+      known[device];
+
+  it("Mac + phone: no limit; two Macs: 7 days; unknown kind: 7 days", async () => {
+    const { a, b, c } = await devices([0, 0, 0], { mode: "pinned" });
+    a.sync();
+    advance(a, 2 * config.publishDeadlineMs);
+    const now = a.now();
+    const eightDaysAgo = now - 8 * DAY;
+    const holdsAfter8Days = (peerCanLead: boolean) =>
+      holdsWith(a, offline(a, 0, now - MIN, { peerCanLead, lastCompleteAt: eightDaysAgo }));
+    // Mac a + phone b: the phone never leads, so the 7-day bound does not apply.
+    const macAndPhone = peerCouldLead([b.id], roles({ [a.id]: "admin", [b.id]: "member" }));
+    expect(macAndPhone).toBe(false);
+    expect(holdsAfter8Days(macAndPhone)).toBe(true);
+    // Two Macs: the other one could be pinned meanwhile.
+    const twoMacs = peerCouldLead([b.id], roles({ [a.id]: "admin", [b.id]: "admin" }));
+    expect(twoMacs).toBe(true);
+    expect(holdsAfter8Days(twoMacs)).toBe(false);
+    // Mac + phone + a device of unknown kind (no knowledge, or a bare uid): conservative.
+    expect(peerCouldLead([b.id, c.id], roles({ [b.id]: "member" }))).toBe(true);
+    expect(peerCouldLead([b.id])).toBe(true);
+    expect(holdsAfter8Days(peerCouldLead([b.id]))).toBe(false);
+    // No other device at all: nobody else can lead.
+    expect(peerCouldLead([])).toBe(false);
+  });
+});
+
 describe("D6: mode auto keeps the strict rule", () => {
   it("a settled holder whose pull went stale is refused even with an offline pass", async () => {
     const { a, b, c, remote } = await devices([0, 0, 0], {
@@ -139,5 +215,17 @@ describe("D6: mode auto keeps the strict rule", () => {
     advance(b, 2 * boundedConfig.publishDeadlineMs);
     expect(holdsWith(b, b.local(), boundedConfig)).toBe(false);
     expect(holdsWith(b, offline(b), boundedConfig)).toBe(false);
+    // The owner's acknowledgement of the pinned bound means nothing in mode auto.
+    expect(
+      holdsWith(
+        b,
+        offline(b, 0, b.now() - MIN, {
+          peerCanLead: true,
+          lastCompleteAt: b.now() - MIN,
+          acknowledgedAt: b.now(),
+        }),
+        boundedConfig,
+      ),
+    ).toBe(false);
   });
 });

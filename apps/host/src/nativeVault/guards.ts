@@ -39,6 +39,20 @@ export interface SessionGuards {
   canRunSideEffects(): boolean;
   canFetchPublicMarket(): boolean;
   fetchLeaseState(): FetchLeaseState;
+  /**
+   * The fetch-paused state the owner sees (value-free): this device is the pinned fetch leader and is
+   * refused only because the G2 offline bound ran out (lease.ts `offlinePullAt`): its passes since the
+   * last complete pull missed only unreachable remotes (or it has none: sync off), another device could
+   * lead, and the later of the last complete pull and the owner's acknowledgement ("keep fetching on
+   * this Mac", the relay setting's `offlineLeadAckAt`) is older than OFFLINE_LEAD_MAX_MS or unknown. A
+   * fresh complete pull or that acknowledgement clears it. The Devices screen shows it so that the bound never refuses silently.
+   */
+  offlineTooLong(): boolean;
+  /**
+   * The other device that could lead (registry: trusted, not revoked, not known as a phone), the lowest
+   * id when there are several; undefined when none. Names the other Mac in the owner's override.
+   */
+  peerThatCouldLead(): string | undefined;
   /** A pending revocation or pairing, or a write gate that is not ready, blocks a new append. */
   writesBlocked(): boolean;
 }
@@ -47,11 +61,13 @@ export interface SessionGuards {
  * The engine's `offline` pull status as the lease's `offlinePull` (D6); nothing otherwise. G2: with
  * the last complete pull (persisted across restarts, `SyncEngine.pullHistory`) and whether another
  * device could be pinned: any other trusted, non-revoked device of the registry (exactly the targets
- * `leaderPrepare` accepts; the registry does not tell a phone from a Mac, so a phone counts too).
+ * `leaderPrepare` accepts) that the vault's relay membership does not know as a phone
+ * (`devices.peerCouldLead`; the registry itself does not tell a phone from a Mac).
  */
 function offlinePull(
   pull: PullStatus,
   lastCompleteAt: number | undefined,
+  acknowledgedAt: number | undefined,
   peerCanLead: boolean,
 ): Pick<devices.LeaseLocal, "offlinePull"> {
   return pull.kind === "offline"
@@ -60,6 +76,7 @@ function offlinePull(
           since: pull.since,
           reachedAt: pull.reachedAt,
           ...(lastCompleteAt === undefined ? {} : { lastCompleteAt }),
+          ...(acknowledgedAt === undefined ? {} : { acknowledgedAt }),
           peerCanLead,
         },
       }
@@ -103,14 +120,26 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
       (writer) => !candidate.devices.registry.revoked.has(writer),
       (writer) => candidate.devices.registry.isTrusted(writer),
     );
-  const peerCanLead = (): boolean => {
+  const otherDevices = (): string[] => {
     const { registry } = candidate.devices;
-    for (const device of registry.trusted.keys())
-      if (device !== entry.deviceId && !registry.revoked.has(device)) return true;
-    return false;
+    return [...registry.trusted.keys()].filter(
+      (device) => device !== entry.deviceId && !registry.revoked.has(device),
+    );
   };
+  const roleOf = (device: string) => context.source.relayRole?.(entry, device);
+  const peerCanLead = (): boolean => devices.peerCouldLead(otherDevices(), roleOf);
+  const peerThatCouldLead = (): string | undefined =>
+    otherDevices()
+      .filter((device) => devices.peerCouldLead([device], roleOf))
+      .sort()[0];
+  // G2 override: the owner's acknowledgement only moves the start of the bound (lease.ts).
   const offlineOf = (pull: PullStatus) =>
-    offlinePull(pull, engine.pullHistory().lastCompleteAt, peerCanLead());
+    offlinePull(
+      pull,
+      engine.pullHistory().lastCompleteAt,
+      context.source.offlineLeadAck?.(entry),
+      peerCanLead(),
+    );
   const canFetchPublicMarket = () => {
     if (!isCurrent() || engine.writeAdmission() !== "ready") return false;
     try {
@@ -166,6 +195,34 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
       return "unavailable";
     }
   };
+  const offlineTooLong = (): boolean => {
+    if (!isCurrent() || engine.writeAdmission() !== "ready") return false;
+    try {
+      const view = candidate.devices.lease;
+      if (
+        view.mode !== "pinned" ||
+        view.free ||
+        view.pinned !== entry.deviceId ||
+        view.pendingFrom !== null
+      )
+        return false;
+      const evidence = pullEvidence();
+      if (evidence.pull.kind !== "offline") return false;
+      const at = now();
+      const last = evidence.lastPullAt;
+      if (
+        last !== undefined &&
+        last <= at &&
+        at - last <= devices.DEFAULT_LEASE_CONFIG.publishDeadlineMs
+      )
+        return false;
+      const offline = offlineOf(evidence.pull).offlinePull;
+      return offline?.peerCanLead === true && devices.offlinePullAt(offline, at) === undefined;
+    } catch (error) {
+      warnOnce("native_vault_offline_bound_unavailable", error);
+      return false;
+    }
+  };
   const writesBlocked = () =>
     attempts.hasPending(entry.vaultId, REVOKE_COMMAND) ||
     pairingJournal.pending(entry.vaultId).length > 0 ||
@@ -175,6 +232,8 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
     canRunSideEffects,
     canFetchPublicMarket,
     fetchLeaseState,
+    offlineTooLong,
+    peerThatCouldLead,
     writesBlocked,
   };
 }

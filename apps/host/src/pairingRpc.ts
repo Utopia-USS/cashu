@@ -14,7 +14,7 @@ import {
 import type { JsonValue } from "@cashu/host-protocol/store";
 import type { HostSession } from "@cashu/node-host";
 import type { HostLog } from "./log.js";
-import type { LanPairingService } from "./pairing/service.js";
+import type { PairingService } from "./pairing/service.js";
 
 type Request = Extract<ClientFrame, { t: "req" }>;
 
@@ -22,24 +22,14 @@ export function serveNativePairingRequest(input: {
   readonly session: HostSession;
   readonly frame: Request;
   readonly isStopping: () => boolean;
-  readonly currentService: () => LanPairingService | undefined;
-  readonly ensureService: () => Promise<LanPairingService | undefined>;
+  /** Absent on a host that pairs nothing (safe mode, a synthetic harness). */
+  readonly service: PairingService | undefined;
   readonly requestSet: Set<Promise<void>>;
   readonly armIdle: () => void;
   readonly handover: () => void;
   readonly log: HostLog;
 }): void {
-  const {
-    session,
-    frame,
-    isStopping,
-    currentService,
-    ensureService,
-    requestSet,
-    armIdle,
-    handover,
-    log,
-  } = input;
+  const { session, frame, isStopping, service, requestSet, armIdle, handover, log } = input;
   if (
     isStopping() ||
     !uiPairingAllowed(frame.method, session.protocol.minor, [NATIVE_PAIRING_FEATURE])
@@ -53,9 +43,6 @@ export function serveNativePairingRequest(input: {
   }
   const request = Promise.resolve()
     .then(async () => {
-      const service =
-        currentService() ??
-        (frame.method === "native.pairing.invite" ? await ensureService() : undefined);
       if (service === undefined) {
         session.send({
           t: "res",

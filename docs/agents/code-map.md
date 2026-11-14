@@ -97,7 +97,7 @@ Apps compose packages and never import another app.
 | `banking/` | Enable Banking client, consent callback, sync into the budget |
 | `classification/` | categorization providers (Ollama, Anthropic with owner consent) |
 | `workspace/` | per-profile agent workspace (managed CLAUDE.md, `.mcp.json`, `.claude/settings.json`, skills); `skillReferences.ts` = the reference copies inside skills |
-| `market/`, `notifications/`, `proposals/`, `sync/`, `pairing/`, `devices/` | market data wiring and price cache; OS notifications; proposal approval; sync carrier; device pairing |
+| `market/`, `notifications/`, `proposals/`, `sync/`, `pairing/`, `devices/` | market data wiring and price cache; OS notifications; proposal approval; sync carrier; device pairing over the sync relay (QR + six digits, relay membership of phones and its removal after a revocation) |
 | `*Screen.ts` | screen data the renderer asks for (overview, investments, signals, review, research, strategies, proposals, settings) |
 | `testing/` | synthetic hosts and demos (`devDemo.ts`, `seedOverviewDemo.ts`, ...) |
 | `scripts/genConnectorSchemas.ts`, `scripts/syncSkillReferences.ts` | `gen:connector-schemas` and `skills:sync` (`--check` verifies) |

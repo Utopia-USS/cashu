@@ -31,23 +31,19 @@ import { leaseAttempts } from "./devices/leaseAttempts.js";
 import type { WriterLease } from "./lease.js";
 import { scrubIncompleteNativeCheckpoints } from "./nativeCheckpoint.js";
 import { sessionBindings } from "./nativeVault/bindings.js";
-import { carrierEndpoint } from "./nativeVault/carrier.js";
 import { type NativeVaultContext, profileGid } from "./nativeVault/context.js";
 import { deviceReads } from "./nativeVault/deviceReads.js";
 import { warnCause } from "./nativeVault/diagnostics.js";
 import { fetchAuthorityRefresh } from "./nativeVault/fetchAuthority.js";
 import { sessionGuards } from "./nativeVault/guards.js";
-import { ensureOwnLanMirror, reconcilePendingPairings } from "./nativeVault/lanMirror.js";
-import { pairingPruner, pairingWrites } from "./nativeVault/pairing.js";
-import { existing, lanCarrierRoot, sidecars } from "./nativeVault/paths.js";
+import { pairingPruner, pairingWrites, reconcilePendingPairings } from "./nativeVault/pairing.js";
+import { existing, sidecars } from "./nativeVault/paths.js";
 import { reconcileAttemptHistory } from "./nativeVault/recovery.js";
 import { revocation } from "./nativeVault/revocation.js";
 import { REVOKE_COMMAND } from "./nativeVault/revokeIntent.js";
 import { syncControl } from "./nativeVault/sync.js";
 import type { NativeVaultSession, NativeVaultSource } from "./nativeVault/types.js";
-import { HostLanCarrier } from "./pairing/carrier.js";
 import { PairingJournal } from "./pairing/journal.js";
-import { pairingReadCapability } from "./pairing/readCapability.js";
 import { WriteQueue } from "./queue.js";
 import {
   loadDeviceAuthority,
@@ -111,8 +107,6 @@ export async function openNativeVault(
     const provenance = SqlProvenanceStore.open(meta, ring, "existing");
     const attempts = SqlAttemptJournal.open(meta, "existing", now);
     const pairingJournal = new PairingJournal(meta);
-    const carrierRoot = lanCarrierRoot(dataDir);
-    const lanCarrier = new HostLanCarrier(carrierRoot);
     const certificates = await source.bootstrapCertificates(entry);
     candidate = await loadDeviceAuthority({
       entry,
@@ -139,16 +133,13 @@ export async function openNativeVault(
       throw new StartupFailureError("view_rebuild_failed", "view_rebuild_failed");
     }
     const localTransport = new FolderTransport({ fs: new NodeFolderFs(logPath) });
-    const lanRemote = new FolderTransport({
-      fs: new NodeFolderFs(carrierRoot),
-      owner: entry.deviceId,
-    });
     engine = notifyingWrites(
       await createSyncEngine({
         vault: entry.vaultId,
         device: entry.deviceId,
         local: localTransport,
-        remotes: [lanRemote, ...(source.remoteTransports?.(entry) ?? [])],
+        // None while the vault's sync is off: the engine then reports its pull `offline` (no remote).
+        remotes: source.remoteTransports?.(entry) ?? [],
         codec: createOwnLogCodec({
           sodium: source.sodium,
           ring: candidate.ring,
@@ -178,14 +169,7 @@ export async function openNativeVault(
       },
     );
     const recovered = await engine.recoverLocal();
-    await reconcilePendingPairings({
-      entry,
-      engine,
-      localTransport,
-      lanCarrier,
-      pairingJournal,
-      now,
-    });
+    await reconcilePendingPairings({ entry, engine, pairingJournal, now });
     assertReplayedDeviceAuthority(candidate, recovered, profileGid(store));
     if (candidate.devices.rotationNeeded() !== undefined)
       throw new StartupFailureError("unknown", "device_rotation_required");
@@ -207,7 +191,6 @@ export async function openNativeVault(
       provenance,
       pairingJournal,
       localTransport,
-      lanCarrier,
       certificates,
       queue,
       state: { current: true, syncing: false, activeFetches: 0 },
@@ -254,6 +237,8 @@ export async function openNativeVault(
     const deviceOps = deviceReads(context, guards);
     const revoke = revocation(context, guards);
     const pairing = pairingWrites(context, guards, prunePairing);
+    // An admission whose membership exists owes its append: retried before the session is exposed.
+    await pairing.pairingResume();
     const deviceListeners = new Set<() => void>();
     const devicesChanged = () => {
       for (const listener of [...deviceListeners]) {
@@ -316,19 +301,11 @@ export async function openNativeVault(
       pairingStart: pairing.pairingStart,
       pairingRegisterInvite: pairing.pairingRegisterInvite,
       pairingBindJoiner: pairing.pairingBindJoiner,
-      pairingAppend: thenDevicesChanged(pairing.pairingAppend),
-      ...pairingReadCapability({
-        vault: entry.vaultId,
-        journal: pairingJournal,
-        engine: activeEngine,
-        queue,
-        registry: () => activeCandidate.devices.registry,
-        isCurrent: guards.isCurrent,
-        prune: prunePairing,
-        mirrorOwnBatch: () => ensureOwnLanMirror(context),
-        now,
-      }),
-      carrierRequest: carrierEndpoint(context, guards, prunePairing),
+      pairingAdmit: thenDevicesChanged(pairing.pairingAdmit),
+      pairingOperation: pairing.pairingOperation,
+      pairingAdmissions: pairing.pairingAdmissions,
+      pairingResolve: thenDevicesChanged(pairing.pairingResolve),
+      pairingResume: thenDevicesChanged(pairing.pairingResume),
       invalidate() {
         state.current = false;
         bindings.closeBlobPublication();

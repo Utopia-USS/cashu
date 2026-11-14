@@ -21,7 +21,7 @@
     "lint": "biome check .",
     "test": "vitest run",
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests",
-    "test:emulator": "test -n \"$FIRESTORE_EMULATOR_HOST\" && test -n \"$FIREBASE_AUTH_EMULATOR_HOST\" || { echo 'test:emulator: no Firestore / Auth emulator; run pnpm test:emulator at the repo root' >&2; exit 1; }; vitest run src/transports/firestore/rules.emulator.test.ts src/transports/firestore/firestore.emulator.contract.test.ts"
+    "test:emulator": "test -n \"$FIRESTORE_EMULATOR_HOST\" && test -n \"$FIREBASE_AUTH_EMULATOR_HOST\" || { echo 'test:emulator: no Firestore / Auth emulator; run pnpm test:emulator at the repo root' >&2; exit 1; }; vitest run src/transports/firestore/rules.emulator.test.ts src/transports/firestore/firestore.emulator.contract.test.ts src/transports/firestore/pairingLink.emulator.test.ts"
   },
   "dependencies": {
     "@noble/ciphers": "2.4.0",

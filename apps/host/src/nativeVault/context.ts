@@ -5,7 +5,6 @@ import type { SqlProvenanceStore } from "@cashu/store/sync";
 import type { FolderTransport, SyncEngine } from "@cashu/sync";
 import type { SqlAttemptJournal } from "../attemptJournal.js";
 import type { WriterLease } from "../lease.js";
-import type { HostLanCarrier } from "../pairing/carrier.js";
 import type { PairingJournal } from "../pairing/journal.js";
 import type { WriteQueue } from "../queue.js";
 import type {
@@ -37,7 +36,6 @@ export interface NativeVaultContext {
   readonly provenance: SqlProvenanceStore;
   readonly pairingJournal: PairingJournal;
   readonly localTransport: FolderTransport;
-  readonly lanCarrier: HostLanCarrier;
   readonly certificates: readonly Uint8Array[];
   readonly queue: WriteQueue;
   readonly state: SessionState;

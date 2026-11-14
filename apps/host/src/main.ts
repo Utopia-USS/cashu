@@ -310,7 +310,6 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                 now: () => Date.now(),
               }),
             ],
-            lan: { kind: "local" },
             worker: (context, notifications, queue, lock) => {
               assertAdmission();
               workspaceStores = context.stores;

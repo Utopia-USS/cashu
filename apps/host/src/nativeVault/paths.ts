@@ -1,6 +1,7 @@
-// Path checks for an already provisioned native vault: nothing here creates a vault file.
-import { lstatSync, mkdirSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+// Path checks for an already provisioned native vault: nothing here creates a vault file. Also the
+// one-time removal of the LAN carrier's folder that older builds left in the data dir.
+import { lstatSync, realpathSync, rmSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
 
 const unavailable = () =>
@@ -40,12 +41,28 @@ export function sidecars(path: string): void {
   }
 }
 
-/** The host-private LAN carrier folder under the data dir, created 0700 when missing. */
-export function lanCarrierRoot(dataDir: string): string {
-  const root = join(dataDir, "lan-carrier");
-  mkdirSync(root, { recursive: true, mode: 0o700 });
-  const stat = lstatSync(root);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0)
-    throw new Error("native_lan_carrier_invalid");
-  return root;
+/** The folder the LAN carrier kept under the data dir (a copy of each vault's own sealed log). */
+const LEGACY_LAN_CARRIER = "lan-carrier";
+
+/**
+ * Removes `<dataDir>/lan-carrier`, left by builds that synced over the LAN (nothing reads it since).
+ * Only that exact entry of the data dir, only a real directory reached without a symlink (a symlink
+ * there, or a data dir path that resolves elsewhere, is left alone), and the recursive removal
+ * unlinks symlinks inside it without following them. Run once at host start with the host lock held.
+ */
+export function removeLegacyLanCarrier(dataDir: string): "removed" | "absent" | "skipped" {
+  if (!isAbsolute(dataDir)) return "skipped";
+  const target = join(dataDir, LEGACY_LAN_CARRIER);
+  let stat: ReturnType<typeof lstatSync>;
+  try {
+    stat = lstatSync(target);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "absent";
+    return "skipped";
+  }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) return "skipped";
+  // The canonical folder must be the canonical data dir's own child (no symlinked component).
+  if (realpathSync(target) !== join(realpathSync(dataDir), LEGACY_LAN_CARRIER)) return "skipped";
+  rmSync(target, { recursive: true, force: false });
+  return "removed";
 }

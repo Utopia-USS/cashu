@@ -15,8 +15,16 @@ const DDL = `CREATE TABLE IF NOT EXISTS host_pairing_attempts (
   welcome TEXT NOT NULL,
   pages TEXT NOT NULL,
   phase TEXT NOT NULL,
-  committed_at INTEGER
+  committed_at INTEGER,
+  uid TEXT,
+  touched_at INTEGER
 ) WITHOUT ROWID;`;
+
+/** Columns added after the table first shipped (an existing private DB gets them on open). */
+const ADDED_COLUMNS = [
+  ["uid", "TEXT"],
+  ["touched_at", "INTEGER"],
+] as const;
 
 const INVITE_DDL = `CREATE TABLE IF NOT EXISTS host_pairing_invites (
   session TEXT PRIMARY KEY NOT NULL,
@@ -77,9 +85,23 @@ export interface PairingAttempt {
   readonly digest: string;
   readonly welcome: Uint8Array;
   readonly pages: readonly Uint8Array[];
-  readonly phase: "may_append" | "completed" | "not_started";
+  /**
+   * `admitting`: every check passed and the joiner's relay membership is being written (the commit
+   * point); `may_append`: the membership exists, the keyed device.added append is owed; `completed` /
+   * `not_started`: terminal. A row past `admitting` is never downgraded to `not_started`.
+   */
+  readonly phase: PairingPhase;
   readonly committedAt?: number;
+  /** The joiner's relay uid (rows written since the relay commit point). */
+  readonly uid?: string;
+  /** When the row last changed phase or its membership write ended (resolving `admitting`). */
+  readonly touchedAt?: number;
 }
+
+export type PairingPhase = "admitting" | "may_append" | "completed" | "not_started";
+const PHASES: readonly string[] = ["admitting", "may_append", "completed", "not_started"];
+/** Phases that still owe a step (they block the vault's other writes). */
+const LIVE = "('admitting','may_append')";
 
 type Row = {
   session: string;
@@ -96,11 +118,12 @@ type Row = {
   pages: string;
   phase: string;
   committed_at: number | null;
+  uid: string | null;
+  touched_at: number | null;
 };
 
 function decode(row: Row): PairingAttempt {
-  if (row.phase !== "may_append" && row.phase !== "completed" && row.phase !== "not_started")
-    throw new Error("pairing_journal_invalid");
+  if (!PHASES.includes(row.phase)) throw new Error("pairing_journal_invalid");
   const pages: unknown = JSON.parse(row.pages);
   if (!Array.isArray(pages) || !pages.every((page) => typeof page === "string"))
     throw new Error("pairing_journal_invalid");
@@ -117,8 +140,10 @@ function decode(row: Row): PairingAttempt {
     digest: row.digest,
     welcome: Buffer.from(row.welcome, "base64url"),
     pages: pages.map((page) => Buffer.from(page, "base64url")),
-    phase: row.phase,
+    phase: row.phase as PairingPhase,
     ...(row.committed_at === null ? {} : { committedAt: row.committed_at }),
+    ...(row.uid === null ? {} : { uid: row.uid }),
+    ...(row.touched_at === null ? {} : { touchedAt: row.touched_at }),
   };
 }
 
@@ -129,6 +154,15 @@ export class PairingJournal {
     this.#db = db;
     db.exec(DDL);
     db.exec(INVITE_DDL);
+    const columns = new Set(
+      db
+        .prepare("PRAGMA table_info(host_pairing_attempts)")
+        .all<{ name: string }>()
+        .map((column) => column.name),
+    );
+    for (const [name, type] of ADDED_COLUMNS)
+      if (!columns.has(name))
+        db.exec(`ALTER TABLE host_pairing_attempts ADD COLUMN ${name} ${type}`);
   }
 
   invite(vault: string, session: string): PairingInviteRecord | undefined {
@@ -184,7 +218,7 @@ export class PairingJournal {
         WHERE vault=? AND expires_at<? AND NOT EXISTS (
           SELECT 1 FROM host_pairing_attempts a
           WHERE a.vault=host_pairing_invites.vault AND a.session=host_pairing_invites.session
-            AND a.phase='may_append'
+            AND a.phase IN ${LIVE}
         )`)
       .run(vault, now - 24 * 60 * 60 * 1000).changes;
   }
@@ -212,9 +246,10 @@ export class PairingJournal {
     return row ? decode(row) : undefined;
   }
 
+  /** Rows that still owe a step (`admitting`, `may_append`). */
   pending(vault: string): readonly PairingAttempt[] {
     return this.#db
-      .prepare("SELECT * FROM host_pairing_attempts WHERE vault=? AND phase='may_append'")
+      .prepare(`SELECT * FROM host_pairing_attempts WHERE vault=? AND phase IN ${LIVE}`)
       .all<Row>(vault)
       .map(decode);
   }
@@ -222,8 +257,8 @@ export class PairingJournal {
   prepare(attempt: PairingAttempt): PairingAttempt {
     this.#db
       .prepare(`INSERT OR IGNORE INTO host_pairing_attempts
-      (session,operation_id,vault,device,sign_key,box_key,certificate,event,eid,digest,welcome,pages,phase)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'may_append')`)
+      (session,operation_id,vault,device,sign_key,box_key,certificate,event,eid,digest,welcome,pages,phase,uid,touched_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         attempt.session,
         attempt.operationId,
@@ -237,6 +272,9 @@ export class PairingJournal {
         attempt.digest,
         Buffer.from(attempt.welcome).toString("base64url"),
         JSON.stringify(attempt.pages.map((page) => Buffer.from(page).toString("base64url"))),
+        attempt.phase === "admitting" ? "admitting" : "may_append",
+        attempt.uid ?? null,
+        attempt.touchedAt ?? null,
       );
     const saved = this.get(attempt.vault, attempt.session);
     if (
@@ -249,6 +287,7 @@ export class PairingJournal {
       saved.signKey !== attempt.signKey ||
       saved.boxKey !== attempt.boxKey ||
       saved.certificate !== attempt.certificate ||
+      saved.uid !== attempt.uid ||
       JSON.stringify(saved.event) !== JSON.stringify(attempt.event) ||
       !Buffer.from(saved.welcome).equals(Buffer.from(attempt.welcome)) ||
       saved.pages.length !== attempt.pages.length ||
@@ -260,12 +299,32 @@ export class PairingJournal {
     return saved;
   }
 
-  mark(vault: string, session: string, phase: "completed" | "not_started", now: number): void {
+  /**
+   * Moves a live row on: `admitting` -> `may_append` (the membership exists) or `not_started` (it
+   * provably does not); `may_append` (or `admitting`, whose append landed) -> `completed`. A row past
+   * `admitting` never goes back to `not_started`.
+   */
+  mark(
+    vault: string,
+    session: string,
+    phase: Exclude<PairingPhase, "admitting">,
+    now: number,
+  ): void {
+    const from = phase === "completed" ? LIVE : "('admitting')";
     const result = this.#db
       .prepare(`UPDATE host_pairing_attempts
-      SET phase=?, committed_at=? WHERE vault=? AND session=? AND phase='may_append'`)
-      .run(phase, now, vault, session);
+      SET phase=?, committed_at=CASE WHEN ? IN ('completed','not_started') THEN ? ELSE committed_at END,
+        touched_at=? WHERE vault=? AND session=? AND phase IN ${from}`)
+      .run(phase, phase, now, now, vault, session);
     if (result.changes !== 1) throw new Error("pairing_attempt_changed");
+  }
+
+  /** Records that an `admitting` row's membership write ended without a known outcome. */
+  touch(vault: string, session: string, now: number): void {
+    this.#db
+      .prepare(`UPDATE host_pairing_attempts SET touched_at=?
+      WHERE vault=? AND session=? AND phase='admitting'`)
+      .run(now, vault, session);
   }
 
   /** Expire only sealed response bytes; retain subject, EID, digest and terminal proof forever. */

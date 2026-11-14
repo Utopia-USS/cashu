@@ -91,7 +91,7 @@ it("pushes own writes at the idle exit even inside a back-off", async () => {
   await renameVault(host, env.vault, "While offline");
   env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
   await until(() => host.relay.pending() === 0);
-  expect(host.relay.status(env.vault).status.lastError).toBe("unavailable");
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("unavailable");
   // The relay answers again, but the retry is a minute away: the idle exit does not wait for it.
   env.fake.faults.reset();
   expect(await host.stop("idle")).toBe(0);
