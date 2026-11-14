@@ -10,6 +10,9 @@ const moduleNameMapper = { "^(\\.{1,2}/.*)\\.js$": "$1" };
 
 /** @type {import('jest').Config} */
 module.exports = {
+  // The native suites render whole screens over a real store; on the CI runners one test can take well over
+  // Jest's 5 s default (measured: suites of 30-60 s). One limit here instead of a setTimeout per file.
+  testTimeout: 30_000,
   projects: [
     {
       displayName: "native",
