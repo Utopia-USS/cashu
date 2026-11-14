@@ -1,7 +1,7 @@
 // Device-local signed-history clock observation state (the sync `ClockGuardStore`) in the vault's
 // `store_meta` table: one JSON object of per-writer high-water walls under `fetch-clock-guard:<device>`.
 // The key and the JSON shape are a persisted format of existing vaults: keep them byte-identical.
-import type { ClockGuardStore } from "@cashu/sync";
+import type { ClockGuardStore } from "@cashu/sync/engine";
 import { z } from "zod";
 import type { SqlDriver } from "../sql/driver.js";
 

@@ -6,6 +6,7 @@ import { NATIVE_DEVICES_METHODS } from "./devices/messages.js";
 import type { ClientFrame, Role } from "./messages.js";
 import { NOTIFICATION_INTENT_METHOD } from "./notificationIntent.js";
 import { NATIVE_PAIRING_METHODS } from "./pairing/messages.js";
+import { NATIVE_RELAY_METHODS } from "./relay.js";
 
 const NAMESPACE: Readonly<Record<Role, string | undefined>> = {
   ui: undefined,
@@ -54,6 +55,7 @@ export function roleAllows(role: Role, frame: ClientFrame): boolean {
           NATIVE_CONNECTORS_METHODS.some((method) => frame.method === method) ||
           NATIVE_PAIRING_METHODS.some((method) => frame.method === method) ||
           NATIVE_DEVICES_METHODS.some((method) => frame.method === method) ||
+          NATIVE_RELAY_METHODS.some((method) => frame.method === method) ||
           NATIVE_BANKING_METHODS.some((method) => frame.method === method)
         );
       const prefix = NAMESPACE[role];

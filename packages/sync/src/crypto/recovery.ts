@@ -12,21 +12,14 @@
 // The BIP39 standard seed (PBKDF2 of the words) is not used: we decode the words back to their
 // entropy, so the phrase is a plain encoding of a key and not wallet-compatible on purpose.
 
-import { hkdf } from "@noble/hashes/hkdf.js";
-import { sha256 } from "@noble/hashes/sha2.js";
 import { entropyToMnemonic, mnemonicToEntropy } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import { utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
-import { RecoveryIdentity, type RecoveryPublicKeys } from "./identity.js";
-import { Secret } from "./secret.js";
+import type { RecoveryIdentity, RecoveryPublicKeys } from "./identity.js";
+import { identityFromEntropy, RECOVERY_ENTROPY_BYTES } from "./recoveryIdentity.js";
 import type { Sodium } from "./sodium.js";
 
 export const RECOVERY_WORDS = 24;
-const ENTROPY_BYTES = 32;
-const HKDF_SALT = utf8("cashu/recovery/v2");
-const HKDF_INFO_BOX = utf8("x25519-seed");
-const HKDF_INFO_SIGN = utf8("ed25519-seed");
 
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
 const INTERNAL = Symbol("recovery-phrase");
@@ -73,20 +66,8 @@ export function normalizePhrase(phrase: string): string {
   return phrase.normalize("NFKD").trim().toLowerCase().split(/\s+/).join(" ");
 }
 
-function identityFromEntropy(sodium: Sodium, entropy: Uint8Array): RecoveryIdentity {
-  const boxSeed = hkdf(sha256, entropy, HKDF_SALT, HKDF_INFO_BOX, 32);
-  const signSeed = hkdf(sha256, entropy, HKDF_SALT, HKDF_INFO_SIGN, 32);
-  try {
-    const pair = sodium.boxSeedKeyPair(boxSeed);
-    pair.publicKey.fill(0);
-    return new RecoveryIdentity(new Secret(pair.privateKey), new Secret(signSeed));
-  } finally {
-    boxSeed.fill(0);
-  }
-}
-
 export function createRecoveryKey(sodium: Sodium): NewRecoveryKey {
-  const entropy = sodium.randomBytes(ENTROPY_BYTES);
+  const entropy = sodium.randomBytes(RECOVERY_ENTROPY_BYTES);
   try {
     const identity = identityFromEntropy(sodium, entropy);
     const publicKeys = identity.publicKeys;

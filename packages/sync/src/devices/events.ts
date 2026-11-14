@@ -18,7 +18,7 @@ import {
   RECOVERY_SIGNER_ID,
   type RecoveryIdentity,
   type SignedHead,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import type { Hlc } from "../hlc.js";
 import {
   type CanonicalValue,

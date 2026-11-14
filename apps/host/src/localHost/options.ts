@@ -32,6 +32,7 @@ import type { HostNotificationCapability } from "../notificationCapability.js";
 import type { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 import type { ProposalApprovalProvider } from "../proposalsScreen.js";
 import type { servedQueries } from "../registry.js";
+import type { HostRelayOptions } from "../relay/service.js";
 import type { HostRuntime } from "../runtime.js";
 import type { SignalsMarketPorts } from "../signalsScreen.js";
 import type { StoreChannelOptions } from "../storeChannel.js";
@@ -81,6 +82,11 @@ export interface LocalHostOptions {
   readonly lan?: LanOption;
   /** Explicit isolated test harness or an injected exact-vault native authority. */
   readonly vaultSource?: VaultSourceOption;
+  /**
+   * The sync relay (M4): its endpoints and the data dir's identity store. Absent (no config): no
+   * vault gets the relay remote and every `native.relay.*` action is refused `no_config`.
+   */
+  readonly relay?: HostRelayOptions;
   /** Checked S60 preparation authority, bound to the exact open vault. Absent by default. */
   readonly proposals?: ProposalApprovalProvider;
   /** Owner approval of strategy and custom-rule proposals (production: the native strategy files). */

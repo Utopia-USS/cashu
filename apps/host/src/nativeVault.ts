@@ -23,6 +23,7 @@ import {
   createSyncEngine,
   crypto,
   FolderTransport,
+  type PullHistory,
   type SyncEngine,
 } from "@cashu/sync";
 import { SqlAttemptJournal } from "./attemptJournal.js";
@@ -102,6 +103,7 @@ export async function openNativeVault(
   let viewDriver: SqlDriver | undefined;
   let store: Store | undefined;
   let engine: SyncEngine | undefined;
+  const writeListeners = new Set<() => void>();
   try {
     meta = openNodeSqlite(privatePath, { exclusive: lease.lock() });
     // Attempt intent and key provenance must survive power loss before encrypted append begins.
@@ -141,24 +143,40 @@ export async function openNativeVault(
       fs: new NodeFolderFs(carrierRoot),
       owner: entry.deviceId,
     });
-    engine = await createSyncEngine({
-      vault: entry.vaultId,
-      device: entry.deviceId,
-      local: localTransport,
-      remotes: [lanRemote, ...(source.remoteTransports?.(entry) ?? [])],
-      codec: createOwnLogCodec({
-        sodium: source.sodium,
-        ring: candidate.ring,
-        signer: candidate.identity,
+    engine = notifyingWrites(
+      await createSyncEngine({
+        vault: entry.vaultId,
+        device: entry.deviceId,
+        local: localTransport,
+        remotes: [lanRemote, ...(source.remoteTransports?.(entry) ?? [])],
+        codec: createOwnLogCodec({
+          sodium: source.sodium,
+          ring: candidate.ring,
+          signer: candidate.identity,
+        }),
+        gate: candidate.gate,
+        sink: store.sink(),
+        clockStore: metaClockStore(store.driver, entry.deviceId),
+        clockGuard: metaClockGuardStore(store.driver, entry.deviceId),
+        physicalClock: { now },
+        gateState: metaGateStateStore(store.driver, entry.deviceId),
+        gossipEid: () => mintUlid(now()),
+        ...pullHistoryOf(source, entry),
+        ...(source.maxPushBytesPerPass === undefined
+          ? {}
+          : { maxPushBytesPerPass: source.maxPushBytesPerPass }),
       }),
-      gate: candidate.gate,
-      sink: store.sink(),
-      clockStore: metaClockStore(store.driver, entry.deviceId),
-      clockGuard: metaClockGuardStore(store.driver, entry.deviceId),
-      physicalClock: { now },
-      gateState: metaGateStateStore(store.driver, entry.deviceId),
-      gossipEid: () => mintUlid(now()),
-    });
+      () => {
+        for (const listener of [...writeListeners]) {
+          try {
+            listener();
+          } catch (error) {
+            // A write trigger (the relay push) cannot change what was committed.
+            warnCause("native_write_listener_failed", error);
+          }
+        }
+      },
+    );
     const recovered = await engine.recoverLocal();
     await reconcilePendingPairings({
       entry,
@@ -279,6 +297,10 @@ export async function openNativeVault(
         deviceListeners.add(listener);
         return () => deviceListeners.delete(listener);
       },
+      onLocalWrite(listener) {
+        writeListeners.add(listener);
+        return () => writeListeners.delete(listener);
+      },
       sync: syncOps.sync,
       deviceList: deviceOps.deviceList,
       devicePreview: revoke.devicePreview,
@@ -334,4 +356,55 @@ export async function openNativeVault(
   } finally {
     ring.wipe();
   }
+}
+
+/** The persisted sync history as an engine option; a failing reader only loses the history. */
+function pullHistoryOf(
+  source: NativeVaultSource,
+  entry: NativeVaultInventoryEntry,
+): { pullHistory?: PullHistory } {
+  try {
+    const history = source.pullHistory?.(entry);
+    return history === undefined ? {} : { pullHistory: history };
+  } catch (error) {
+    warnCause("native_pull_history_unavailable", error);
+    return {};
+  }
+}
+
+/**
+ * The engine with a notification after every committed local append (commands, pairing, revocation,
+ * lease reports): the relay pushes shortly after own writes. A write that throws is not reported; the
+ * next pass carries whatever reached the local log. `write` stays replaceable (fault-injection tests
+ * wrap it): a replacement is kept beside the engine, so wrapping the notifying write never loops.
+ */
+function notifyingWrites(engine: SyncEngine, written: () => void): SyncEngine {
+  const raw = engine.write.bind(engine);
+  let write: SyncEngine["write"] = async (...args) => {
+    const result = await raw(...args);
+    written();
+    return result;
+  };
+  return new Proxy(engine, {
+    get(target, property) {
+      if (property === "write") return write;
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    set(target, property, value) {
+      if (property !== "write") return Reflect.set(target, property, value, target);
+      write = value;
+      return true;
+    },
+    defineProperty(target, property, descriptor) {
+      if (property !== "write") return Reflect.defineProperty(target, property, descriptor);
+      if (typeof descriptor.value !== "function") return false;
+      write = descriptor.value;
+      return true;
+    },
+    getOwnPropertyDescriptor(target, property) {
+      if (property !== "write") return Reflect.getOwnPropertyDescriptor(target, property);
+      return { value: write, writable: true, enumerable: false, configurable: true };
+    },
+  });
 }

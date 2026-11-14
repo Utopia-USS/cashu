@@ -48,7 +48,7 @@ import {
   type Sodium,
   type TrustedDevice,
   type TrustedSigner,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { acceptedKey, type KeySource } from "./acceptance.js";
 import { canonicalJson, equalBytes, fromHex, isCanonicalValue } from "./bytes.js";
 import { unconsentedTargets } from "./consent.js";

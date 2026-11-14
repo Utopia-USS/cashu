@@ -21,6 +21,7 @@ export {
   metaClockStore,
   metaGateStateStore,
 } from "../hlc.js";
+export type { SqlDriver, SqlStatement } from "../sql/driver.js";
 export { initializeMetaClockGuard, metaClockGuardStore } from "./clockGuard.js";
 export {
   assertReplayedDeviceAuthority,
@@ -30,5 +31,7 @@ export {
   type DeviceAuthorityRefusalCode,
   loadDeviceAuthority,
 } from "./deviceAuthority.js";
+export { type VaultDeviceNames, vaultDeviceNames } from "./deviceNames.js";
 export { SqlLogTransport, type SqlLogTransportOptions } from "./logTransport.js";
 export { ProvenanceRefusal, SqlProvenanceStore } from "./provenance.js";
+export { SqlRecoveryCheckpointStore } from "./recoveryCheckpoint.js";

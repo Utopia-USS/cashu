@@ -36,12 +36,30 @@ export type TransportErrorCode =
   /** The transport cannot be reached right now (offline relay, unmounted folder). Retry later. */
   | "unavailable";
 
+/**
+ * Why an `unavailable` transport could not be used. Only `outage` is a true outage (network, timeout,
+ * 5xx, quota, the host's own back-off after one): the fetch lease may rely on a pass that missed only
+ * such remotes (D6). The rest mean the remote answered and will keep answering the same way until
+ * something changes: `refused` (this device is no longer a member), `identity-lost` (its relay
+ * identity was replaced), `protocol` (an answer that does not decode, a segment with a gap).
+ */
+export type TransportUnavailableReason = "outage" | "refused" | "identity-lost" | "protocol";
+
 export class TransportError extends Error {
   readonly code: TransportErrorCode;
-  constructor(code: TransportErrorCode, message: string) {
+  /**
+   * For `unavailable`: why, always named by the thrower (no default: a site that does not know must
+   * not pass for an outage). Always `outage` for `offset-conflict`, which takes no reason.
+   */
+  readonly reason: TransportUnavailableReason;
+  constructor(code: "offset-conflict", message: string);
+  constructor(code: "unavailable", message: string, reason: TransportUnavailableReason);
+  constructor(code: TransportErrorCode, message: string, reason?: TransportUnavailableReason) {
     super(message);
     this.name = "TransportError";
     this.code = code;
+    // Untyped callers only: an unnamed reason fails closed (`protocol`, D6), never as an outage.
+    this.reason = code === "unavailable" ? (reason ?? "protocol") : "outage";
   }
 }
 
@@ -61,6 +79,11 @@ export class FrameRejectedError extends Error {
 
 export function isTransportUnavailable(e: unknown): boolean {
   return e instanceof TransportError && e.code === "unavailable";
+}
+
+/** A transport `unavailable` because of a true outage (D6), not a refusal or a protocol failure. */
+export function isTransportOutage(e: unknown): boolean {
+  return e instanceof TransportError && e.code === "unavailable" && e.reason === "outage";
 }
 
 /** Codec errors come from plug-ins (S27 crypto); keep their `code` when they have one. */

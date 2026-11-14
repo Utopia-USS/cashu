@@ -12,7 +12,7 @@ import {
   CertificateIndex,
   RECOVERY_SIGNER_ID,
   type Sodium,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import type { KeySource } from "./acceptance.js";
 import { type CertificateSelection, selectCertificates } from "./certificates.js";
 import { retiredDevices, unconsentedTargets } from "./consent.js";

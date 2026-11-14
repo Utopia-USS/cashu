@@ -31,7 +31,7 @@ export class NodeFolderFs implements FolderFs {
     try {
       await stat(this.root);
     } catch {
-      throw new TransportError("unavailable", "the synced folder is not reachable");
+      throw new TransportError("unavailable", "the synced folder is not reachable", "outage");
     }
   }
 

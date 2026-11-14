@@ -13,7 +13,7 @@ import {
   type DeviceIdentity,
   type RecoveryIdentity,
   verifyContextSignature,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { concat, toHex, utf8 } from "./bytes.js";
 
 export type StatementContext =

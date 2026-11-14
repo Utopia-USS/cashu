@@ -28,7 +28,7 @@
 // device holding the same set, whatever the delivery order; it survives view rebuilds.
 
 import type { SegmentCursor } from "../carrier.js";
-import type { SignedHead } from "../crypto/index.js";
+import type { SignedHead } from "../crypto/core.js";
 import { toHex as toHexBytes } from "./bytes.js";
 import { comparePositions, positionKey } from "./positions.js";
 

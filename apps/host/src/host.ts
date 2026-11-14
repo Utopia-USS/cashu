@@ -45,6 +45,7 @@ import { ConnectorProposalReceipts } from "./mcp/connectorReceipt.js";
 import type { LanPairingService } from "./pairing/service.js";
 import { startStrategyFollower } from "./proposals/strategyFollow.js";
 import { servedCommands } from "./registry.js";
+import { createHostRelay, type HostRelay } from "./relay/service.js";
 import { currentRuntime } from "./runtime.js";
 import { settingsInfoQuery } from "./settingsInfo.js";
 import { settingsWorkspaceStatus } from "./settingsScreen.js";
@@ -63,6 +64,7 @@ interface StartedServices {
   worker?: ReturnType<typeof startHostWorker>;
   mcp?: ReturnType<typeof createMcpSessions>;
   strategyFollower?: ReturnType<typeof startStrategyFollower>;
+  relay?: HostRelay;
 }
 
 export interface LocalHost {
@@ -88,6 +90,8 @@ export interface LocalHost {
   applySliced(vault: string, envelopes: readonly unknown[], sliceEvents?: number): Promise<number>;
   /** Native-only authenticated inbound fold/push through the shared vault queue. */
   syncVault(vault: string): Promise<SyncResult>;
+  /** The sync relay (unconfigured: `configured` false, every action refused). */
+  readonly relay: HostRelay;
 }
 
 /** Starts the data dir's host. Throws `HostBusyError` when another host holds the lock. */
@@ -116,6 +120,14 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     throw error;
   });
   const log = options.log ?? fileLog(server.paths.logPath);
+  // The sync relay of a native host with a relay config; its remote joins the vaults that are switched
+  // on for it on this device when they open below.
+  const relay = createHostRelay({
+    options: nativeMode ? options.relay : undefined,
+    lock: server.lock,
+    now,
+    log,
+  });
 
   // Under the lock: crash record, writer lease, creation service, stores (closed again, with the
   // server, when this step fails).
@@ -125,6 +137,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     nativeMode,
     log,
     now,
+    relay,
   }).catch((error: unknown) => {
     screens.close();
     throw error;
@@ -150,8 +163,11 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       (started.lan?.pending() ?? 0) > 0 ||
       (started.worker?.pending ?? 0) > 0 ||
       (creation?.pending() ?? 0) > 0 ||
-      (started.devices?.pending() ?? 0) > 0,
+      (started.devices?.pending() ?? 0) > 0 ||
+      (started.relay?.pending() ?? 0) > 0,
+    beforeIdleExit: (signal) => started.relay?.finalPush({ signal }) ?? Promise.resolve(),
     release: async (reason) => {
+      started.relay?.close();
       await started.mcp?.stop(reason);
       started.strategyFollower?.close();
       await started.strategyFollower?.settled();
@@ -211,6 +227,9 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
 
     const devices = createDeviceService(stores, now);
     started.devices = devices;
+    // Safe mode runs no network work: no relay passes (the switch and status still answer).
+    started.relay = relay;
+    if (!safeMode) relay.start({ stores, closing: lifecycle.closing });
     const lan = createLanServing({
       option: options.lan,
       nativeMode,
@@ -297,6 +316,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         creation,
         devices,
         lan,
+        relay,
         notificationIntents,
         notificationAuthority: notifications.authority,
         inFlightRequests: lifecycle.inFlightRequests,
@@ -390,6 +410,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       applySliced: (vaultId, envelopes, sliceEvents) =>
         applySliced(stores, vaultId, envelopes, sliceEvents),
       syncVault: (vaultId) => syncVault(stores, vaultId),
+      relay,
     };
   }
 }

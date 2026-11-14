@@ -34,7 +34,7 @@ import {
   recoveryRecipient,
   type Sodium,
   wrapKeys,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { accepted, acceptedRecoveryWrap } from "./acceptance.js";
 import { equalBytes, fromHex } from "./bytes.js";
 import {

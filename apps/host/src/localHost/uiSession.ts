@@ -1,5 +1,5 @@
 // The `ui` role: the store channel (queries, commands, actions) plus the UI-role host RPCs, routed
-// by method family to notification, connector install, banking, pairing, devices and creation.
+// by method family to notification, connector install, banking, pairing, devices, relay and creation.
 import { NOTIFICATION_INTENT_METHOD } from "@cashu/host-protocol";
 import type { HostSession, RunningHost } from "@cashu/node-host";
 import type { BankingRuntime } from "../banking/runtime.js";
@@ -11,6 +11,7 @@ import { serveNativeCreationRequest } from "../nativeCreationRpc.js";
 import type { privateNotificationIntents } from "../notifications/intentLedger.js";
 import type { IntentVaultAuthority } from "../notifications/resolve.js";
 import { serveNativePairingRequest } from "../pairingRpc.js";
+import type { HostRelay } from "../relay/service.js";
 import { type StoreChannelOptions, serveStoreChannel } from "../storeChannel.js";
 import type { HostStores } from "../stores.js";
 import { serveBankingRequest } from "./bankingRpc.js";
@@ -18,6 +19,7 @@ import { serveDevicesRequest } from "./devicesRpc.js";
 import type { LanServing } from "./lan.js";
 import { serveNotificationRequest } from "./notificationRpc.js";
 import type { LocalHostOptions } from "./options.js";
+import { serveRelayRequest } from "./relayRpc.js";
 import type { RequestFrame, RequestScope } from "./requests.js";
 
 interface HostRpcDeps extends RequestScope {
@@ -31,6 +33,7 @@ interface HostRpcDeps extends RequestScope {
   readonly creation: ReturnType<typeof createNativeCreationService> | undefined;
   readonly devices: DeviceService;
   readonly lan: LanServing;
+  readonly relay: HostRelay;
   readonly notificationIntents: ReturnType<typeof privateNotificationIntents> | undefined;
   readonly notificationAuthority: IntentVaultAuthority;
   readonly bundleReplaced: () => boolean;
@@ -111,6 +114,7 @@ function routeHostRpc(
       log: rpc.log,
     });
   else if (frame.method.startsWith("native.devices.")) serveDevicesRequest(rpc, session, frame);
+  else if (frame.method.startsWith("native.relay.")) serveRelayRequest(rpc, session, frame);
   else
     serveNativeCreationRequest({
       session,

@@ -1,7 +1,7 @@
 // Device-local key provenance (which device sent each vault key, to whom, how). Portable: the binding
 // digest is sha256 over the ring's gid salt through @noble/hashes, byte-identical to the node:crypto
 // digest the host wrote before this store moved here (pinned by provenance.vector.test.ts).
-import type { crypto, devices } from "@cashu/sync";
+import type { crypto, devices } from "@cashu/sync/engine";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import type { SqlDriver } from "../sql/driver.js";

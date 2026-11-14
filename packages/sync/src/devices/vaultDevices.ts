@@ -14,7 +14,7 @@ import {
   RecoveryIdentity,
   type Sodium,
   wrapSenderId,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { canonicalJson, fromHex, isCanonicalValue } from "./bytes.js";
 import {
   byHlc,

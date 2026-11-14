@@ -12,8 +12,11 @@
 //   committed chunk covering the same bytes; `read` takes, at each position, the most recently written
 //   chunk covering it and never returns bytes beyond the meta's size.
 // - Every failure is a `TransportError`: `offset-conflict` for a size mismatch or a precondition that
-//   no longer holds, `unavailable` for everything else (network, quota, permission, decode), so the
-//   engine counts the remote offline instead of failing the pass. Messages are fixed strings.
+//   no longer holds, `unavailable` for everything else, so the engine skips the remote instead of
+//   failing the pass. `unavailable` carries its reason (errors.ts): `outage` only for the network, a
+//   timeout, 5xx and quota; `refused` for permission (this device is no longer a member),
+//   `identity-lost`, and `protocol` for everything else (refused credentials, decode, a gap). Only an
+//   outage lets the pinned leader go on without the relay (D6). Messages are fixed strings.
 // - `status()` says why the last call failed (cleared by the next success). The identity is polled
 //   through `uid()` (cached by `AnonymousAuth`, no request): a uid other than the one of this handle's
 //   first successful call means the anonymous identity was replaced (`relay-identity-lost`) until a
@@ -26,7 +29,7 @@ import type {
   TransportConsistency,
   VaultId,
 } from "../../carrier.js";
-import { TransportError } from "../../errors.js";
+import { TransportError, type TransportUnavailableReason } from "../../errors.js";
 import {
   CHUNKS,
   type Chunk,
@@ -55,16 +58,21 @@ const DEFAULT_COMMIT_BYTES = 6 * 1024 * 1024;
 /** Raw bytes per commit: base64 (4/3) plus names keeps the request under Firestore's 10 MiB. */
 const MAX_COMMIT_BYTES = 7 * 1024 * 1024;
 /**
- * Chunk writes per append commit (the meta is one more write). Every chunk write runs rules with
- * document-access calls and a request may touch at most 20 distinct documents: the emulator caches
- * repeated accesses across a commit (30 chunks passed), and 9 stays within 20 even if every call
- * counted (meta 1 + 2 per chunk). The 6 MiB byte cap binds first at the 700 KiB chunk size.
+ * Chunk writes per append commit (the meta is one more write). Firestore allows at most 20 document
+ * access calls per batched-write request; caching of repeated accesses is not guaranteed, so this budget
+ * counts every call (firestore.rules header): the meta update costs 1 and each chunk 3, and
+ * 1 + 6 x 3 = 19. At the 700 KiB chunk size this cap binds before the 6 MiB byte cap (4.1 MiB).
  */
-const MAX_CHUNKS_PER_COMMIT = 9;
-/** Deletes per purge commit (each one costs the rules' admin check). */
-const PURGE_DELETES_PER_COMMIT = 100;
+export const MAX_CHUNKS_PER_COMMIT = 6;
+/** Deletes per purge commit: each one costs the rules' admin check (1 access call), 20 per request. */
+export const PURGE_DELETES_PER_COMMIT = 20;
 /** Names only: `__name__` projection (an empty projection would return every field, chunk bytes included). */
 const NAME_ONLY = ["__name__"];
+/** Sub-collections of a vault the purge also clears (firestore.rules: an admin may delete them). */
+const MEMBERS = "members";
+const RECOVERIES = "recoveries";
+const PAIRINGS = "pairings";
+const MESSAGES = "messages";
 const EMPTY = new Uint8Array(0);
 
 export interface FirestoreTransportOptions {
@@ -77,7 +85,7 @@ export interface FirestoreTransportOptions {
   readonly maxChunkBytes?: number;
   /** Raw bytes per commit, default 6 MiB, at most 7 MiB. */
   readonly maxCommitBytes?: number;
-  /** Chunk writes per commit besides the meta, default and at most 9 (the rules' access budget). */
+  /** Chunk writes per commit besides the meta, default and at most 6 (the rules' access budget). */
   readonly maxChunksPerCommit?: number;
   /**
    * Default `eventual`. Declare `linearizable` only where `checkPropagationClaim` passed against the
@@ -114,6 +122,7 @@ export class FirestoreTransport implements Transport {
   /** The uid of the last successful call; a different one later means the identity was replaced. */
   #identity: string | undefined;
   #identityLost = false;
+  #purgeCommits = 0;
 
   constructor(options: FirestoreTransportOptions) {
     this.#rest = options.rest;
@@ -214,6 +223,9 @@ export class FirestoreTransport implements Transport {
       if (bytes.length === 0) return;
       // Encoded only after the offset check: a conflict wastes no base64 of the whole append.
       const chunks = this.#chunks(path, atOffset, bytes);
+      // The rules create a meta empty (rev 1) and only an update grows it: a new segment whose bytes fit
+      // one commit takes one more, meta-only commit that sets the size.
+      if (!meta && chunks.length === 1) chunks.push([]);
       let precondition: FsPrecondition = meta?.updateTime
         ? { updateTime: meta.updateTime }
         : { exists: false };
@@ -244,24 +256,52 @@ export class FirestoreTransport implements Transport {
   }
 
   /**
-   * Admin only (the host): deletes every segment meta and chunk document of the vault (never the vault
-   * or member documents), at most 100 deletes per commit, names only (no chunk bytes downloaded). A
-   * segment's chunks go before its meta, in the same commit when they fit, so a segment of up to 99
-   * chunks disappears atomically and an interrupted purge leaves every unfinished segment findable by
-   * its meta for the retry (readers may see a gap there: `unavailable` until the purge is retried).
+   * Admin only (the host): removes what the vault holds at the relay but the vault document itself (a
+   * tombstone, firestore.rules) and the caller's own member document, at most 20 deletes per commit
+   * (the rules' access budget), names only (no chunk bytes downloaded). Order (S5): first every other
+   * member document, so no other device can upload again while the purge runs (it reads 403 from then
+   * on); then every recovery proof doc; then every pairing with its messages (messages first); then the
+   * segments. A segment's chunks go before its meta, in the same commit when they fit, so a segment of
+   * up to 19 chunks disappears atomically and
+   * an interrupted purge leaves every unfinished segment findable by its meta for the retry (readers
+   * may see a gap there: `unavailable` until the purge is retried). `purgeCommits` says how far a
+   * failed purge got: 0 = nothing was deleted, more = partly done (the host answers "retry").
    */
   async purge(vault: VaultId): Promise<void> {
     const parent = vaultPath(this.#root, vault);
-    await this.#call("write", async () => {
+    this.#purgeCommits = 0;
+    await this.#call("write", async (uid) => {
+      let batch: FsWrite[] = [];
+      const flush = async () => {
+        if (batch.length > 0) {
+          await this.#rest.commit(batch);
+          this.#purgeCommits += 1;
+        }
+        batch = [];
+      };
+      const remove = async (name: string) => {
+        batch.push({ delete: name });
+        if (batch.length >= PURGE_DELETES_PER_COMMIT) await flush();
+      };
+      const names = async (path: string, collectionId: string) =>
+        (await this.#rest.runQuery(path, { collectionId, select: NAME_ONLY })).map((d) => d.name);
+      const own = `${parent}/${MEMBERS}/${uid}`;
+      for (const name of await names(parent, MEMBERS)) {
+        if (this.#rest.relativeName(name) !== own) await remove(name);
+      }
+      // The members go in commits of their own, before anything else is touched.
+      await flush();
+      for (const name of await names(parent, RECOVERIES)) await remove(name);
+      for (const pairing of await names(parent, PAIRINGS)) {
+        for (const message of await names(this.#rest.relativeName(pairing), MESSAGES))
+          await remove(message);
+        await remove(pairing);
+      }
+      await flush();
       const segments = await this.#rest.runQuery(parent, {
         collectionId: SEGMENTS,
         select: NAME_ONLY,
       });
-      let batch: FsWrite[] = [];
-      const flush = async () => {
-        if (batch.length > 0) await this.#rest.commit(batch);
-        batch = [];
-      };
       for (const s of segments) {
         const segment = this.#rest.relativeName(s.name);
         const chunks = await this.#rest.runQuery(segment, {
@@ -278,6 +318,11 @@ export class FirestoreTransport implements Transport {
       }
       await flush();
     });
+  }
+
+  /** Delete commits that landed during the last `purge` (also when it failed later). */
+  get purgeCommits(): number {
+    return this.#purgeCommits;
   }
 
   /** The chunk writes of an append, grouped into commits (each group is one commit plus the meta). */
@@ -308,7 +353,9 @@ export class FirestoreTransport implements Transport {
     const doc = await this.#rest.get(path);
     if (!doc) return undefined;
     const meta = parseMeta(doc);
-    if (!meta) throw new TransportError("unavailable", "firestore segment meta is unreadable");
+    if (!meta) {
+      throw new TransportError("unavailable", "firestore segment meta is unreadable", "protocol");
+    }
     return meta;
   }
 
@@ -362,8 +409,12 @@ export class FirestoreTransport implements Transport {
     }
     let kind: RelayErrorKind = "unavailable";
     let message = "firestore relay unavailable";
+    // Only a failure of the network or the service is an outage; an answer we cannot use is not.
+    let reason: TransportUnavailableReason =
+      e instanceof FirestoreRestError && e.code === "unavailable" ? "outage" : "protocol";
     if (e instanceof FirestoreRestError && e.code === "permission-denied") {
       kind = "forbidden";
+      reason = "refused";
       message = "firestore relay refused access";
       // A 401 inside the call may have refreshed into a new anonymous user (identity lost) whose
       // token was then refused: the session is fresh, so this `uid()` is answered from the cache.
@@ -375,12 +426,16 @@ export class FirestoreTransport implements Transport {
     } else if (e instanceof FirestoreRestError && e.code === "resource-exhausted") {
       kind = "quota";
       message = "firestore relay quota exhausted";
+      reason = "outage";
     } else if (e instanceof TransportError) {
       message = e.message;
     }
-    if (this.#identityLost) kind = "relay-identity-lost";
+    if (this.#identityLost) {
+      kind = "relay-identity-lost";
+      reason = "identity-lost";
+    }
     this.#status = { ...this.#status, lastError: kind, lastErrorAt: this.#now() };
-    return new TransportError("unavailable", message);
+    return new TransportError("unavailable", message, reason);
   }
 }
 
@@ -397,7 +452,7 @@ function assemble(chunks: readonly Chunk[], from: number, size: number): Uint8Ar
     for (const c of chunks) {
       if (c.start <= pos && pos < c.end && (!best || c.written > best.written)) best = c;
     }
-    if (!best) throw new TransportError("unavailable", "firestore segment has a gap");
+    if (!best) throw new TransportError("unavailable", "firestore segment has a gap", "protocol");
     const end = Math.min(best.end, size);
     out.set(best.bytes.subarray(pos - best.start, end - best.start), pos - from);
     pos = end;

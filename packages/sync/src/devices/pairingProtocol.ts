@@ -5,7 +5,7 @@ import {
   isDeviceId,
   type RecoveryPublicKeys,
   type Sodium,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { isHlc } from "../hlc.js";
 import {
   type CanonicalValue,

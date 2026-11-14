@@ -18,7 +18,7 @@
 // recovery changes and names (under the final revocations).
 
 import type { SegmentCursor } from "../carrier.js";
-import { type CandidateKey, type CertificateIndex, RECOVERY_SIGNER_ID } from "../crypto/index.js";
+import { type CandidateKey, type CertificateIndex, RECOVERY_SIGNER_ID } from "../crypto/core.js";
 import { beforeCut } from "./positions.js";
 
 export class DecisionKeys {

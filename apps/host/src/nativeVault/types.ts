@@ -6,7 +6,7 @@ import type {
 } from "@cashu/host-protocol";
 import type { LanCarrierReply, LanCarrierRequest } from "@cashu/host-protocol/pairing-lan";
 import type { Store } from "@cashu/store";
-import type { crypto, devices, SyncEngine, SyncResult, Transport } from "@cashu/sync";
+import type { crypto, devices, PullHistory, SyncEngine, SyncResult, Transport } from "@cashu/sync";
 import type { SqlAttemptJournal } from "../attemptJournal.js";
 import type { NativeBlobPublication } from "../nativeBlobs.js";
 import type { PairingReads } from "../pairing/readCapability.js";
@@ -24,6 +24,13 @@ export interface NativeVaultSource {
   bootstrapCertificates(entry: NativeVaultInventoryEntry): Promise<readonly Uint8Array[]>;
   /** Explicit bound, manifest-gated carrier transports. Absence is offline local-only operation. */
   remoteTransports?(entry: NativeVaultInventoryEntry): readonly Transport[];
+  /**
+   * The vault's persisted sync history (G2 / G5: last complete pull, pause start) for the engine;
+   * absent: none kept (the engine starts without one).
+   */
+  pullHistory?(entry: NativeVaultInventoryEntry): PullHistory | undefined;
+  /** S6 tests: own bytes one pass pushes at most (`SyncEngineOptions.maxPushBytesPerPass`). */
+  readonly maxPushBytesPerPass?: number;
 }
 
 export interface NativeDeviceRevokeDraft {
@@ -117,6 +124,8 @@ export interface NativeVaultSession extends PairingReads {
   /** Fires after anything the device list shows may have changed: a sync pass settled (or the session closed), a
    * revocation or leader pin committed or was inspected, a pairing appended. */
   onDevicesChanged(listener: () => void): () => void;
+  /** Fires after every committed local append of this device (the relay schedules its push). */
+  onLocalWrite(listener: () => void): () => void;
   /** Serialize inbound fold and push with UI commands on this vault. */
   sync(): Promise<SyncResult>;
   deviceList(): Promise<DeviceListResult>;

@@ -26,7 +26,7 @@ import {
   parseCertificate,
   RECOVERY_SIGNER_ID,
   type Sodium,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { accepted, type KeySource } from "./acceptance.js";
 import { fromHex } from "./bytes.js";
 import { type DeviceAddedData, MAX_DEVICES, statementBody } from "./events.js";

@@ -9,6 +9,7 @@
     "./connector-secrets": "./src/keyring/connectors.ts",
     "./banking-secrets": "./src/keyring/banking.ts",
     "./classifier-secrets": "./src/keyring/classifier.ts",
+    "./relay-auth": "./src/keyring/relay.ts",
     "./sqlite": "./src/sqlite.ts",
     "./testing": "./src/testing.ts",
     "./bundle-identity": "./src/bundleIdentity.ts",

@@ -45,6 +45,7 @@ import { readExistingNativeInventory } from "./nativeInventory.js";
 import { ProductionVaultSourceFactory } from "./productionVaultSource.js";
 import { nativeAccountRemovalApprovals } from "./proposals/accountRemovalApproval.js";
 import { nativeStrategyApprovals } from "./proposals/strategyApproval.js";
+import { productionRelayOptions } from "./relay/production.js";
 import { currentRuntime, shimProgram, shippedSkillsSource } from "./runtime.js";
 import { hostUpdateBridge } from "./updateBridge.js";
 import { createProductionWorkerBindings } from "./worker/production.js";
@@ -257,10 +258,19 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
           appLanguage(stores, system);
         const language = (context: Parameters<typeof createProductionWorkerBindings>[0]) =>
           languageForStores(context.stores);
+        // The sync relay (relay/production.ts): absent or a bad config file -> no relay.
+        const relay = productionRelayOptions({
+          dataDir: args.dataDir,
+          packaged: runtime.bundle !== undefined,
+          testBuild: runtime.testBuild !== undefined,
+          env: io.env,
+          stderr: io.stderr,
+        });
         try {
           const host = await startLocalHost({
             dataDir: args.dataDir,
             build: runtime.build,
+            ...(relay === undefined ? {} : { relay }),
             ...(updateBridge === undefined ? {} : { updates: updateBridge }),
             vaultSource: {
               kind: "native-production",

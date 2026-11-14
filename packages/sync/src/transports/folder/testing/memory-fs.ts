@@ -99,7 +99,7 @@ export class MemoryFolderFs implements FolderFs {
   }
 
   #check(): void {
-    if (!this.#online) throw new TransportError("unavailable", "folder offline (test)");
+    if (!this.#online) throw new TransportError("unavailable", "folder offline (test)", "outage");
   }
 
   #notify(path: string): void {

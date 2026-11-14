@@ -53,7 +53,8 @@ export class FaultInjector implements Transport {
   }
 
   #check(): void {
-    if (!this.#online) throw new TransportError("unavailable", "transport offline (test)");
+    if (!this.#online)
+      throw new TransportError("unavailable", "transport offline (test)", "outage");
   }
 
   async list(vault: VaultId): Promise<readonly SegmentInfo[]> {

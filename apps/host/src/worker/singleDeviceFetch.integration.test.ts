@@ -7,13 +7,19 @@ import { DatabaseSync } from "node:sqlite";
 import type { CliExecParams, HostFrame } from "@cashu/host-protocol";
 import { connectHost } from "@cashu/node-host";
 import { ruleRuns } from "@cashu/store/investments/queries";
-import type { Transport } from "@cashu/sync";
+import {
+  devices,
+  type Transport,
+  TransportError,
+  type TransportUnavailableReason,
+} from "@cashu/sync";
 import { FaultInjector, MemoryTransport } from "@cashu/sync/testing";
 import { afterEach, expect, it, vi } from "vitest";
 import { fetchAuthorityIssue, refreshFetchAuthority } from "../fetchAuthority.js";
 import { type LocalHost, startLocalHost } from "../host.js";
 import { createProductionMarket, type ProductionMarket } from "../market/production.js";
 import { type NativeVaultFixture, nativeVaultFixture } from "../testing/nativeVaultFixture.js";
+import { renameVault } from "../testing/relayFixture.js";
 import { createProductionWorkerBindings } from "./production.js";
 
 // The host's engine refuses its own log when the injected clock is far behind it, so the fixture
@@ -87,6 +93,8 @@ async function singleDeviceHost(
     denyLease?: boolean;
     pairPeer?: boolean;
     remotes?: readonly Transport[];
+    /** S6: own bytes one pass pushes at most (the engine option through the vault source). */
+    maxPushBytesPerPass?: number;
     /** Start on this vault's data dir again (a restart) instead of a new fixture. */
     reuse?: NativeVaultFixture;
   } = {},
@@ -115,6 +123,9 @@ async function singleDeviceHost(
               ...fixture.vaultSource.provider,
               bootstrapCertificates: () => fixture.vaultSource.provider.bootstrapCertificates(),
               remoteTransports: () => options.remotes ?? [],
+              ...(options.maxPushBytesPerPass === undefined
+                ? {}
+                : { maxPushBytesPerPass: options.maxPushBytesPerPass }),
             },
           },
     now: clock,
@@ -411,33 +422,199 @@ it("keeps the vault readable after a refresh pass fails with a non-transport err
   }
 });
 
-it("keeps the last pull and backs off while an extra remote is offline", async () => {
+it("keeps fetching on a pinned leader while an extra remote is offline (D6)", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   let time = NOW;
   const relay = new FaultInjector(new MemoryTransport());
   const { host, vault, passes, daily } = await singleDeviceHost(() => time, { remotes: [relay] });
+  const pull = () =>
+    vault.native.engine.fetchLeaseEvidence(
+      () => true,
+      () => true,
+    ).pull;
   try {
     expect(await daily()).toBe("ok");
     await idle(host);
     expect(vault.native.canFetchPublicMarket()).toBe(true);
+    expect(pull()).toEqual({ kind: "pulled" });
     relay.setOnline(false);
     passes.count = 0;
     time += 40_000;
-    // The refresh pass misses the relay, but the 40 s old pull still proves a pull in the deadline.
+    const pausedAt = time;
+    // The refresh pass misses the relay; it reached everything else, so the pinned leader acts.
     expect(await vault.native.refreshFetchAuthority()).toBe(true);
     expect(passes.count).toBe(1);
+    expect(pull()).toEqual({ kind: "offline", since: pausedAt, reachedAt: pausedAt });
+    // 70 s after the last complete pull: the strict rule alone would refuse here.
     time += 30_000;
+    expect(vault.native.canFetchPublicMarket()).toBe(true);
+    expect(vault.native.fetchAuthorityIssue()).toBeNull();
+    // Two days later, still offline: one refresh pass each time it went stale, then a real fetch.
+    time += 2 * DAY;
     expect(vault.native.canFetchPublicMarket()).toBe(false);
-    expect(vault.native.fetchAuthorityIssue()).toBe("fetch_pull_incomplete");
-    // Ten minutes of per-minute attempts: a growing back-off, not one pass per attempt.
-    for (let minute = 0; minute < 10; minute++) {
-      time += 60_000;
-      await vault.native.refreshFetchAuthority();
-    }
-    expect(passes.count).toBeLessThanOrEqual(4);
-    relay.setOnline(true);
-    time += 30 * 60_000;
+    expect(vault.native.mayObtainFetchAuthority()).toBe(true);
     expect(await vault.native.refreshFetchAuthority()).toBe(true);
+    expect(passes.count).toBe(2);
+    expect(pull()).toEqual({ kind: "offline", since: pausedAt, reachedAt: time });
+    // Back online: the next pass is a complete pull again.
+    relay.setOnline(true);
+    time += 31_000;
+    expect(await vault.native.refreshFetchAuthority()).toBe(true);
+    expect(passes.count).toBe(3);
+    expect(pull()).toEqual({ kind: "pulled" });
+  } finally {
+    await host.stop();
+  }
+});
+
+const always = () => true;
+
+/**
+ * A relay remote over memory that, while `down` names a reason, answers every call `unavailable` with
+ * it: the Firestore transport's mapping of a deleted member doc (`refused`), a replaced identity
+ * (`identity-lost`), a 429 or a network failure (`outage`).
+ */
+function reasonedRelay(): Transport & { down: TransportUnavailableReason | null } {
+  const inner = new MemoryTransport();
+  const relay = {
+    down: null as TransportUnavailableReason | null,
+    consistency: inner.consistency,
+    check(): void {
+      if (relay.down !== null) throw new TransportError("unavailable", "synthetic", relay.down);
+    },
+    list: async (v: string) => {
+      relay.check();
+      return inner.list(v);
+    },
+    read: async (v: string, d: string, sg: number, o: number) => {
+      relay.check();
+      return inner.read(v, d, sg, o);
+    },
+    append: async (v: string, d: string, sg: number, o: number, b: Uint8Array) => {
+      relay.check();
+      return inner.append(v, d, sg, o, b);
+    },
+  };
+  return relay;
+}
+
+it("stops leading at once when the relay refuses this Mac or lost its identity; a quota day is offline (G1)", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  for (const [reason, leads] of [
+    ["refused", false],
+    ["identity-lost", false],
+    ["outage", true],
+  ] as const) {
+    let time = NOW;
+    const relay = reasonedRelay();
+    const { fixture, host, vault, passes, daily, stub } = await singleDeviceHost(() => time, {
+      remotes: [relay],
+    });
+    try {
+      expect(await daily()).toBe("ok");
+      await idle(host);
+      expect(vault.native.canFetchPublicMarket()).toBe(true);
+      // The member doc is deleted (this Mac removed, or another admin purged), the identity was
+      // replaced, or the quota ran out.
+      relay.down = reason;
+      passes.count = 0;
+      time += 40_000;
+      // The complete pull 40 s ago still counts for the rest of its deadline, whatever the pass said.
+      expect(await vault.native.refreshFetchAuthority(), reason).toBe(true);
+      expect(passes.count, reason).toBe(1);
+      expect(vault.native.engine.fetchLeaseEvidence(always, always).pull.kind, reason).toBe(
+        leads ? "offline" : "incomplete",
+      );
+      time += 30_000;
+      // 70 s after the last complete pull: only an outage keeps the pinned leader acting.
+      expect(vault.native.canFetchPublicMarket(), reason).toBe(leads);
+      expect(vault.native.fetchAuthorityIssue() === null, reason).toBe(leads);
+      // A leader action now: `invest run` fetches market data only while the lease holds.
+      stub.urls.splice(0);
+      const { result, out } = await cli(fixture, ["-p", fixture.profileSlug, "invest", "run"]);
+      expect(result, out).toEqual({ kind: "exit", code: 0 });
+      expect(fxRequested(stub.urls), reason).toBe(leads);
+      expect(out.includes("skipped"), reason).toBe(!leads);
+    } finally {
+      await host.stop();
+    }
+  }
+});
+
+it("bounds the offline lead to 7 days after the last complete pull when another device could lead (G2)", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  for (const pairPeer of [true, false]) {
+    let time = NOW;
+    const relay = reasonedRelay();
+    const { host, vault, daily } = await singleDeviceHost(() => time, {
+      remotes: [relay],
+      pairPeer,
+    });
+    const label = pairPeer ? "with a second device" : "alone";
+    try {
+      expect(await daily()).toBe("ok");
+      await idle(host);
+      const last = vault.native.engine.pullHistory().lastCompleteAt as number;
+      expect(last, label).toBeGreaterThanOrEqual(NOW);
+      relay.down = "outage";
+      // Each check is fresh offline evidence (a pass right then), so only the bound decides.
+      const offlineAt = async (at: number) => {
+        time = at;
+        await vault.native.sync();
+        return vault.native.canFetchPublicMarket();
+      };
+      expect(await offlineAt(last + 6 * DAY), label).toBe(true);
+      expect(await offlineAt(last + 7 * DAY), label).toBe(true);
+      // One millisecond past 7 days: a second Mac might lead by now; alone, nobody else can.
+      expect(await offlineAt(last + 7 * DAY + 1), label).toBe(!pairPeer);
+      expect(await offlineAt(last + 30 * DAY), label).toBe(!pairPeer);
+      // The relay back: a complete pull ends the question either way.
+      relay.down = null;
+      await vault.native.sync();
+      expect(vault.native.canFetchPublicMarket(), label).toBe(true);
+    } finally {
+      await host.stop();
+    }
+  }
+});
+
+it("keeps fetch authority through a large first push the budget splits into passes (G3, S6)", async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  let time = NOW;
+  const remote = new MemoryTransport();
+  const { host, vault, daily } = await singleDeviceHost(() => time, {
+    remotes: [remote],
+    maxPushBytesPerPass: 1,
+  });
+  const ownBytes = async (t: Transport) =>
+    (await t.list(vault.native.id))
+      .filter((s) => s.device === vault.native.device)
+      .reduce((n, s) => n + s.size, 0);
+  try {
+    expect(await daily()).toBe("ok");
+    await idle(host);
+    // A large first push: ten own frames the 1-byte budget moves one per pass.
+    for (let i = 0; i < 10; i++) await renameVault(host, vault.native.id, `Name ${i}`);
+    const local = vault.native.engine;
+    let capped = 0;
+    for (let i = 0; i < 200; i++) {
+      // Each pass more than the publish deadline after the one before: only its own pull counts.
+      time += 2 * devices.DEFAULT_LEASE_CONFIG.publishDeadlineMs;
+      expect(vault.native.canFetchPublicMarket()).toBe(false);
+      expect(await vault.native.refreshFetchAuthority()).toBe(true);
+      expect(vault.native.canFetchPublicMarket()).toBe(true);
+      const result = await vault.native.sync();
+      expect(vault.native.canFetchPublicMarket()).toBe(true);
+      if (!result.pushPending) break;
+      capped += 1;
+    }
+    expect(capped).toBeGreaterThan(1);
+    expect(local.pullHistory().pausedSince).toBeUndefined();
+    // Right after the push finished: still allowed, and the remote holds the whole own log.
+    expect(vault.native.canFetchPublicMarket()).toBe(true);
+    expect(vault.native.fetchAuthorityIssue()).toBeNull();
+    expect(await ownBytes(remote)).toBeGreaterThan(0);
+    expect((await vault.native.sync()).pushedBytes).toBe(0);
   } finally {
     await host.stop();
   }

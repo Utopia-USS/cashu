@@ -2,7 +2,7 @@
 // may run side effects (writes, workspace files, external effects) or may fetch public market data.
 
 import { assertReplayedDeviceAuthority } from "@cashu/store/sync";
-import { devices } from "@cashu/sync";
+import { devices, type PullStatus } from "@cashu/sync";
 import { type NativeVaultContext, profileGid } from "./context.js";
 import { onceWarner } from "./diagnostics.js";
 import { REVOKE_COMMAND } from "./revokeIntent.js";
@@ -43,6 +43,29 @@ export interface SessionGuards {
   writesBlocked(): boolean;
 }
 
+/**
+ * The engine's `offline` pull status as the lease's `offlinePull` (D6); nothing otherwise. G2: with
+ * the last complete pull (persisted across restarts, `SyncEngine.pullHistory`) and whether another
+ * device could be pinned: any other trusted, non-revoked device of the registry (exactly the targets
+ * `leaderPrepare` accepts; the registry does not tell a phone from a Mac, so a phone counts too).
+ */
+function offlinePull(
+  pull: PullStatus,
+  lastCompleteAt: number | undefined,
+  peerCanLead: boolean,
+): Pick<devices.LeaseLocal, "offlinePull"> {
+  return pull.kind === "offline"
+    ? {
+        offlinePull: {
+          since: pull.since,
+          reachedAt: pull.reachedAt,
+          ...(lastCompleteAt === undefined ? {} : { lastCompleteAt }),
+          peerCanLead,
+        },
+      }
+    : {};
+}
+
 export function sessionGuards(context: NativeVaultContext): SessionGuards {
   const { entry, store, engine, candidate, attempts, pairingJournal, lease, state, now } = context;
   const warnOnce = onceWarner();
@@ -80,6 +103,14 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
       (writer) => !candidate.devices.registry.revoked.has(writer),
       (writer) => candidate.devices.registry.isTrusted(writer),
     );
+  const peerCanLead = (): boolean => {
+    const { registry } = candidate.devices;
+    for (const device of registry.trusted.keys())
+      if (device !== entry.deviceId && !registry.revoked.has(device)) return true;
+    return false;
+  };
+  const offlineOf = (pull: PullStatus) =>
+    offlinePull(pull, engine.pullHistory().lastCompleteAt, peerCanLead());
   const canFetchPublicMarket = () => {
     if (!isCurrent() || engine.writeAdmission() !== "ready") return false;
     try {
@@ -91,6 +122,7 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
           me: entry.deviceId,
           now: now(),
           lastPullAt: evidence.lastPullAt,
+          ...offlineOf(evidence.pull),
           transport,
           own: () => undefined,
           firstSeen: (eid) => candidate.devices.firstSeen(eid),
@@ -113,9 +145,19 @@ export function sessionGuards(context: NativeVaultContext): SessionGuards {
       if (view.free || named !== entry.deviceId) return "not_leader";
       // The old leader's ACK and a trustworthy clock come from peers, not from this device's pull.
       if (view.pendingFrom !== null) return "handover_pending";
-      const { lastPullAt, clockOk } = pullEvidence();
-      if (!clockOk) return "clock_suspect";
+      const evidence = pullEvidence();
+      if (!evidence.clockOk) return "clock_suspect";
+      // D6: in mode pinned a pass that missed only unreachable remotes is evidence too, within the
+      // G2 bound (lease.ts `offlinePullAt`).
       const at = now();
+      const offlineAt =
+        view.mode === "pinned"
+          ? devices.offlinePullAt(offlineOf(evidence.pull).offlinePull, at)
+          : undefined;
+      const lastPullAt =
+        offlineAt === undefined
+          ? evidence.lastPullAt
+          : Math.max(evidence.lastPullAt ?? Number.NEGATIVE_INFINITY, offlineAt);
       return lastPullAt === undefined || at < lastPullAt || at - lastPullAt > FETCH_PULL_REFRESH_MS
         ? "pull_stale"
         : "pull_fresh";

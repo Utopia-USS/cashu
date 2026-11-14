@@ -10,8 +10,10 @@
 //
 // Availability: a pass runs only for the named leader whose evidence is stale (never for another
 // device, during a pending hand-over or with a suspect clock: a pass cannot fix those). A pass that
-// produced no evidence (an offline remote, a failed pass) is retried only after a growing, capped
-// back-off. A failed refresh pass does not close a verified session (nativeVault/sync.ts).
+// produced no evidence (a failed pass, a remote left undelivered) is retried only after a growing,
+// capped back-off. In mode pinned a pass that missed only unreachable remotes (the relay down, its
+// quota used up) IS evidence (D6, lease.ts `offlinePull`): sync pauses, the leader's work does not.
+// A failed refresh pass does not close a verified session (nativeVault/sync.ts).
 import type { NativeVaultContext } from "./context.js";
 import { warnCause } from "./diagnostics.js";
 import type { FetchLeaseState, SessionGuards } from "./guards.js";

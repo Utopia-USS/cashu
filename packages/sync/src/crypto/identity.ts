@@ -4,6 +4,7 @@
 // runtime), never stored or accepted next to them, so a public key cannot disagree with its secret.
 
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
+import { ed25519Verifier } from "./ed25519.js";
 import { concat, toHex, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { Secret } from "./secret.js";
@@ -24,7 +25,9 @@ const INSPECT = Symbol.for("nodejs.util.inspect.custom");
  *   canonical JSON; `cashu/head/v1`: signed stream heads, one per frame (head.ts, S29c phase B2);
  *   `cashu/gossip/v1`: heads a device reports through its own accepted data stream;
  *   `cashu/state/v1`: a device's own local state snapshot (the frame gate's, S29c-B3), checked only
- *   with that device's own key when it reads the snapshot back.
+ *   with that device's own key when it reads the snapshot back; `cashu/checkpoint/v1`: a device's own
+ *   "verified up to here" recovery checkpoint of its local log (the engine's `recoveryCheckpoint`), checked
+ *   the same way.
  */
 export type SigningContext =
   | "cashu/wrap/v3"
@@ -35,7 +38,8 @@ export type SigningContext =
   | "cashu/pairing/v1"
   | "cashu/lan-auth/v1"
   | "cashu/head/v1"
-  | "cashu/state/v1";
+  | "cashu/state/v1"
+  | "cashu/checkpoint/v1";
 
 const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
   "cashu/wrap/v3",
@@ -47,6 +51,7 @@ const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
   "cashu/lan-auth/v1",
   "cashu/head/v1",
   "cashu/state/v1",
+  "cashu/checkpoint/v1",
 ]);
 
 /** Reserved signer id of the recovery identity (16 zero bytes); never a device's id. */
@@ -198,9 +203,11 @@ export function verifyContextSignature(
 }
 
 /**
- * Ed25519 verification (ZIP-215 off: strict RFC 8032). Wrong lengths and every malformed or forged
- * signature are simply invalid (@noble returns false for them); an exception from the library is a
- * runtime problem, reported as `unsupported_runtime`, never as an authentication failure.
+ * Ed25519 verification (ZIP-215 off: strict RFC 8032) through the bound verifier (`ed25519.ts`: @noble by
+ * default, the native libsodium on the phone, both with the same answers). Wrong lengths are refused here,
+ * before any implementation reads the buffers; every malformed or forged signature is simply invalid; an
+ * exception from the implementation is a runtime problem, reported as `unsupported_runtime`, never as an
+ * authentication failure.
  */
 export function verifySignature(
   signature: Uint8Array,
@@ -209,7 +216,7 @@ export function verifySignature(
 ): boolean {
   if (signature.length !== SIGNATURE_BYTES || publicKey.length !== 32) return false;
   try {
-    return ed25519.verify(signature, message, publicKey, { zip215: false });
+    return ed25519Verifier().verify(signature, message, publicKey);
   } catch {
     throw new CryptoError("unsupported_runtime");
   }

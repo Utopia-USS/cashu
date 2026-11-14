@@ -2,7 +2,7 @@
 // identity from the key store, prove the identity is certified and every held key has durable
 // provenance, and build the registry fold and the frame gate. Where the vault lives on disk is the
 // app's concern (the desktop host validates its inventory before calling this).
-import { crypto, devices } from "@cashu/sync";
+import { crypto, devices } from "@cashu/sync/engine";
 import { ProvenanceRefusal, type SqlProvenanceStore } from "./provenance.js";
 
 export type DeviceAuthorityRefusalCode =

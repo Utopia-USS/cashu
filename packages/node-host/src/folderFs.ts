@@ -19,7 +19,8 @@ function code(e: unknown): string | undefined {
     : undefined;
 }
 
-const unavailable = () => new TransportError("unavailable", "the synced folder is not reachable");
+const unavailable = () =>
+  new TransportError("unavailable", "the synced folder is not reachable", "outage");
 
 /** Permission lost on the folder counts as the folder being unreachable (port contract). */
 function mapError(e: unknown): unknown {

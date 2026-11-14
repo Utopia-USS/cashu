@@ -126,6 +126,54 @@ export interface GateStateStore {
   /** The gate's append-only evidence record (proven forks), never rolled back with the snapshot. */
   loadEvidence?(): Awaitable<readonly string[]>;
   appendEvidence?(records: readonly string[]): Awaitable<void>;
+  /** The engine's stuck records (D7) as opaque text; absent: kept in memory for the session. */
+  loadStuck?(): Awaitable<string | undefined>;
+  saveStuck?(state: string): Awaitable<void>;
+}
+
+/**
+ * Durable home of the engine's recovery checkpoint (the phone keeps it in the vault's private log
+ * database, beside the frames it covers). Opaque text the engine signs and checks itself.
+ */
+export interface RecoveryCheckpointStore {
+  load(): Awaitable<string | undefined>;
+  save(text: string): Awaitable<void>;
+  clear(): Awaitable<void>;
+}
+
+/**
+ * The verified-prefix checkpoint (engine option `recoveryCheckpoint`): after a complete `recoverLocal`
+ * the engine records, per writer stream, where the local log was audited to (end, chain and a digest
+ * of the frames' signatures there), the view's cursor and the gate's signed state at that point; the
+ * next `recoverLocal` restores that and opens and verifies only the frames after it. An optimization
+ * the engine distrusts: anything that does not check out (signature, vault, device, `binding`, the
+ * log prefix, the view's cursors, fork evidence) clears it and the whole log is replayed, and so does a
+ * tail with a registry or key statement, a frame that fails, or a rebuild.
+ */
+export interface RecoveryCheckpointOptions {
+  readonly store: RecoveryCheckpointStore;
+  /** What else it is bound to (the phone: its key ring's fingerprint); a different value discards it. */
+  readonly binding: () => string;
+  /** Signs the checkpoint body (the device's own identity, context `cashu/checkpoint/v1`). */
+  readonly sign: (body: Uint8Array) => Uint8Array;
+  /** Checks a signature made by `sign`. */
+  readonly verify: (body: Uint8Array, signature: Uint8Array) => boolean;
+}
+
+/** Yielding to the host's event loop during long local work (engine option `yieldToHost`). */
+export interface HostYield {
+  /** Resolves on a later macrotask (`setTimeout(0)` on the phone). */
+  readonly run: () => Promise<void>;
+  /** A millisecond clock for the slices (default: the engine's physical clock). */
+  readonly now?: () => number;
+  /** Work between two yields, about (default 8 ms). */
+  readonly sliceMs?: number;
+}
+
+/** `recoverLocal` progress: frames opened and verified so far of those it has to verify. */
+export interface RecoveryProgress {
+  readonly done: number;
+  readonly total: number;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -261,6 +309,12 @@ export interface FrameGate {
         /** Heads this device previously held locally, as recorded in its signed snapshot. */
         readonly heldHeads?: readonly FrameHead[];
         restore(): void;
+        /**
+         * After `restore` (the recovery checkpoint only): re-judges the restored accepted ranges under
+         * the current registry, cuts and freezes; returns how many writers' accepted data is no longer
+         * accepted (each recorded as a rejection, the view marked for rebuild). 0: all still accepted.
+         */
+        recheck?(): number;
       }
     | undefined;
   /** Writers in authenticated fork evidence, for recovery reporting only. */
@@ -342,6 +396,47 @@ export interface RejectedFrame {
   readonly code: string;
 }
 
+/**
+ * How a writer's stream is held at a frame (D7, park never drop): `waiting` for something that may
+ * still arrive (its writer's certificate, `writer-unknown`; a key not held yet, `unknown_key`),
+ * `final` where the stream ends by design (`revoked_writer`, `forked`: expected, never an error),
+ * `rejected` for everything else (tampered, malformed, too large, unknown format).
+ */
+export type StuckKind = "waiting" | "rejected" | "final";
+
+/**
+ * A writer's stream that did not move past one frame, persisted next to the gate state and cleared
+ * once the sink's cursor for that writer passes the frame. Value-free: positions and codes only.
+ */
+export interface StuckRecord {
+  readonly device: DeviceId;
+  readonly seg: number;
+  readonly offset: number;
+  readonly code: string;
+  readonly kind: StuckKind;
+  /** Engine clock when a pass first met this frame with this code. */
+  readonly firstSeenAt: number;
+  /** Passes that met it (1 on the first). */
+  readonly passes: number;
+}
+
+/**
+ * What the remotes of the passes since the last complete pull said (fetch lease, devices/lease.ts):
+ * - `pulled`: the last pass pulled every remote completely (the evidence is `lastPullAt`);
+ * - `offline`: every pass since then reached each remote it could, pulled it completely and
+ *   delivered to it (or stopped only at the push budget), and missed only remotes that were
+ *   unavailable for a true outage (errors.ts `TransportUnavailableReason` `outage`: unreachable,
+ *   quota, the host's own back-off). `since` = start of the first such pass, `reachedAt` = start of
+ *   the latest. Never set by a failed pass, a rollback, an upgrade need, a reachable remote left
+ *   undelivered (an offset conflict) or a remote that refused (membership gone, identity lost,
+ *   protocol failure): those are `incomplete`;
+ * - `incomplete`: no pass yet, no remote at all, or the last pass failed for another reason.
+ */
+export type PullStatus =
+  | { readonly kind: "pulled" }
+  | { readonly kind: "offline"; readonly since: number; readonly reachedAt: number }
+  | { readonly kind: "incomplete" };
+
 export interface WriteResult {
   readonly events: number;
   readonly frames: number;
@@ -414,6 +509,13 @@ export interface SyncResult {
   readonly clockWarnings: readonly ClockWarning[];
   /** A remote holds more of this device's own log than the local copy: writes are refused. */
   readonly rolledBack: boolean;
+  /**
+   * The pass hit its push budget (`SyncEngineOptions.maxPushBytesPerPass`) with own bytes still to
+   * push: run another pass (a first push of a large log spreads over several short passes).
+   */
+  readonly pushPending: boolean;
+  /** Writer streams held at a frame (persisted across passes, D7); empty when every stream moves. */
+  readonly stuck: readonly StuckRecord[];
 }
 
 export interface AppliedInfo {
@@ -429,6 +531,17 @@ export interface AppliedInfo {
  * them and `lastPushAt` the latest completion of its pushes (physical clock of the engine). A device
  * whose relay is offline is `eventual` for that pass.
  */
+/**
+ * The engine's sync history across passes (G2, G5), persisted by the host and handed back at open
+ * (`SyncEngineOptions.pullHistory`): `lastCompleteAt` = start of the last pass that pulled every
+ * remote completely; `pausedSince` = start of the first pass after it that did not (cleared by the
+ * next complete pull). Both stay unset for an engine without remotes.
+ */
+export interface PullHistory {
+  readonly lastCompleteAt?: number;
+  readonly pausedSince?: number;
+}
+
 export type LeaseTransport =
   | {
       readonly kind: "bounded";
@@ -452,7 +565,11 @@ export interface SyncEngine {
   ): {
     readonly lastPullAt: number | undefined;
     readonly clockOk: boolean;
+    /** Why `lastPullAt` is what it is; `offline` lets a pinned leader act on (lease.ts). */
+    readonly pull: PullStatus;
   };
+  /** The last complete pull and the start of the pause after it (`PullHistory`). */
+  pullHistory(): PullHistory;
   /** Stamp, append to the own segment as one atomic batch (frame or frame group), apply locally. */
   write(events: readonly UnstampedEvent[], options?: WriteOptions): Promise<WriteResult>;
   /** Authenticated exact own one-frame batch proof for a private prepared-attempt journal. */

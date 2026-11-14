@@ -35,7 +35,7 @@ import {
   unwrapKeys,
   verifyWrapSignature,
   type WrapRecipient,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import type { DecisionKeys } from "./decisionKeys.js";
 import type { StatementContext, StatementVerifier } from "./statements.js";
 

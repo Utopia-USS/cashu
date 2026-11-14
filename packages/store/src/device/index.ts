@@ -16,6 +16,20 @@ export {
   updateConnectorFetch,
 } from "./connector-runs.js";
 export {
+  forgetPairedVault,
+  type PairedVault,
+  pairedVaults,
+  savePairedVault,
+} from "./paired.js";
+export {
+  type RelaySetting,
+  relaySetting,
+  relaySettingKey,
+  relaySettingSchema,
+  relaySettings,
+  setRelaySetting,
+} from "./relay.js";
+export {
   currentVault,
   deviceLock,
   devicePhoneState,

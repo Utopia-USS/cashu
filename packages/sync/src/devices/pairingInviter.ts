@@ -11,7 +11,7 @@ import {
   Secret,
   type Sodium,
   sealForPairing,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { DEFAULT_MAX_DRIFT_MS } from "../hlc.js";
 import { concat, equalBytes, fromHex, isHex, lp, toHex, utf8 } from "./bytes.js";
 import { buildDeviceAdded, isDeviceName } from "./events.js";

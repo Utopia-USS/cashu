@@ -59,7 +59,10 @@ export type DeviceSettingKey =
   | "notificationPrefs"
   | "notificationLedger"
   | "markedAlerts"
-  | "appLock";
+  | "appLock"
+  | "pairedVaults"
+  /** A vault's sync relay switch (relay.ts). */
+  | `relay.${string}`;
 
 export interface DeviceCommandContext {
   /** Read-only SQL on the device tables. */

@@ -2,7 +2,7 @@
 // prepared events and a view snapshot alone never acknowledge publication.
 
 import type { SegmentCursor } from "../carrier.js";
-import { decodeHead, encodeHead, type SignedHead } from "../crypto/index.js";
+import { decodeHead, encodeHead, type SignedHead } from "../crypto/core.js";
 import { toHex } from "./bytes.js";
 import { comparePositions } from "./positions.js";
 

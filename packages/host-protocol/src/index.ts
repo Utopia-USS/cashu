@@ -206,6 +206,24 @@ export {
   uiPairingAllowed,
 } from "./pairing/messages.js";
 export {
+  NATIVE_RELAY_FEATURE,
+  NATIVE_RELAY_METHODS,
+  type RelayActionParams,
+  type RelayActionResult,
+  type RelayErrorKindValue,
+  type RelayRefusalReason,
+  type RelayStatusParams,
+  type RelayStatusResult,
+  type RelayStatusValue,
+  relayActionParamsSchema,
+  relayActionResultSchema,
+  relayErrorKindSchema,
+  relayStatusParamsSchema,
+  relayStatusResultSchema,
+  relayStatusSchema,
+  uiRelayAllowed,
+} from "./relay.js";
+export {
   NATIVE_CONNECTORS_FEATURE,
   NATIVE_CONNECTORS_METHODS,
   NATIVE_CREATION_FEATURE,

@@ -19,7 +19,7 @@
 // positions is replayed. Proven forks are NOT in the snapshot: they live in their own append-only
 // evidence record (`encodeEvidence`), restored before any snapshot, so a rollback cannot lose one.
 
-import { decodeHead, encodeHead, type SignedHead } from "../crypto/index.js";
+import { decodeHead, encodeHead, type SignedHead } from "../crypto/core.js";
 import { accepted, acceptedHead } from "./acceptance.js";
 import { concat, fromHex, isHex, isRecord, lp, toHex, utf8 } from "./bytes.js";
 import type { LogEvent } from "./events.js";

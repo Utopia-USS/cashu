@@ -11,6 +11,7 @@ import {
   NATIVE_CREATION_FEATURE,
   NATIVE_DEVICES_FEATURE,
   NATIVE_PAIRING_FEATURE,
+  NATIVE_RELAY_FEATURE,
   NOTIFICATION_INTENT_FEATURE,
 } from "@cashu/host-protocol";
 import { classifyStartupError, StartupFailureError } from "@cashu/host-protocol/startup-failure";
@@ -28,6 +29,7 @@ import { errorName, fileLog, type HostLog } from "../log.js";
 import { createNativeCreationService } from "../nativeCreation.js";
 import { classifyNativeCreationStartup } from "../nativeCreationJournal.js";
 import { privateNotificationIntents } from "../notifications/intentLedger.js";
+import type { HostRelay } from "../relay/service.js";
 import { currentRuntime, type HostRuntime, shimProgram } from "../runtime.js";
 import {
   type HostStores,
@@ -113,6 +115,7 @@ export function hostFeatures(input: {
       ? [NATIVE_PAIRING_FEATURE]
       : []),
     ...(nativeMode ? [NOTIFICATION_INTENT_FEATURE] : []),
+    ...(nativeMode ? [NATIVE_RELAY_FEATURE] : []),
     "admin.handover",
     "cli.exec",
     "mcp.lines",
@@ -139,8 +142,10 @@ export async function openHostState(input: {
   readonly nativeMode: boolean;
   readonly log: HostLog;
   readonly now: () => number;
+  /** The sync relay: adds its remote to the vaults enabled on this device (relay/service.ts). */
+  readonly relay: HostRelay;
 }): Promise<HostState> {
-  const { server, admission, nativeMode, log, now } = input;
+  const { server, admission, nativeMode, log, now, relay } = input;
   const { vaultSource, startup } = admission;
   let stores: HostStores | undefined;
   try {
@@ -171,7 +176,14 @@ export async function openHostState(input: {
     }
     stores =
       source.kind === "native"
-        ? await openNativeHostStores(server.paths.dataDir, source.provider, lease, log, now)
+        ? await openNativeHostStores(
+            server.paths.dataDir,
+            relay.wrapSource(source.provider),
+            lease,
+            log,
+            now,
+            (device) => relay.attachDevice(device),
+          )
         : source.kind === "native-production"
           ? openNativeSetupStores(server.paths.dataDir, lease, log, now)
           : openHostStores(server.paths.dataDir, lease, log, now);

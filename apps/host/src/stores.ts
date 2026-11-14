@@ -192,6 +192,11 @@ export async function openNativeHostStores(
   lease: WriterLease,
   log: HostLog,
   now: () => number = Date.now,
+  /**
+   * Runs with the device store open, before any vault opens: device-local switches a vault's open
+   * reads (the relay remote, relay/service.ts) come from it.
+   */
+  beforeVaults?: (device: DeviceStore) => void,
 ): Promise<HostStores> {
   if (source.inventory.length === 0)
     throw new StartupFailureError("native_inventory_unavailable", undefined, { vaults: 0 });
@@ -199,12 +204,13 @@ export async function openNativeHostStores(
   const native: NativeVaultSession[] = [];
   let deviceStore: DeviceStore | undefined;
   try {
-    for (const entry of source.inventory) {
-      native.push(await openNativeVault(entry, dataDir, source, lease, now));
-    }
     const files = storeFiles(dataDir);
     ensurePrivateDir(files.dir);
     deviceStore = openDevice(files, lease, log);
+    beforeVaults?.(deviceStore);
+    for (const entry of source.inventory) {
+      native.push(await openNativeVault(entry, dataDir, source, lease, now));
+    }
     const activeDevice = deviceStore;
     const device: OpenDevice = {
       store: activeDevice,

@@ -33,7 +33,7 @@ import {
   type TrustedDevice,
   type UnwrapOptions,
   wrapKeys,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { DEFAULT_MAX_FRAME_BYTES, DEFAULT_MAX_FRAME_EVENTS, frameLoad } from "../segment.js";
 import { unwrapFromTrusted } from "./acceptance.js";
 import { buildDeviceAdded, buildDeviceRevoked, buildKeysRotated } from "./events.js";

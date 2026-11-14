@@ -115,6 +115,7 @@ describe("SyncEngine", () => {
     ).toEqual({
       lastPullAt: undefined,
       clockOk: false,
+      pull: { kind: "incomplete" },
     });
     await reopened.close();
     const again = await make();

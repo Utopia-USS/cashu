@@ -12,7 +12,7 @@ import {
 import { watchBundleIdentity } from "@cashu/node-host/bundle-identity";
 import { HANDOVER_EXIT } from "../bundle.js";
 import type { StartRecord } from "../crashLoop.js";
-import type { HostLog } from "../log.js";
+import { errorName, type HostLog } from "../log.js";
 import type { HostStores } from "../stores.js";
 
 const CLEAN_EXIT = 0;
@@ -69,6 +69,13 @@ export function createHostLifecycle(input: {
   busy(): boolean;
   /** Releases the services between closing admission and draining the stores, in order. */
   release(reason: ExitReason): Promise<void>;
+  /**
+   * Before an idle exit, with admission closed and the stores still current: last work that needs
+   * the vaults (the relay's final push), bounded by the caller. `signal` aborts when a stronger stop
+   * (signal, handover, admin stop) arrives meanwhile: the work must then resolve at once. Its failure
+   * never stops the exit.
+   */
+  beforeIdleExit?(signal: AbortSignal): Promise<void>;
 }): HostLifecycle {
   const { server, stores, record, log, build } = input;
   let resolveExit: (code: number) => void = () => {};
@@ -76,6 +83,9 @@ export function createHostLifecycle(input: {
     resolveExit = resolve;
   });
   let stopping: Promise<number> | undefined;
+  // While the idle exit runs its last work: a stronger stop aborts it and its reason wins.
+  let idleWork: AbortController | undefined;
+  let strongerReason: ExitReason | undefined;
   let idleTimer: NodeJS.Timeout | undefined;
   let idleDeadline: number | undefined;
   let sessions = 0;
@@ -83,10 +93,25 @@ export function createHostLifecycle(input: {
   let stopBundle: () => void = () => {};
   const inFlightRequests = new Set<Promise<void>>();
 
-  const stop = (reason: ExitReason = "stop"): Promise<number> => {
+  const stop = (requested: ExitReason = "stop"): Promise<number> => {
+    if (stopping !== undefined && requested !== "idle" && idleWork !== undefined) {
+      strongerReason ??= requested;
+      log.info("host.stop-escalated", { reason: requested });
+      idleWork.abort();
+    }
     stopping ??= (async () => {
+      log.info("host.stopping", { reason: requested, pendingWrites: stores.pending() });
+      if (requested === "idle" && input.beforeIdleExit !== undefined) {
+        server.beginStop();
+        if (idleTimer !== undefined) clearTimeout(idleTimer);
+        idleWork = new AbortController();
+        await input.beforeIdleExit(idleWork.signal).catch((error: unknown) => {
+          log.warn("host.before-exit-failed", { error: errorName(error) });
+        });
+        idleWork = undefined;
+      }
+      const reason = strongerReason ?? requested;
       const code = reason === "handover" ? HANDOVER_EXIT : CLEAN_EXIT;
-      log.info("host.stopping", { reason, pendingWrites: stores.pending() });
       stores.invalidate();
       server.beginStop();
       stopBundle();

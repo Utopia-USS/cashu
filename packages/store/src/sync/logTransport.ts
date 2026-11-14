@@ -9,7 +9,7 @@ import {
   type TransportConsistency,
   TransportError,
   type VaultId,
-} from "@cashu/sync";
+} from "@cashu/sync/engine";
 import { DEVICE_RE } from "@cashu/sync/hlc";
 import { concatBytes } from "@noble/hashes/utils.js";
 import type { SqlDriver, SqlStatement } from "../sql/driver.js";

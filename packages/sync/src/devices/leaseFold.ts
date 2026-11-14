@@ -24,7 +24,7 @@
 // (`LEASE_CLOCK_TOLERANCE_MS`). No local clock enters the fold.
 
 import type { SegmentCursor } from "../carrier.js";
-import { RECOVERY_SIGNER_ID } from "../crypto/index.js";
+import { RECOVERY_SIGNER_ID } from "../crypto/core.js";
 import { DEFAULT_MAX_DRIFT_MS, parseHlc } from "../hlc.js";
 import { accepted, type KeySource } from "./acceptance.js";
 import { canonicalJson, fromHex, isCanonicalValue } from "./bytes.js";

@@ -2,7 +2,7 @@
 // sync and inbound apply. Call this function outside a prior queue acquisition.
 
 import { Decimal } from "@cashu/domain";
-import { ownBatchDigest, type SyncEngine, type UnstampedEvent } from "@cashu/sync";
+import { ownBatchDigest, type SyncEngine, type UnstampedEvent } from "@cashu/sync/engine";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { canonicalJson } from "./canonical.js";

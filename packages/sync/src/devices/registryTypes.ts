@@ -1,7 +1,7 @@
 // Types shared by the registry fold and its parts (revocations.ts, certificates.ts).
 
 import type { SegmentCursor } from "../carrier.js";
-import type { RecoveryPublicKeys } from "../crypto/index.js";
+import type { RecoveryPublicKeys } from "../crypto/core.js";
 import type { LogEvent } from "./events.js";
 
 /** Certificates that count per issuer (its first, by the position of its own `device.added`). */

@@ -124,7 +124,7 @@ export const hostAgentPlist = (flavor: Flavor) => `${flavor.hostAgentLabel}.plis
 /** The OS keyring service of one secret kind for one data dir hash. */
 export const keychainService = (
   flavor: Flavor,
-  kind: "vault" | "banking" | "classifier" | "connectors",
+  kind: "vault" | "banking" | "classifier" | "connectors" | "relay-auth",
   hash: string,
 ) => `${flavor.keychainPrefix}.${kind}.v1.${hash}`;
 

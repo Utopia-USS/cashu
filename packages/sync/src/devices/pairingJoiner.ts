@@ -6,7 +6,7 @@ import {
   openPairingWrap,
   type RecoveryPublicKeys,
   type Sodium,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { DEFAULT_MAX_DRIFT_MS } from "../hlc.js";
 import { accepted } from "./acceptance.js";
 import {

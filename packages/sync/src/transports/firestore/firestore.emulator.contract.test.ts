@@ -34,7 +34,7 @@ import {
   emulatorIdentity,
   ownerRest,
 } from "./emulator.js";
-import { FirestoreRest, str, ts } from "./rest.js";
+import { FirestoreRest, type FsValue, int, str, ts } from "./rest.js";
 import { FirestoreTransport } from "./transport.js";
 
 const hosts = emulatorHosts();
@@ -97,8 +97,9 @@ function emulatorRelay(h: EmulatorHosts, vault: VaultId, options: RelayOptions =
       ...(options.claim ? { consistency: options.claim } : {}),
     });
   };
+  const uidFor = async (device: DeviceId): Promise<string> => (await member(device)).uid();
   const dispose = () => clearData(h, database);
-  return { transportFor, owner, dispose };
+  return { transportFor, uidFor, owner, dispose };
 }
 
 /** Synthetic bytes that differ at every offset of a chunk (a misplaced chunk would not compare equal). */
@@ -126,16 +127,41 @@ describe.skipIf(!hosts)("Firestore relay against the emulator", () => {
     }
   }, 60_000);
 
-  // The default options under the rules: a 6 MiB append is one creating commit plus commits of at most
-  // `maxChunksPerCommit` chunks and `maxCommitBytes` each, then the admin's purge (commits of up to 100
-  // deletes, one rules check on its member doc each) removes segments and chunks, never the vault's
-  // member documents.
+  // The default options under the rules: a 6 MiB append is one creating commit (the meta at size 0) plus
+  // commits of at most `maxChunksPerCommit` chunks and `maxCommitBytes` each, the last one growing the
+  // meta; a new segment of one commit's bytes takes one more, meta-only commit. Then the admin's purge
+  // (commits of up to 20 deletes, one rules check on its member doc each) removes every other member
+  // first (S5), a left-over recovery proof, the pairings with their messages, segments and chunks; the
+  // vault doc and the admin's own member doc stay, and the removed phone reads 403 from then on.
   it("appends and reads back 6 MiB with the default options, then the admin purges it", async () => {
     const MAC = "ac".repeat(16);
     const PHONE = "bd".repeat(16);
     const relay = emulatorRelay(h, CONTRACT_VAULT, { admin: MAC });
     try {
       const phone = await relay.transportFor(PHONE);
+      const [macUid, phoneUid] = await Promise.all([relay.uidFor(MAC), relay.uidFor(PHONE)]);
+      const vaultDoc = `vaults/${CONTRACT_VAULT}`;
+      const pairing = `${vaultDoc}/pairings/${"5e".repeat(16)}`;
+      const at = ts(new Date().toISOString());
+      const seed: { path: string; fields: Record<string, FsValue> }[] = [
+        {
+          path: vaultDoc,
+          fields: { createdAt: at, admins: { arrayValue: { values: [str(macUid)] } } },
+        },
+        {
+          path: pairing,
+          fields: { inviter: str(macUid), joiner: str(phoneUid), expiresAt: at, createdAt: at },
+        },
+        { path: `${pairing}/messages/0000`, fields: { from: str(phoneUid), n: int(0) } },
+        // A proof doc an interrupted recovery left behind (synthetic bytes).
+        {
+          path: `${vaultDoc}/recoveries/${phoneUid}`,
+          fields: { proof: { bytesValue: Buffer.alloc(32, 7).toString("base64") } },
+        },
+      ];
+      await relay.owner.commit(
+        seed.map(({ path, fields }) => ({ update: { name: path, fields } })),
+      );
       const data = pattern(6 * 1024 * 1024);
       await phone.append(CONTRACT_VAULT, PHONE, 0, 0, data);
       const tail = pattern(1000);
@@ -156,11 +182,20 @@ describe.skipIf(!hosts)("Firestore relay against the emulator", () => {
       const mac = await relay.transportFor(MAC);
       await mac.purge(CONTRACT_VAULT);
       expect(await mac.list(CONTRACT_VAULT)).toEqual([]);
-      expect(await phone.list(CONTRACT_VAULT)).toEqual([]);
-      const members = await relay.owner.runQuery(`vaults/${CONTRACT_VAULT}`, {
-        collectionId: "members",
+      const members = await relay.owner.runQuery(vaultDoc, { collectionId: "members" });
+      expect(members.map((m) => relay.owner.relativeName(m.name))).toEqual([
+        `${vaultDoc}/members/${macUid}`,
+      ]);
+      expect(await relay.owner.get(vaultDoc)).toBeDefined();
+      expect(await relay.owner.runQuery(vaultDoc, { collectionId: "pairings" })).toEqual([]);
+      expect(await relay.owner.runQuery(pairing, { collectionId: "messages" })).toEqual([]);
+      expect(await relay.owner.runQuery(vaultDoc, { collectionId: "recoveries" })).toEqual([]);
+      // The removed phone is refused from now on (it cannot upload its log again).
+      await expect(phone.list(CONTRACT_VAULT)).rejects.toMatchObject({ code: "unavailable" });
+      expect(phone.status().lastError).toBe("forbidden");
+      await expect(phone.append(CONTRACT_VAULT, PHONE, 0, 0, tail)).rejects.toMatchObject({
+        code: "unavailable",
       });
-      expect(members).toHaveLength(2);
     } finally {
       await relay.dispose();
     }

@@ -33,7 +33,7 @@ import {
   type SignedHead,
   type Sodium,
   verifyCertificates,
-} from "../crypto/index.js";
+} from "../crypto/core.js";
 import { accepted, acceptedHead } from "./acceptance.js";
 import { equalBytes, fromHex } from "./bytes.js";
 import {
@@ -717,6 +717,7 @@ export class DeviceFrameGate implements FrameGate {
         readonly positions: ReadonlyMap<DeviceId, FrameHead>;
         readonly heldHeads?: readonly FrameHead[];
         restore(): void;
+        recheck?(): number;
       }
     | undefined {
     const devices = this.#devices;
@@ -741,6 +742,17 @@ export class DeviceFrameGate implements FrameGate {
         for (const [device, end] of snapshot.applied) devices.guard.record({ device, end });
         this.#refreshAttestations();
         this.#rebuild = false;
+      },
+      recheck: () => {
+        // The freezes after the restored attestations, then the restored accepted ranges against
+        // the current cuts and freezes (the restore recorded them after its fold, unchecked).
+        const frozen = devices.freeze(this.#freezes());
+        const rejected = [...(frozen?.rejectedFrames ?? []), ...devices.guard.recheck()];
+        if (rejected.length > 0) {
+          this.rejections.push(...rejected);
+          this.#rebuild = true;
+        }
+        return rejected.length;
       },
     };
   }

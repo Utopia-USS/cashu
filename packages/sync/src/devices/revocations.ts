@@ -3,7 +3,7 @@
 // not revoked, or the revocation lies before the signer's cut" (registry.ts explains the rules).
 
 import type { SegmentCursor } from "../carrier.js";
-import type { CertificateIndex } from "../crypto/index.js";
+import type { CertificateIndex } from "../crypto/core.js";
 import { accepted, type KeySource } from "./acceptance.js";
 import { canonicalJson, equalBytes, fromHex, isCanonicalValue } from "./bytes.js";
 import { DecisionKeys } from "./decisionKeys.js";

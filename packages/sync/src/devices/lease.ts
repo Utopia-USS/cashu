@@ -32,7 +32,7 @@
 // must not import while it cannot publish); the hand-over ack carries the old leader's watermark.
 
 import type { LeaseTransport, SegmentCursor, UnstampedEvent } from "../carrier.js";
-import { type DeviceIdentity, isDeviceId, type RecoveryIdentity } from "../crypto/index.js";
+import { type DeviceIdentity, isDeviceId, type RecoveryIdentity } from "../crypto/core.js";
 import { DEFAULT_MAX_DRIFT_MS } from "../hlc.js";
 import { behindNeed } from "./catchUp.js";
 import {
@@ -131,6 +131,22 @@ export interface LeaseLocal {
   /** Local clock when the last pass that pulled from a remote finished (undefined: never). */
   readonly lastPullAt: number | undefined;
   /**
+   * D6: the passes since `lastPullAt` reached every remote they could and missed only unreachable
+   * ones (the engine's `PullStatus` `offline`; carrier.ts). `reachedAt` = start of the latest such
+   * pass. Mode pinned accepts it in place of `lastPullAt`: leadership there moves only by an owner's
+   * explicit action, so the worst case of acting on the last known state is one extra fetch per Mac
+   * until they see each other. Mode auto ignores it (its safety rests on timing). Absent: no such pass.
+   * Bounded (G2, `offlinePullAt`): while the registry holds another device that could be pinned
+   * (`peerCanLead`), only for OFFLINE_LEAD_MAX_MS after the last complete pull (`lastCompleteAt`,
+   * persisted by the host; unknown = no grace). Without such a device nobody else can lead, so no bound.
+   */
+  readonly offlinePull?: {
+    readonly since: number;
+    readonly reachedAt: number;
+    readonly lastCompleteAt?: number;
+    readonly peerCanLead: boolean;
+  };
+  /**
    * The engine's report of the last pass (`SyncEngine.leaseTransport()`): mode auto runs only while
    * it is `bounded`, and then uses its pull time.
    */
@@ -202,6 +218,27 @@ function pulledRecently(pullAt: number | undefined, now: number, config: LeaseCo
   return pullAt !== undefined && pullAt <= now && now - pullAt <= config.publishDeadlineMs;
 }
 
+/**
+ * G2: how long after its last complete pull a pinned leader may go on acting on offline evidence
+ * while another device could have been pinned meanwhile (a second Mac). Covers a provider outage, a
+ * quota day and a holiday; after it the leader stops until a pass reaches every remote again (or the
+ * owner turns sync off for the vault, which removes the unreachable remote).
+ */
+export const OFFLINE_LEAD_MAX_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * The time the offline evidence vouches for (`offlinePull.reachedAt`), or undefined when there is
+ * none or its bound ran out (`LeaseLocal.offlinePull`). Pure; the caller still checks recency.
+ */
+export function offlinePullAt(offline: LeaseLocal["offlinePull"], now: number): number | undefined {
+  if (offline === undefined) return undefined;
+  if (!offline.peerCanLead) return offline.reachedAt;
+  const last = offline.lastCompleteAt;
+  return last !== undefined && last <= now && now - last <= OFFLINE_LEAD_MAX_MS
+    ? offline.reachedAt
+    : undefined;
+}
+
 /** Mode pinned: this device is the designated leader and nobody has to hand over first. */
 function pinnedLeader(view: LeaseView, local: LeaseLocal): boolean {
   return (
@@ -211,7 +248,10 @@ function pinnedLeader(view: LeaseView, local: LeaseLocal): boolean {
 
 /**
  * True while this device may act as the fetch leader. Check it right before EVERY leader action
- * (LEADER event, PSD2 fetch): it requires a pull within the publish deadline.
+ * (LEADER event, PSD2 fetch): it requires a pull within the publish deadline. In mode pinned a pass
+ * that reached every reachable remote and missed only unreachable ones counts as that pull
+ * (`LeaseLocal.offlinePull`, D6): a relay outage pauses sync, never the leader's local work (bounded
+ * by OFFLINE_LEAD_MAX_MS while another device could lead, G2).
  */
 export function holdsLease(
   view: LeaseView,
@@ -220,7 +260,11 @@ export function holdsLease(
 ): boolean {
   if (!local.clockOk) return false;
   if (view.mode === "pinned") {
-    return pinnedLeader(view, local) && pulledRecently(local.lastPullAt, local.now, config);
+    return (
+      pinnedLeader(view, local) &&
+      (pulledRecently(local.lastPullAt, local.now, config) ||
+        pulledRecently(offlinePullAt(local.offlinePull, local.now), local.now, config))
+    );
   }
   return (
     supportsAutoHandover(local, config) &&

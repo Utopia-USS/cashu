@@ -4,7 +4,7 @@
 
 import { blake2b } from "@noble/hashes/blake2.js";
 import type { SegmentCursor } from "../carrier.js";
-import { type Keyring, RecoveryIdentity } from "../crypto/index.js";
+import { type Keyring, RecoveryIdentity } from "../crypto/core.js";
 import {
   type CanonicalValue,
   canonicalJson,

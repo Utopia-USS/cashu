@@ -32,6 +32,7 @@
 //   the frames after those heads; a snapshot that fails any check is ignored (full replay).
 // - Every public operation runs serialized on one queue.
 
+import { blake2b } from "@noble/hashes/blake2.js";
 import { ownBatchDigest } from "./batchProof.js";
 import type {
   AppliedInfo,
@@ -44,13 +45,20 @@ import type {
   FrameHead,
   FramePosition,
   GateStateStore,
+  HostYield,
   InboundBatch,
   LeaseTransport,
   LocalRecoveryResult,
   LocalStreamRecovery,
+  PullHistory,
+  PullStatus,
+  RecoveryCheckpointOptions,
+  RecoveryProgress,
   RejectedFrame,
   SegmentCursor,
   SegmentInfo,
+  StuckKind,
+  StuckRecord,
   SyncEngine,
   SyncResult,
   Transport,
@@ -61,8 +69,15 @@ import type {
   WriteResult,
 } from "./carrier.js";
 import { propagationBound, START_CURSOR } from "./carrier.js";
-import { decodeHead, encodeHead } from "./crypto/index.js";
-import { isTransportUnavailable, rejectionCode, SyncError, TransportError } from "./errors.js";
+import { decodeHead, encodeHead } from "./crypto/core.js";
+import { fromHex, toHex } from "./crypto/encoding.js";
+import {
+  isTransportOutage,
+  isTransportUnavailable,
+  rejectionCode,
+  SyncError,
+  TransportError,
+} from "./errors.js";
 import {
   type ClockWarning,
   DEVICE_RE,
@@ -70,7 +85,7 @@ import {
   type PhysicalClock,
   systemClock,
 } from "./hlc.js";
-import { queueTask } from "./runtime.js";
+import { queueTask, utf8Encode } from "./runtime.js";
 import {
   concatBytes,
   DEFAULT_MAX_FRAME_BYTES,
@@ -125,11 +140,221 @@ export interface SyncEngineOptions {
   readonly maxBatchEvents?: number;
   /** Plaintext bytes per sink transaction before a pass is split into several (default 32 MiB). */
   readonly maxBatchBytes?: number;
+  /**
+   * Own sealed bytes one pass pushes at most, over all remotes (default 8 MiB, S6): a first push of a
+   * large log ends the pass early with `pushPending` so the vault's queue is free between passes. At
+   * least one frame is pushed per remote and pass, so a frame larger than the budget still moves.
+   */
+  readonly maxPushBytesPerPass?: number;
+  /** The sync history the host persisted for this vault (`PullHistory`); absent: none known. */
+  readonly pullHistory?: PullHistory;
+  /**
+   * The verified-prefix checkpoint of `recoverLocal` (carrier.ts `RecoveryCheckpointOptions`; the phone).
+   * Absent (the hosts): every `recoverLocal` opens and verifies the whole local log, as before.
+   */
+  readonly recoveryCheckpoint?: RecoveryCheckpointOptions;
+  /** Yield to the host between ~8 ms slices of local work (recovery, replay, pull). Absent: never. */
+  readonly yieldToHost?: HostYield;
+  /** `recoverLocal` progress (frames verified / to verify), reported at each yield and at the end. */
+  readonly onRecoveryProgress?: (progress: RecoveryProgress) => void;
+}
+
+/** How one `#replicate` call ended for the own bytes: all there, an offset conflict, the budget. */
+type Delivery = "delivered" | "conflict" | "budget";
+
+/** S6: own bytes one pass pushes before it yields (`SyncResult.pushPending`). */
+const DEFAULT_MAX_PUSH_BYTES_PER_PASS = 8 * 1024 * 1024;
+
+/** D7: how a rejection code holds its writer's stream. */
+export function stuckKind(code: string): StuckKind {
+  if (code === "revoked_writer" || code === "forked") return "final";
+  if (code === WRITER_UNKNOWN || code === "unknown_key") return "waiting";
+  return "rejected";
+}
+
+function isStuckRecord(value: unknown): value is StuckRecord {
+  if (!isRecord(value)) return false;
+  const { device, seg, offset, code, kind, firstSeenAt, passes } = value;
+  return (
+    typeof device === "string" &&
+    DEVICE_RE.test(device) &&
+    Number.isSafeInteger(seg) &&
+    Number.isSafeInteger(offset) &&
+    typeof code === "string" &&
+    code.length > 0 &&
+    code.length <= 64 &&
+    (kind === "waiting" || kind === "rejected" || kind === "final") &&
+    Number.isSafeInteger(firstSeenAt) &&
+    Number.isSafeInteger(passes) &&
+    (passes as number) >= 1
+  );
+}
+
+/** Parses the persisted stuck records; anything unreadable counts as none (they are re-found). */
+function parseStuck(text: string | undefined): Map<DeviceId, StuckRecord> {
+  const out = new Map<DeviceId, StuckRecord>();
+  if (text === undefined) return out;
+  try {
+    const rows: unknown = JSON.parse(text);
+    if (!Array.isArray(rows)) return out;
+    for (const row of rows) if (isStuckRecord(row)) out.set(row.device, row);
+  } catch {
+    // A torn or foreign value: the next pass that meets the frame records it again.
+  }
+  return out;
 }
 
 /** D12 caps of one sink transaction: a daily pull is one transaction, a 64k first sync three. */
 export const DEFAULT_MAX_BATCH_EVENTS = 25_000;
 export const DEFAULT_MAX_BATCH_BYTES = 32 * 1024 * 1024;
+/** Work between two yields to the host (`yieldToHost`), about one frame at 120 Hz. */
+const DEFAULT_YIELD_SLICE_MS = 8;
+
+// ---- recovery checkpoint (`recoveryCheckpoint`) ------------------------------------------------
+
+/** Format of the checkpoint body (v2: `rules` and the evidence digest). */
+const CHECKPOINT_VERSION = 2;
+
+/**
+ * Version of the rules that decide what the local log yields: frame acceptance (codec open, head and
+ * certificate checks, `authenticate` / `accept`), the registry and lease fold, the guard's cuts and
+ * fork freezes, payload and statement decoders and their caps. BUMP IT in the same change as any of
+ * those rules: a recovery checkpoint vouches for its prefix only under the rules it was taken with,
+ * so one written under another version is discarded and the next open replays every frame (once).
+ */
+export const SYNC_RULES_VERSION = 1;
+
+const HEX32 = /^[0-9a-f]{64}$/;
+const SIGNATURE_BYTES = 64;
+
+/** Statement types after which a checkpoint is not trusted for the tail: registry and key changes. */
+const AUTHORITY_TYPES: ReadonlySet<string> = new Set([
+  "device.added",
+  "device.revoked",
+  "device.recoveryChanged",
+  "device.keysRotated",
+]);
+
+interface CheckpointStream {
+  readonly device: DeviceId;
+  /** End of the last frame the checkpoint covers (START_CURSOR: none). */
+  readonly end: SegmentCursor;
+  /** The chain after that frame (the genesis chain for none). */
+  readonly chain: Uint8Array;
+  /** BLAKE2b-256 over the covered frames' signatures (the chain covers everything else). */
+  readonly sigs: Uint8Array;
+  /** The view's cursor of this writer when the checkpoint was taken. */
+  readonly cursor: SegmentCursor;
+  readonly suppressed: boolean;
+}
+
+interface Checkpoint {
+  /** BLAKE2b-256 over the fork-evidence record (`evidenceDigest`), not only its size. */
+  readonly evidence: Uint8Array;
+  readonly gate: string;
+  readonly streams: ReadonlyMap<DeviceId, CheckpointStream>;
+}
+
+/** `recoverLocal` with a checkpoint gave up: replay everything. `touched`: the gate holds its state. */
+interface Fallback {
+  readonly fallback: true;
+  readonly touched: boolean;
+}
+
+function signatureOf(sealed: Uint8Array): Uint8Array {
+  return sealed.subarray(Math.max(0, sealed.length - SIGNATURE_BYTES));
+}
+
+function signatureDigest(
+  frames: readonly { readonly sealed: Uint8Array }[],
+  count: number,
+): Uint8Array {
+  const h = blake2b.create({ dkLen: 32 });
+  for (let i = 0; i < count; i++) {
+    const frame = frames[i];
+    if (frame) h.update(signatureOf(frame.sealed));
+  }
+  return h.digest();
+}
+
+/** BLAKE2b-256 over the evidence records, sorted, each length-prefixed (order does not matter). */
+function evidenceDigest(records: readonly string[]): Uint8Array {
+  const h = blake2b.create({ dkLen: 32 });
+  for (const record of [...records].sort()) {
+    const bytes = utf8Encode(record);
+    const length = new Uint8Array(4);
+    new DataView(length.buffer).setUint32(0, bytes.length);
+    h.update(length);
+    h.update(bytes);
+  }
+  return h.digest();
+}
+
+function sameCursor(a: SegmentCursor, b: SegmentCursor): boolean {
+  return a.seg === b.seg && a.offset === b.offset;
+}
+
+function isCursor(value: unknown): value is SegmentCursor {
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.seg) &&
+    (value.seg as number) >= 1 &&
+    Number.isSafeInteger(value.offset) &&
+    (value.offset as number) >= 0
+  );
+}
+
+/** The checkpoint body as signed JSON text; undefined for anything malformed. */
+function decodeCheckpointBody(
+  body: string,
+  expected: { readonly vault: VaultId; readonly device: DeviceId; readonly binding: string },
+): Checkpoint | undefined {
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (
+    !isRecord(value) ||
+    value.v !== CHECKPOINT_VERSION ||
+    value.vault !== expected.vault ||
+    value.device !== expected.device ||
+    value.rules !== SYNC_RULES_VERSION ||
+    value.binding !== expected.binding ||
+    typeof value.evidence !== "string" ||
+    !HEX32.test(value.evidence) ||
+    typeof value.gate !== "string" ||
+    !Array.isArray(value.streams)
+  )
+    return undefined;
+  const streams = new Map<DeviceId, CheckpointStream>();
+  for (const entry of value.streams as unknown[]) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.device !== "string" ||
+      !DEVICE_RE.test(entry.device) ||
+      streams.has(entry.device) ||
+      !isCursor(entry.end) ||
+      !isCursor(entry.cursor) ||
+      typeof entry.chain !== "string" ||
+      !HEX32.test(entry.chain) ||
+      typeof entry.sigs !== "string" ||
+      !HEX32.test(entry.sigs) ||
+      typeof entry.suppressed !== "boolean"
+    )
+      return undefined;
+    streams.set(entry.device, {
+      device: entry.device,
+      end: { seg: entry.end.seg, offset: entry.end.offset },
+      chain: fromHex(entry.chain),
+      sigs: fromHex(entry.sigs),
+      cursor: { seg: entry.cursor.seg, offset: entry.cursor.offset },
+      suppressed: entry.suppressed,
+    });
+  }
+  return { evidence: fromHex(value.evidence), gate: value.gate, streams };
+}
 
 export async function createSyncEngine(options: SyncEngineOptions): Promise<SyncEngine> {
   if (!VAULT_RE.test(options.vault)) throw new SyncError("invalid-config", "invalid vault id");
@@ -158,6 +383,8 @@ interface RecoveryFrame {
   readonly sealed: Uint8Array;
   readonly size: number;
   readonly prev: Uint8Array;
+  /** The chain after this frame (hash only, from the bytes). */
+  readonly after: Uint8Array;
   opened?: Opened;
   events?: readonly WireEvent[];
   part?: readonly [number, number];
@@ -196,6 +423,8 @@ interface Pass {
   parkedDevices: Set<DeviceId>;
   needsUpgrade: boolean;
   offlineRemotes: number;
+  /** Own bytes still to push after the push budget ran out (S6). */
+  pushPending: boolean;
   rejected: RejectedFrame[];
   warnings: Map<DeviceId, ClockWarning>;
   types: Set<string>;
@@ -224,6 +453,7 @@ function newPass(): Pass {
     parkedDevices: new Set(),
     needsUpgrade: false,
     offlineRemotes: 0,
+    pushPending: false,
     rejected: [],
     warnings: new Map(),
     types: new Set(),
@@ -274,6 +504,15 @@ class OwnLogEngine implements SyncEngine {
   readonly #clockGuard: ClockGuardStore | undefined;
   #foreignWalls: Record<DeviceId, number> | null;
   #lastPullAt: number | undefined;
+  /** Why the pull evidence is what it is (carrier.ts `PullStatus`). */
+  #pull: PullStatus = { kind: "incomplete" };
+  /** G2 / G5: the last complete pull and the pause after it (`PullHistory`). */
+  #lastCompleteAt: number | undefined;
+  #pausedSince: number | undefined;
+  /** Writer streams held at a frame (D7), loaded from the gate state store on the first pass. */
+  #stuck = new Map<DeviceId, StuckRecord>();
+  #stuckLoaded = false;
+  readonly #maxPushBytes: number;
   #rejectedWriters: readonly DeviceId[] = [];
   readonly #gateState: GateStateStore | undefined;
   /** Per writer, the head of the last data frame the gate accepted (in stream order). */
@@ -305,6 +544,11 @@ class OwnLogEngine implements SyncEngine {
   #primed = false;
   /** `takeRebuild` consumes its flag; the old sink remains stale across recovery retries. */
   #recoveryViewStale = false;
+  readonly #checkpoint: RecoveryCheckpointOptions | undefined;
+  readonly #yield: { run: () => Promise<void>; now: () => number; sliceMs: number } | undefined;
+  readonly #onProgress: ((progress: RecoveryProgress) => void) | undefined;
+  /** Start of the current slice of uninterrupted work (`#pause`). */
+  #sliceStart = 0;
 
   constructor(
     o: SyncEngineOptions,
@@ -335,6 +579,25 @@ class OwnLogEngine implements SyncEngine {
     this.#maxSegmentBytes = Math.max(1, o.maxSegmentBytes ?? 4 * 1024 * 1024);
     this.#maxBatchEvents = Math.max(1, o.maxBatchEvents ?? DEFAULT_MAX_BATCH_EVENTS);
     this.#maxBatchBytes = Math.max(1, o.maxBatchBytes ?? DEFAULT_MAX_BATCH_BYTES);
+    this.#maxPushBytes = Math.max(1, o.maxPushBytesPerPass ?? DEFAULT_MAX_PUSH_BYTES_PER_PASS);
+    this.#checkpoint = o.recoveryCheckpoint;
+    this.#onProgress = o.onRecoveryProgress;
+    const host = o.yieldToHost;
+    const physical = this.#physical;
+    this.#yield =
+      host === undefined
+        ? undefined
+        : {
+            run: host.run,
+            now: host.now ?? (() => physical.now()),
+            sliceMs: Math.max(1, host.sliceMs ?? DEFAULT_YIELD_SLICE_MS),
+          };
+    const history = o.pullHistory;
+    if (this.#remotes.length > 0 && history !== undefined) {
+      if (Number.isSafeInteger(history.lastCompleteAt))
+        this.#lastCompleteAt = history.lastCompleteAt;
+      if (Number.isSafeInteger(history.pausedSince)) this.#pausedSince = history.pausedSince;
+    }
   }
 
   /** Find the own write position and chain, and detect a rolled-back clock (own log ahead of the clock). */
@@ -487,6 +750,32 @@ class OwnLogEngine implements SyncEngine {
 
   async #recoverLocalInQueue(): Promise<LocalRecoveryResult> {
     this.#assertOpen();
+    const checkpoint = await this.#loadCheckpoint();
+    let gateTouched = false;
+    if (checkpoint !== undefined) {
+      const tail = await this.#recover(checkpoint, false);
+      if (!("fallback" in tail)) return tail;
+      // Prefer the full replay over a doubtful checkpoint: forget it and open every frame again. When
+      // the gate already took the checkpoint's authenticated state and the verified tail, the full
+      // replay runs over it as it does after a sync pass (no snapshot restored on top).
+      gateTouched = tail.touched;
+      await this.#clearCheckpoint();
+    }
+    const full = await this.#recover(undefined, gateTouched);
+    if ("fallback" in full) throw new SyncError("invalid-config", "recovery without a checkpoint");
+    return full;
+  }
+
+  /**
+   * One local recovery: the audit of every held frame (`cp` undefined), or, with a checkpoint (phone),
+   * the same audit of the frames after it, which gives up (`Fallback`) before any sink write when
+   * anything is doubtful. The hash-only scan (chains, no decryption) always covers the whole log, so
+   * the checkpoint is bound to the exact bytes of the prefix it vouches for.
+   */
+  async #recover(
+    cp: Checkpoint | undefined,
+    gateTouched: boolean,
+  ): Promise<LocalRecoveryResult | Fallback> {
     const pass = newPass();
     const original = await this.#sink.cursors();
     const inventory = await this.#local.list(this.vault);
@@ -512,8 +801,11 @@ class OwnLogEngine implements SyncEngine {
 
     // A signed local gate snapshot records heads this installation held. It is an anchor, not
     // permission to skip any bytes in this audit. Invalid snapshots are only caches to ignore.
+    let evidence: readonly string[] = [];
     if (this.#gateState?.loadEvidence && this.#gate.importEvidence) {
-      this.#gate.importEvidence(await this.#gateState.loadEvidence());
+      const records = await this.#gateState.loadEvidence();
+      evidence = records;
+      this.#gate.importEvidence(records);
       this.#evidenceLoaded = true;
     }
     let anchors: readonly FrameHead[] = [];
@@ -524,7 +816,8 @@ class OwnLogEngine implements SyncEngine {
         if (imported) {
           anchors = imported.heldHeads ?? [...imported.positions.values()];
           for (const head of anchors) streamFor(head.device);
-          if (!this.#primed) imported.restore();
+          // With a checkpoint the gate takes the checkpoint's own state (below) instead.
+          if (!this.#primed && cp === undefined && !gateTouched) imported.restore();
         }
       } catch {
         // A missing or damaged cache never establishes readiness on its own.
@@ -569,7 +862,9 @@ class OwnLogEngine implements SyncEngine {
             sealed: f.sealed,
             size: f.end - f.offset,
             prev: before,
+            after: prev,
           });
+          await this.#pause();
         }
         if (stream.reason) break;
         if (scan.tail !== "none") {
@@ -580,10 +875,39 @@ class OwnLogEngine implements SyncEngine {
       }
     }
 
+    // The checkpoint's prefix: per stream, how many leading frames it vouches for. Every check runs
+    // before the gate or the sink changes; a failure gives up untouched.
+    const prefix = new Map<DeviceId, number>();
+    if (cp !== undefined) {
+      const checked = this.#checkPrefix(cp, streams, original, anchors, evidence);
+      if (checked === undefined) return { fallback: true, touched: false };
+      for (const [device, count] of checked.prefix) prefix.set(device, count);
+      if (!this.#primed) {
+        checked.gate.restore();
+        this.#judged = new Map(checked.gate.positions);
+        this.#savedKey = this.#judgedKey();
+        // The restore folded the checkpoint's statements under THIS code. Its accepted ranges must
+        // still pass the current cuts and freezes, as the full replay's `accept` would judge each
+        // frame; any refusal (data the view holds is no longer accepted) gives up. What the recheck
+        // cannot see (a changed decoder, cap or signature rule on a prefix frame) needs the frames
+        // reopened, i.e. the full replay: `SYNC_RULES_VERSION` covers that.
+        if ((checked.gate.recheck?.() ?? 0) > 0) return { fallback: true, touched: true };
+      }
+    }
+
     // Trust statements can introduce a writer whose earlier held frame initially waited.
     // Each successful round signs off at least one new frame, so a frame-count bound is sound.
     const observed = new Set<RecoveryFrame>();
+    for (const stream of streams.values()) {
+      const covered = prefix.get(stream.device) ?? 0;
+      for (const frame of stream.frames.slice(0, covered)) observed.add(frame);
+      const last = stream.frames[covered - 1];
+      if (last) stream.inspectedThrough = last.end;
+    }
     const frameCount = [...streams.values()].reduce((n, s) => n + s.frames.length, 0);
+    const toVerify = frameCount - observed.size;
+    let verified = 0;
+    let tailAuthority = false;
     let progress = false;
     for (let round = 0; round <= frameCount; round++) {
       progress = false;
@@ -612,27 +936,38 @@ class OwnLogEngine implements SyncEngine {
           frame.part = decoded.payload.part;
           stream.inspectedThrough = frame.end;
           this.#gate.observe(opened.head, decoded.payload.events);
+          if (cp !== undefined && decoded.payload.events.some((e) => AUTHORITY_TYPES.has(e.t)))
+            tailAuthority = true;
           observed.add(frame);
           progress = true;
+          verified += 1;
+          if (await this.#pause()) this.#onProgress?.({ done: verified, total: toVerify });
         }
       }
       if (observed.size === frameCount || !progress) break;
     }
+    this.#onProgress?.({ done: verified, total: toVerify });
     for (const stream of streams.values()) {
       if (stream.frames.some((f) => !observed.has(f))) stream.reason ??= "writer-unknown";
     }
 
     // A snapshot's locally held heads must still be present. Gossip/remote attestation is not
-    // a local durability anchor and is intentionally excluded from this check.
+    // a local durability anchor and is intentionally excluded from this check. A frame the checkpoint
+    // vouches for (not opened again) matches by its position, chain and signature bytes.
     let anchorMismatch = false;
     for (const anchor of anchors) {
       const stream = streamFor(anchor.device);
-      const match = stream.frames.some(
-        (frame) =>
-          frame.opened?.head.seg === anchor.seg &&
-          frame.opened.head.offset === anchor.offset &&
-          equalBytes(frame.opened.head.chain, anchor.chain) &&
-          equalBytes(frame.opened.head.sig, anchor.sig),
+      const match = stream.frames.some((frame) =>
+        frame.opened
+          ? frame.opened.head.seg === anchor.seg &&
+            frame.opened.head.offset === anchor.offset &&
+            equalBytes(frame.opened.head.chain, anchor.chain) &&
+            equalBytes(frame.opened.head.sig, anchor.sig)
+          : observed.has(frame) &&
+            frame.end.seg === anchor.seg &&
+            frame.end.offset === anchor.offset &&
+            equalBytes(frame.after, anchor.chain) &&
+            equalBytes(signatureOf(frame.sealed), anchor.sig),
       );
       if (!match) {
         stream.reason ??= "local-anchor-missing";
@@ -647,18 +982,25 @@ class OwnLogEngine implements SyncEngine {
       end: SegmentCursor;
       bytes: number;
     }[] = [];
+    let tailRefused = false;
     for (const stream of streams.values()) {
       const validEnds = new Set<string>([`${START_CURSOR.seg}:${START_CURSOR.offset}`]);
+      const base = cp?.streams.get(stream.device);
+      // The checkpoint's cursor was a sound end when it was taken; the tail changes no authority (or
+      // the recovery gives up below), so it still is.
+      if (base) validEnds.add(`${base.cursor.seg}:${base.cursor.offset}`);
       let group:
         | { events: WireEvent[]; count: number; next: number; bytes: number; suppressed: boolean }
         | undefined;
-      let crossedSuppression = false;
-      for (const frame of stream.frames) {
+      let crossedSuppression = base?.suppressed ?? false;
+      if (base?.suppressed) stream.suppressed = true;
+      for (const frame of stream.frames.slice(prefix.get(stream.device) ?? 0)) {
         if (!observed.has(frame)) break;
         const opened = frame.opened as Opened;
         const events = frame.events as readonly WireEvent[];
         const decision = this.#gate.accept(opened.head, events);
         if (decision.changed) pass.gateChanged = true;
+        if (cp !== undefined && !decision.verdict.ok) tailRefused = true;
         const suppressed =
           !decision.verdict.ok &&
           (decision.verdict.code === "revoked_writer" || decision.verdict.code === "forked");
@@ -668,6 +1010,7 @@ class OwnLogEngine implements SyncEngine {
         }
         if (suppressed) stream.suppressed = true;
         else this.#noteJudged(opened.head);
+        await this.#pause();
         const part = frame.part;
         let batch: readonly WireEvent[] | undefined;
         let bytes = frame.size;
@@ -720,9 +1063,29 @@ class OwnLogEngine implements SyncEngine {
       const cursor = original.get(stream.device) ?? START_CURSOR;
       if (!stream.reason && !validEnds.has(`${cursor.seg}:${cursor.offset}`)) {
         stream.reason = "cursor-not-accepted";
-        this.#recoveryViewStale = true;
+        // With a checkpoint this gives up below; the full replay decides about the view.
+        if (cp === undefined) this.#recoveryViewStale = true;
       }
-      if (stream.reason === "suppressed-gap") this.#recoveryViewStale = true;
+      if (stream.reason === "suppressed-gap" && cp === undefined) this.#recoveryViewStale = true;
+    }
+
+    // With a checkpoint: give up before any sink write unless the tail was entirely ordinary.
+    if (cp !== undefined) {
+      const rebuild = this.#gate.takeRebuild();
+      if (rebuild) this.#recoveryViewStale = true;
+      const proofs = await this.#saveEvidence();
+      const gossip = this.#gate.gossipStatus?.();
+      if (
+        tailAuthority ||
+        tailRefused ||
+        rebuild ||
+        proofs > 0 ||
+        anchorMismatch ||
+        gossip?.overflow === true ||
+        gossip?.authorityUncertain === true ||
+        [...streams.values()].some((stream) => stream.reason !== undefined)
+      )
+        return { fallback: true, touched: true };
     }
 
     // Cursor proofs precede any sink write. A partial replay remains quarantined by the host.
@@ -794,13 +1157,189 @@ class OwnLogEngine implements SyncEngine {
       }
     }
     const unreadableFrame = reports.some((s) => s.reason === "frame-format");
+    const needsUpgrade = pass.needsUpgrade || unreadableFrame ? true : parkedInSink;
+    if (this.#primed && this.#checkpoint !== undefined) {
+      // The scan already chained every frame: the first sync pass need not hash the log again (phone).
+      for (const stream of streams.values()) {
+        if (this.#chains.has(stream.device)) continue;
+        this.#chains.set(
+          stream.device,
+          stream.frames.map((f) => ({ seg: f.end.seg, end: f.end.offset, chain: f.after })),
+        );
+      }
+    }
+    if (this.#checkpoint !== undefined) {
+      if (this.#primed && needsUpgrade === false && !this.#recoveryViewStale) {
+        await this.#saveCheckpoint(streams, finalCursors);
+      } else {
+        await this.#clearCheckpoint();
+      }
+    }
     return {
       complete: this.#primed,
       streams: reports,
-      needsUpgrade: pass.needsUpgrade || unreadableFrame ? true : parkedInSink,
+      needsUpgrade,
       requiresViewRebuild: this.#recoveryViewStale,
       rolledBack: this.#rolledBack || anchorMismatch,
     };
+  }
+
+  /**
+   * The checks a checkpoint passes before the gate or the sink change, else undefined: the engine is
+   * neither rolled back nor unsure of its own tail; the fork evidence record is the one it saw; the
+   * gate's state in it authenticates; every stream it covers has a frame ending exactly at its end
+   * with the same chain and the same signature digest (a truncated, rewritten or foreign log fails);
+   * every view cursor is the one it recorded or lies in the tail; and every held anchor inside the
+   * prefix is that frame. Returns the frames it covers per stream and the gate state to restore.
+   */
+  #checkPrefix(
+    cp: Checkpoint,
+    streams: ReadonlyMap<DeviceId, RecoveryStream>,
+    cursors: ReadonlyMap<DeviceId, SegmentCursor>,
+    anchors: readonly FrameHead[],
+    evidence: readonly string[],
+  ):
+    | {
+        readonly prefix: ReadonlyMap<DeviceId, number>;
+        readonly gate: NonNullable<ReturnType<NonNullable<FrameGate["importState"]>>>;
+      }
+    | undefined {
+    if (
+      this.#rolledBack ||
+      this.#ownTailUncertain ||
+      !equalBytes(cp.evidence, evidenceDigest(evidence))
+    )
+      return undefined;
+    const gate = this.#gate.importState?.(cp.gate);
+    if (gate === undefined) return undefined;
+    const prefix = new Map<DeviceId, number>();
+    for (const base of cp.streams.values()) {
+      const frames = streams.get(base.device)?.frames ?? [];
+      let covered = 0;
+      let chain = this.#codec.genesis(this.vault, base.device, 1);
+      if (!sameCursor(base.end, START_CURSOR)) {
+        covered = frames.findIndex((f) => sameCursor(f.end, base.end)) + 1;
+        const last = frames[covered - 1];
+        if (covered === 0 || last === undefined) return undefined;
+        chain = last.after;
+      }
+      if (!equalBytes(chain, base.chain)) return undefined;
+      if (!equalBytes(signatureDigest(frames, covered), base.sigs)) return undefined;
+      prefix.set(base.device, covered);
+    }
+    for (const stream of streams.values()) {
+      const base = cp.streams.get(stream.device);
+      const cursor = cursors.get(stream.device) ?? START_CURSOR;
+      const recorded = base?.cursor ?? START_CURSOR;
+      const end = base?.end ?? START_CURSOR;
+      if (!sameCursor(cursor, recorded) && comparePositions(cursor, end) <= 0) return undefined;
+    }
+    for (const anchor of anchors) {
+      const frames = streams.get(anchor.device)?.frames ?? [];
+      const covered = prefix.get(anchor.device) ?? 0;
+      const index = frames.findIndex(
+        (f) => f.end.seg === anchor.seg && f.end.offset === anchor.offset,
+      );
+      const frame = frames[index];
+      if (frame === undefined || index >= covered) continue; // judged with the tail (or missing)
+      if (
+        !equalBytes(frame.after, anchor.chain) ||
+        !equalBytes(signatureOf(frame.sealed), anchor.sig)
+      )
+        return undefined;
+    }
+    return { prefix, gate };
+  }
+
+  /** The stored checkpoint when it authenticates and is bound to this vault, device and binding. */
+  async #loadCheckpoint(): Promise<Checkpoint | undefined> {
+    const options = this.#checkpoint;
+    if (options === undefined) return undefined;
+    let text: string | undefined;
+    try {
+      text = await options.store.load();
+    } catch {
+      return undefined;
+    }
+    if (text === undefined) return undefined;
+    let decoded: Checkpoint | undefined;
+    try {
+      const outer: unknown = JSON.parse(text);
+      if (
+        isRecord(outer) &&
+        typeof outer.body === "string" &&
+        typeof outer.sig === "string" &&
+        /^[0-9a-f]{128}$/.test(outer.sig) &&
+        options.verify(utf8Encode(outer.body), fromHex(outer.sig))
+      ) {
+        decoded = decodeCheckpointBody(outer.body, {
+          vault: this.vault,
+          device: this.device,
+          binding: options.binding(),
+        });
+      }
+    } catch {
+      decoded = undefined;
+    }
+    if (decoded === undefined) await this.#clearCheckpoint();
+    return decoded;
+  }
+
+  /** Records the audited log after a complete recovery (strictly after the frames it covers). */
+  async #saveCheckpoint(
+    streams: ReadonlyMap<DeviceId, RecoveryStream>,
+    cursors: ReadonlyMap<DeviceId, SegmentCursor>,
+  ): Promise<void> {
+    const options = this.#checkpoint;
+    if (options === undefined) return;
+    const gossip = this.#gate.gossipStatus?.();
+    const gate =
+      this.#ownTailUncertain || gossip?.overflow === true || gossip?.authorityUncertain === true
+        ? undefined
+        : this.#gate.exportState?.(this.#judged);
+    if (gate === undefined) {
+      await this.#clearCheckpoint();
+      return;
+    }
+    try {
+      const evidence = toHex(evidenceDigest((await this.#gateState?.loadEvidence?.()) ?? []));
+      const list = [...streams.values()]
+        .sort((a, b) => (a.device < b.device ? -1 : a.device > b.device ? 1 : 0))
+        .map((stream) => {
+          const last = stream.frames.at(-1);
+          return {
+            device: stream.device,
+            end: last ? { seg: last.end.seg, offset: last.end.offset } : START_CURSOR,
+            chain: toHex(last ? last.after : this.#codec.genesis(this.vault, stream.device, 1)),
+            sigs: toHex(signatureDigest(stream.frames, stream.frames.length)),
+            cursor: cursors.get(stream.device) ?? START_CURSOR,
+            suppressed: stream.suppressed,
+          };
+        });
+      const body = JSON.stringify({
+        v: CHECKPOINT_VERSION,
+        rules: SYNC_RULES_VERSION,
+        vault: this.vault,
+        device: this.device,
+        binding: options.binding(),
+        evidence,
+        gate,
+        streams: list,
+      });
+      const sig = toHex(options.sign(utf8Encode(body)));
+      await options.store.save(JSON.stringify({ body, sig }));
+    } catch {
+      // Only an optimization: without it the next recovery replays everything.
+      await this.#clearCheckpoint();
+    }
+  }
+
+  async #clearCheckpoint(): Promise<void> {
+    try {
+      await this.#checkpoint?.store.clear();
+    } catch {
+      // A checkpoint left behind still has to pass every check above.
+    }
   }
 
   inspectOwnBatch(expected: {
@@ -876,11 +1415,14 @@ class OwnLogEngine implements SyncEngine {
 
   sync(): Promise<SyncResult> {
     return this.#run(async () => {
+      const startedAt = this.#physical.now();
       try {
         return await this.#syncPass();
       } catch (e) {
         // A pass that failed outright says nothing about what was pulled: drop the evidence.
         this.#lastPullAt = undefined;
+        this.#pull = { kind: "incomplete" };
+        this.#paused(startedAt);
         throw e;
       }
     });
@@ -890,12 +1432,31 @@ class OwnLogEngine implements SyncEngine {
    * One pass. The fetch-lease pull evidence (`fetchLeaseEvidence`) is replaced only by a pass that
    * pulled every remote completely; a pass that missed one (offline, not delivered) keeps the
    * previous evidence, which still proves that earlier pull and ages out by the lease's own
-   * deadline. A pass that rolled back or needs an upgrade drops it.
+   * deadline. A pass that rolled back or needs an upgrade drops it. Next to it the pass records WHY
+   * (`#pull`, carrier.ts `PullStatus`): a pass that missed only unreachable remotes is `offline`, which
+   * the pinned lease accepts (D6, lease.ts); anything else that is not a complete pull is `incomplete`.
+   * Only a true outage is unreachable (errors.ts `isTransportOutage`): a remote that refused this
+   * device (membership gone, identity lost) or answered something unusable makes the pass
+   * `incomplete`, so a removed Mac stops leading at once (G1). A pass whose only shortfall is the push
+   * budget pulled everything: it is a complete pull (G3), though its lease transport stays
+   * `eventual` (mode auto needs the publish too).
    */
   async #syncPass(): Promise<SyncResult> {
     this.#assertOpen();
     this.#rejectedWriters = [];
     const pass = newPass();
+    const passStart = this.#physical.now();
+    const budget = { left: this.#maxPushBytes };
+    // A remote that answered but was not delivered to (an offset conflict), or one that was
+    // unavailable for another reason than an outage: such a pass is neither complete nor `offline`.
+    let reachableUndelivered = false;
+    let refusedMiss = false;
+    // The push budget ended own delivery early (S6); everything was pulled.
+    let budgetYield = false;
+    const undelivered = (delivery: Delivery): void => {
+      if (delivery === "conflict") reachableUndelivered = true;
+      else if (delivery === "budget") budgetYield = true;
+    };
     // A gate with statement state sees the local log first, so every stream's key is bound by its
     // first frame before anything new is verified.
     if (!this.#primed && this.#gate.needsReplay()) await this.#applyLocal(pass);
@@ -909,13 +1470,18 @@ class OwnLogEngine implements SyncEngine {
       const bound = propagationBound(remote.consistency);
       const pullAt = this.#physical.now();
       try {
-        if (!(await this.#replicate(remote, pass, !this.#ownTailUncertain))) allDelivered = false;
+        const delivery = await this.#replicate(remote, pass, !this.#ownTailUncertain, budget);
+        if (delivery !== "delivered") {
+          allDelivered = false;
+          undelivered(delivery);
+        }
         pullStarts.push(pullAt);
         if (bound !== undefined) {
           bounded.push({ propagationMs: bound, pullAt, pushAt: this.#physical.now() });
         }
       } catch (e) {
         if (!isTransportUnavailable(e)) throw e;
+        if (!isTransportOutage(e)) refusedMiss = true;
         if (!offlineRemoteIndices.has(index)) {
           offlineRemoteIndices.add(index);
           pass.offlineRemotes += 1;
@@ -932,16 +1498,19 @@ class OwnLogEngine implements SyncEngine {
       pass.waited = false;
       pass.gateChanged = false;
       pass.rejected = pass.rejected.filter((r) => r.code !== WRITER_UNKNOWN);
-      for (const remote of this.#remotes) {
+      for (const [index, remote] of this.#remotes.entries()) {
+        // S6: a remote that was unreachable in this pass is not asked again (its timeouts again).
+        if (offlineRemoteIndices.has(index)) continue;
         try {
           await this.#replicate(remote, pass, false);
         } catch (e) {
           if (!isTransportUnavailable(e)) throw e;
+          if (!isTransportOutage(e)) refusedMiss = true;
         }
       }
     }
     this.#leaseTransport =
-      bounded.length > 0 && !boundedOffline
+      bounded.length > 0 && !boundedOffline && !budgetYield
         ? {
             kind: "bounded",
             propagationMs: Math.max(...bounded.map((b) => b.propagationMs)),
@@ -977,10 +1546,19 @@ class OwnLogEngine implements SyncEngine {
     if (this.#gossipDeliveryPending && !this.#ownTailUncertain) {
       let delivered = true;
       for (const [index, remote] of this.#remotes.entries()) {
+        if (offlineRemoteIndices.has(index)) {
+          delivered = false;
+          continue;
+        }
         try {
-          if (!(await this.#replicate(remote, pass))) delivered = false;
+          const delivery = await this.#replicate(remote, pass, true, budget);
+          if (delivery !== "delivered") {
+            delivered = false;
+            undelivered(delivery);
+          }
         } catch (e) {
           if (!isTransportUnavailable(e)) throw e;
+          if (!isTransportOutage(e)) refusedMiss = true;
           delivered = false;
           if (!offlineRemoteIndices.has(index)) {
             offlineRemoteIndices.add(index);
@@ -992,6 +1570,7 @@ class OwnLogEngine implements SyncEngine {
       this.#gossipDeliveryPending = !delivered;
     }
     await this.#saveGate();
+    await this.#noteStuck(pass);
     const result = await this.#finish(pass);
     this.#rejectedWriters = result.rejected.map((row) => row.device);
     if (
@@ -1000,11 +1579,46 @@ class OwnLogEngine implements SyncEngine {
       result.offlineRemotes === 0 &&
       !result.needsUpgrade &&
       !result.rolledBack &&
-      allDelivered
-    )
+      !reachableUndelivered &&
+      !refusedMiss
+    ) {
+      // G3: a pass that stopped only at the push budget pulled everything (the next pass pushes on).
       this.#lastPullAt = Math.min(...pullStarts);
-    else if (result.needsUpgrade || result.rolledBack) this.#lastPullAt = undefined;
+      this.#pull = { kind: "pulled" };
+      this.#lastCompleteAt = this.#lastPullAt;
+      this.#pausedSince = undefined;
+    } else if (result.needsUpgrade || result.rolledBack) {
+      this.#lastPullAt = undefined;
+      this.#pull = { kind: "incomplete" };
+      this.#paused(passStart);
+    } else if (
+      result.offlineRemotes > 0 &&
+      !reachableUndelivered &&
+      !refusedMiss &&
+      pullStarts.length + result.offlineRemotes >= this.#remotes.length
+    ) {
+      // Only unreachable remotes were missed: the previous evidence stays as is, and the pinned
+      // lease may rely on this pass (D6). `since` survives consecutive offline passes.
+      const since = this.#pull.kind === "offline" ? this.#pull.since : passStart;
+      this.#pull = { kind: "offline", since, reachedAt: passStart };
+      this.#paused(passStart);
+    } else {
+      this.#pull = { kind: "incomplete" };
+      this.#paused(passStart);
+    }
     return result;
+  }
+
+  /** A pass that was not a complete pull: the pause starts here unless one already runs (G5). */
+  #paused(passStart: number): void {
+    if (this.#remotes.length > 0) this.#pausedSince ??= passStart;
+  }
+
+  pullHistory(): PullHistory {
+    return {
+      ...(this.#lastCompleteAt === undefined ? {} : { lastCompleteAt: this.#lastCompleteAt }),
+      ...(this.#pausedSince === undefined ? {} : { pausedSince: this.#pausedSince }),
+    };
   }
 
   rebuild(): Promise<SyncResult> {
@@ -1047,7 +1661,11 @@ class OwnLogEngine implements SyncEngine {
         clockOk = false;
       }
     }
-    return { lastPullAt: clockOk ? this.#lastPullAt : undefined, clockOk };
+    return {
+      lastPullAt: clockOk ? this.#lastPullAt : undefined,
+      clockOk,
+      pull: clockOk ? this.#pull : { kind: "incomplete" as const },
+    };
   }
 
   onApplied(listener: (info: AppliedInfo) => void): () => void {
@@ -1067,13 +1685,28 @@ class OwnLogEngine implements SyncEngine {
   // -------------------------------------------------------------------------------------------
 
   #run<T>(fn: () => Promise<T>): Promise<T> {
-    const p = this.#tail.then(fn);
+    const p = this.#tail.then(() => {
+      if (this.#yield) this.#sliceStart = this.#yield.now();
+      return fn();
+    });
     this.#tail = p.catch(() => undefined);
     return p;
   }
 
   #assertOpen(): void {
     if (this.#closed) throw new SyncError("closed", "the sync engine is closed");
+  }
+
+  /**
+   * Yields to the host when the current slice of work ran `sliceMs` (`yieldToHost`; never without it),
+   * so a long recovery, replay or first pull leaves the UI thread its frames. Says whether it yielded.
+   */
+  async #pause(): Promise<boolean> {
+    const host = this.#yield;
+    if (host === undefined || host.now() - this.#sliceStart < host.sliceMs) return false;
+    await host.run();
+    this.#sliceStart = host.now();
+    return true;
   }
 
   #split(events: readonly WireEvent[]): WireEvent[][] {
@@ -1124,6 +1757,8 @@ class OwnLogEngine implements SyncEngine {
       rejected: pass.rejected,
       clockWarnings: [...pass.warnings.values()],
       rolledBack: pass.rolledBack || this.#rolledBack,
+      pushPending: pass.pushPending,
+      stuck: [...this.#stuck.values()],
     };
   }
 
@@ -1175,6 +1810,7 @@ class OwnLogEngine implements SyncEngine {
         const at = { vault: this.vault, device, seg: s.seg, offset: f.offset };
         prev = this.#codec.link(f.sealed, at, prev);
         entries.push({ seg: s.seg, end: f.end, chain: prev });
+        await this.#pause();
       }
       expected += 1;
     }
@@ -1226,8 +1862,17 @@ class OwnLogEngine implements SyncEngine {
     return opened;
   }
 
-  /** Push own bytes to `remote`, pull verified foreign frames from it into the local log. */
-  async #replicate(remote: Transport, pass: Pass, push = true): Promise<boolean> {
+  /**
+   * Push own bytes to `remote`, pull verified foreign frames from it into the local log. Says whether
+   * own bytes are left for this remote and why: an offset conflict (or a rollback) is `conflict`,
+   * `budget` ran out (`pushPending`) is `budget`; the pull before the push is complete either way.
+   */
+  async #replicate(
+    remote: Transport,
+    pass: Pass,
+    push = true,
+    budget: { left: number } = { left: this.#maxPushBytes },
+  ): Promise<Delivery> {
     const [remoteList, localList] = await Promise.all([
       remote.list(this.vault),
       this.#local.list(this.vault),
@@ -1290,6 +1935,7 @@ class OwnLogEngine implements SyncEngine {
         chains.push({ seg: r.seg, end: f.end, chain: prev });
         end = f.end;
         frames += 1;
+        await this.#pause();
       }
       if (!blocked.has(r.device) && scan.tail !== "none") {
         if (scan.tail === "too-large") {
@@ -1309,23 +1955,95 @@ class OwnLogEngine implements SyncEngine {
       }
     }
 
-    if (!push || this.#rolledBack || this.#ownTailUncertain) return !this.#rolledBack;
+    if (!push || this.#rolledBack || this.#ownTailUncertain)
+      return this.#rolledBack ? "conflict" : "delivered";
     const own = localList.filter((s) => s.device === this.device).sort(bySegment);
+    let pushedHere = 0;
     for (const s of own) {
       const theirs = remoteSize.get(`${s.device}/${s.seg}`) ?? 0;
       if (s.size <= theirs) continue;
-      const bytes = await this.#local.read(this.vault, this.device, s.seg, theirs);
+      let bytes = await this.#local.read(this.vault, this.device, s.seg, theirs);
+      if (bytes.length > budget.left) {
+        // S6: push whole frames up to the budget (at least one per remote and pass), then yield.
+        let cut = 0;
+        for (const f of scanFrames(bytes, theirs).frames) {
+          const end = f.end - theirs;
+          if (end > budget.left && (cut > 0 || pushedHere > 0)) break;
+          cut = end;
+          if (end > budget.left) break;
+        }
+        if (cut === 0) {
+          pass.pushPending = true;
+          return "budget";
+        }
+        if (cut < bytes.length) {
+          bytes = bytes.subarray(0, cut);
+          pass.pushPending = true;
+        }
+      }
       try {
         await remote.append(this.vault, this.device, s.seg, theirs, bytes);
       } catch (e) {
         // Someone else changed our segment between list and append (a lost ack, or a clone);
         // the next pass re-lists and decides (rollback check above).
-        if (e instanceof TransportError && e.code === "offset-conflict") return false;
+        if (e instanceof TransportError && e.code === "offset-conflict") return "conflict";
         throw e;
       }
       pass.pushedBytes += bytes.length;
+      pushedHere += bytes.length;
+      budget.left = Math.max(0, budget.left - bytes.length);
+      if (pass.pushPending) return "budget";
     }
-    return true;
+    return "delivered";
+  }
+
+  /**
+   * D7: updates the per-writer stuck records from this pass's rejections (the first held frame per
+   * writer) and clears every record the sink's cursor has passed; persisted when changed.
+   */
+  async #noteStuck(pass: Pass): Promise<void> {
+    if (!this.#stuckLoaded) {
+      this.#stuckLoaded = true;
+      if (this.#gateState?.loadStuck) {
+        const loaded = parseStuck(await this.#gateState.loadStuck());
+        for (const [device, record] of loaded)
+          if (!this.#stuck.has(device)) this.#stuck.set(device, record);
+      }
+    }
+    const before = JSON.stringify([...this.#stuck.values()]);
+    const first = new Map<DeviceId, RejectedFrame>();
+    for (const row of pass.rejected) {
+      const known = first.get(row.device);
+      if (!known || comparePositions(row, known) < 0) first.set(row.device, row);
+    }
+    const cursors = await this.#sink.cursors();
+    for (const [device, record] of this.#stuck) {
+      if (first.has(device)) continue;
+      const cursor = cursors.get(device) ?? START_CURSOR;
+      // The stream moved past the frame (applied), or past it as far as the log reaches.
+      if (comparePositions(cursor, { seg: record.seg, offset: record.offset }) > 0)
+        this.#stuck.delete(device);
+    }
+    const now = this.#physical.now();
+    for (const [device, row] of first) {
+      const known = this.#stuck.get(device);
+      const same =
+        known !== undefined &&
+        known.seg === row.seg &&
+        known.offset === row.offset &&
+        known.code === row.code;
+      this.#stuck.set(device, {
+        device,
+        seg: row.seg,
+        offset: row.offset,
+        code: row.code,
+        kind: stuckKind(row.code),
+        firstSeenAt: same ? known.firstSeenAt : now,
+        passes: same ? known.passes + 1 : 1,
+      });
+    }
+    const after = JSON.stringify([...this.#stuck.values()]);
+    if (after !== before) await this.#gateState?.saveStuck?.(after);
   }
 
   /** Exact-end lookup against authenticated local frames, bounded to four requests per pass. */
@@ -1491,6 +2209,7 @@ class OwnLogEngine implements SyncEngine {
             }
             prev = opened.head.chain;
             index += 1;
+            await this.#pause();
             if (index <= (done.get(device) ?? 0)) continue;
             const decoded = decodePayload(opened.plain, device);
             const events = decoded.ok ? decoded.payload.events : [];
@@ -1539,6 +2258,7 @@ class OwnLogEngine implements SyncEngine {
           return;
         }
         prev = opened.head.chain;
+        await this.#pause();
         const delivered = comparePositions({ seg: s.seg, offset: f.end }, cursor) > 0;
         const decoded = decodePayload(opened.plain, device);
         const events = decoded.ok ? decoded.payload.events : [];
@@ -1628,10 +2348,11 @@ class OwnLogEngine implements SyncEngine {
     this.#gate.importEvidence(await this.#gateState.loadEvidence());
   }
 
-  /** Append new fork proofs to the evidence record (after every write and sync pass). */
-  async #saveEvidence(): Promise<void> {
+  /** Append new fork proofs to the evidence record (after every write and sync pass); how many. */
+  async #saveEvidence(): Promise<number> {
     const evidence = this.#gate.takeEvidence?.() ?? [];
     if (evidence.length > 0) await this.#gateState?.appendEvidence?.(evidence);
+    return evidence.length;
   }
 
   /** Save the gate's snapshot when it judged new frames since the last one (S29c-B3). */

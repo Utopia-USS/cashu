@@ -7,8 +7,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./crypto": "./src/crypto/index.ts",
+    "./engine": "./src/engine-entry.ts",
     "./hlc": "./src/hlc.ts",
     "./testing": "./src/testing/index.ts",
+    "./testing/firestore": "./src/testing/firestore-entry.ts",
     "./testing/folder": "./src/transports/folder/testing/index.ts"
   },
   "react-native": {
@@ -18,7 +20,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "vitest run",
-    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests",
+    "test:emulator": "test -n \"$FIRESTORE_EMULATOR_HOST\" && test -n \"$FIREBASE_AUTH_EMULATOR_HOST\" || { echo 'test:emulator: no Firestore / Auth emulator; run pnpm test:emulator at the repo root' >&2; exit 1; }; vitest run src/transports/firestore/rules.emulator.test.ts src/transports/firestore/firestore.emulator.contract.test.ts"
   },
   "dependencies": {
     "@noble/ciphers": "2.4.0",

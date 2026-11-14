@@ -8,6 +8,15 @@ export {
   type IdentityEndpoint,
 } from "./auth.js";
 export {
+  type CreateVaultOutcome,
+  FirestoreRelayAdmin,
+  type FirestoreRelayAdminOptions,
+  type RecoverAdminOutcome,
+  type RelayMember,
+  type RelayRole,
+  relayRecoveryHash,
+} from "./relayAdmin.js";
+export {
   type FirestoreEndpoint,
   FirestoreRest,
   FirestoreRestError,

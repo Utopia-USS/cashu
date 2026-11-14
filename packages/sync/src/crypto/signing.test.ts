@@ -22,6 +22,7 @@ const CONTEXTS: SigningContext[] = [
   "cashu/lan-auth/v1",
   "cashu/head/v1",
   "cashu/state/v1",
+  "cashu/checkpoint/v1",
 ];
 
 describe("signing contexts (S29b)", () => {

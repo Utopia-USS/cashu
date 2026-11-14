@@ -44,9 +44,14 @@ export interface SafeStorageLike {
   decryptString(encrypted: Uint8Array): string;
 }
 
-/** Blob storage for the safeStorage ciphertexts (e.g. one file per name in the app's data dir). */
+/** Blob storage for the sealed values (e.g. one file per name in the app's data dir). */
 export interface BlobFiles {
   read(name: string): Promise<Uint8Array | null>;
+  /**
+   * Replace the value atomically: a write interrupted at any point leaves the old value readable,
+   * never a torn one (a torn blob is `keystore_corrupt` for good). The stores here call it once per
+   * `set` and never write in place themselves.
+   */
   write(name: string, value: Uint8Array): Promise<void>;
   remove(name: string): Promise<void>;
 }

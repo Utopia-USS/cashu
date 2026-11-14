@@ -7,7 +7,12 @@ import { createFakeFirebase, MemoryAuthStore } from "../../testing/firestore-fak
 import { AnonymousAuth } from "./auth.js";
 import { chunkPath, segmentId, timeKey } from "./layout.js";
 import { type FetchLike, type FetchResponse, FirestoreRest } from "./rest.js";
-import { FirestoreTransport, type FirestoreTransportOptions } from "./transport.js";
+import {
+  FirestoreTransport,
+  type FirestoreTransportOptions,
+  MAX_CHUNKS_PER_COMMIT,
+  PURGE_DELETES_PER_COMMIT,
+} from "./transport.js";
 
 // Synthetic ids.
 const VAULT = "0123456789abcdef0123456789abcdef";
@@ -180,6 +185,20 @@ describe("layout", () => {
     expect(r.fake.counters.signUp).toBe(0);
   });
 
+  it("keeps every commit within Firestore's documented 20 rule access calls per request", () => {
+    // Documented limit for batched writes, and the per-write costs the rules header counts (every call,
+    // no cache): a meta update 1 (the caller's member doc), a chunk 3 (member doc, segment after, segment
+    // before), a delete 1 (the admin's member doc).
+    const LIMIT = 20;
+    const META = 1;
+    const CHUNK_CALLS = 3;
+    expect(META + MAX_CHUNKS_PER_COMMIT * CHUNK_CALLS).toBeLessThanOrEqual(LIMIT);
+    // The largest cap that fits, so the transport does not waste commits either.
+    expect(META + (MAX_CHUNKS_PER_COMMIT + 1) * CHUNK_CALLS).toBeGreaterThan(LIMIT);
+    expect(MAX_CHUNKS_PER_COMMIT).toBe(6);
+    expect(PURGE_DELETES_PER_COMMIT).toBeLessThanOrEqual(LIMIT);
+  });
+
   it("refuses a bad root and chunk or commit sizes outside the limits", () => {
     const r = rig();
     expect(() => r.handle({ root: "vaults/x" })).toThrow("firestore_invalid_id");
@@ -188,21 +207,32 @@ describe("layout", () => {
     expect(() => r.handle({ maxChunkBytes: 0 })).toThrow(RangeError);
     expect(() => r.handle({ maxChunkBytes: 1000, maxCommitBytes: 999 })).toThrow(RangeError);
     expect(() => r.handle({ maxCommitBytes: 8 * MiB })).toThrow(RangeError);
-    for (const maxChunksPerCommit of [0, 10, 1.5]) {
+    for (const maxChunksPerCommit of [0, 7, 10, 1.5]) {
       expect(() => r.handle({ maxChunksPerCommit })).toThrow(RangeError);
     }
   });
 });
 
 describe("append and read", () => {
-  it("writes one byte as one chunk in one commit", async () => {
+  it("writes one byte as one chunk: a new segment's meta is created empty, then grown", async () => {
     const r = rig();
     const { transport } = r.handle();
     await transport.append(VAULT, A, 1, 0, pattern(1));
-    expect(r.fake.counters.commit).toBe(1);
+    // The rules create a meta at size 0 (rev 1) and only an update grows it.
+    expect(r.commitWrites).toEqual([2, 1]);
     expect(r.chunkDocs()).toHaveLength(1);
-    expect(await transport.list(VAULT)).toEqual([{ device: A, seg: 1, size: 1 }]);
-    expect(await transport.read(VAULT, A, 1, 0)).toEqual(pattern(1));
+    const meta = r.fake.documents().get(`vaults/${VAULT}/segments/${segmentId(A, 1)}`);
+    expect(meta?.fields.rev).toEqual({ integerValue: "2" });
+    // The next append to the same segment is one commit.
+    await transport.append(VAULT, A, 1, 1, pattern(1, 2));
+    expect(r.commitWrites).toEqual([2, 1, 2]);
+    await transport.append(VAULT, A, 1, 2, pattern(1, 3));
+    expect(r.commitWrites).toEqual([2, 1, 2, 2]);
+    expect(await transport.read(VAULT, A, 1, 1)).toEqual(
+      new Uint8Array([...pattern(1, 2), ...pattern(1, 3)]),
+    );
+    expect(await transport.list(VAULT)).toEqual([{ device: A, seg: 1, size: 3 }]);
+    expect((await transport.read(VAULT, A, 1, 0)).subarray(0, 1)).toEqual(pattern(1));
   });
 
   it("splits at exactly 700 KiB", async () => {
@@ -217,7 +247,9 @@ describe("append and read", () => {
       [{ integerValue: "0" }, { integerValue: String(CHUNK) }],
       [{ integerValue: String(CHUNK) }, { integerValue: String(CHUNK + 1) }],
     ]);
-    expect(r.fake.counters.commit).toBe(2);
+    // Seg 1: create with its chunk, then the size; seg 2: create with both chunks (one commit) and the
+    // size in a meta-only commit.
+    expect(r.commitWrites).toEqual([2, 1, 3, 1]);
     expectSame(await transport.read(VAULT, A, 1, 0), pattern(CHUNK));
     expectSame(await transport.read(VAULT, A, 2, 0), pattern(CHUNK + 1, 2));
     expectSame(await transport.read(VAULT, A, 2, CHUNK), pattern(CHUNK + 1, 2).slice(CHUNK));
@@ -229,7 +261,7 @@ describe("append and read", () => {
     const { transport } = r.handle();
     await transport.append(VAULT, A, 1, 0, bytes);
     expect(r.chunkDocs()).toHaveLength(5);
-    expect(r.commitWrites).toEqual([6]); // meta + 5 chunks
+    expect(r.commitWrites).toEqual([6, 1]); // meta (created empty) + 5 chunks, then the size
     expect(Math.max(...r.commitBodies)).toBeLessThanOrEqual(10 * MiB);
     expectSame(await transport.read(VAULT, A, 1, 0), bytes);
     expectSame(await transport.read(VAULT, A, 1, 2_000_000), bytes.slice(2_000_000));
@@ -243,7 +275,7 @@ describe("append and read", () => {
 
     const four = rig();
     await four.handle({ maxChunksPerCommit: 4 }).transport.append(VAULT, A, 1, 0, bytes);
-    expect(four.commitWrites).toEqual([5, 2]); // meta + 4 chunks, meta + 1 chunk
+    expect(four.commitWrites).toEqual([5, 2]); // meta created + 4 chunks, meta grown + 1 chunk
     const meta = four.fake.documents().get(`vaults/${VAULT}/segments/${segmentId(A, 1)}`);
     expect(meta?.fields.rev).toEqual({ integerValue: "2" });
   });
@@ -320,7 +352,13 @@ describe("append and read", () => {
       };
     };
     expect(await count(() => transport.list(VAULT))).toEqual({ get: 0, runQuery: 1, commit: 0 });
+    // A new segment: the meta created empty with the chunk, then grown (the rules).
     expect(await count(() => transport.append(VAULT, A, 1, 0, pattern(1024)))).toEqual({
+      get: 1,
+      runQuery: 0,
+      commit: 2,
+    });
+    expect(await count(() => transport.append(VAULT, A, 1, 1024, pattern(1024)))).toEqual({
       get: 1,
       runQuery: 0,
       commit: 1,
@@ -329,7 +367,7 @@ describe("append and read", () => {
     expect(await count(() => transport.append(VAULT, A, 2, 0, bytes))).toEqual({
       get: 1,
       runQuery: 0,
-      commit: 1,
+      commit: 2,
     });
     expect(await count(() => transport.read(VAULT, A, 2, 0))).toEqual({
       get: 1,
@@ -397,7 +435,8 @@ describe("offset conflicts", () => {
     };
     const e = await failure(one.append(VAULT, A, 1, 0, pattern(3)));
     expect(e.code).toBe("offset-conflict");
-    expect(r.commitStatuses).toEqual([200, 409]);
+    // `two`: create, grow; then `one`'s create.
+    expect(r.commitStatuses).toEqual([200, 200, 409]);
     expect(one.status().lastError).toBeUndefined();
     expect(one.status().lastOk).toBeDefined();
     expect(await one.read(VAULT, A, 1, 0)).toEqual(pattern(4, 2));
@@ -415,7 +454,7 @@ describe("offset conflicts", () => {
     };
     const one = r.handle(clone).transport;
     const two = r.handle(clone).transport;
-    await one.append(VAULT, A, 1, 0, pattern(4)); // commit 1
+    await one.append(VAULT, A, 1, 0, pattern(4)); // commits 1 (create) and 2 (size)
     let twoDone: Promise<unknown> | undefined;
     let twoAtCommit = () => {};
     const twoReady = new Promise<void>((resolve) => {
@@ -426,18 +465,18 @@ describe("offset conflicts", () => {
       releaseTwo = resolve;
     });
     r.control.beforeCommit = async (n) => {
-      if (n === 2) {
+      if (n === 3) {
         // One's intermediate commit waits until two has read the same meta.
         twoDone = two.append(VAULT, A, 1, 4, pattern(16, 8)).then(
           () => "delivered",
           (e: unknown) => e,
         );
         await twoReady;
-      } else if (n === 3) {
+      } else if (n === 4) {
         // Two's first commit waits until one's intermediate commit landed.
         twoAtCommit();
         await twoGate;
-      } else if (n === 4) {
+      } else if (n === 5) {
         // One's final commit waits until two's commit was answered.
         releaseTwo();
         await twoDone;
@@ -449,7 +488,7 @@ describe("offset conflicts", () => {
     expect((outcome as TransportError).code).toBe("offset-conflict");
     expect(await one.read(VAULT, A, 1, 0)).toEqual(concat(pattern(4), pattern(16, 9)));
     const meta = r.fake.documents().get(`vaults/${VAULT}/segments/${segmentId(A, 1)}`);
-    expect(meta?.fields.rev).toEqual({ integerValue: "3" });
+    expect(meta?.fields.rev).toEqual({ integerValue: "4" });
   });
 
   it("stops a multi-commit append once another writer committed, and never shows its chunks", async () => {
@@ -548,7 +587,10 @@ describe("status and errors", () => {
     const r = rig({ retries: 1 });
     const { transport } = r.handle({ now: () => now });
     r.fake.faults.unavailable(2);
-    expect((await failure(transport.list(VAULT))).code).toBe("unavailable");
+    const down = await failure(transport.list(VAULT));
+    expect(down.code).toBe("unavailable");
+    // G1: a 5xx is a true outage (the pinned leader may go on, D6).
+    expect(down.reason).toBe("outage");
     expect(transport.status()).toEqual({ lastError: "unavailable", lastErrorAt: 1_000 });
     now = 2_000;
     await transport.list(VAULT);
@@ -559,7 +601,9 @@ describe("status and errors", () => {
     const r = rig({ retries: 1 });
     const { transport } = r.handle();
     r.fake.faults.quota(2);
-    expect((await failure(transport.read(VAULT, A, 1, 0))).code).toBe("unavailable");
+    const quota = await failure(transport.read(VAULT, A, 1, 0));
+    expect(quota.code).toBe("unavailable");
+    expect(quota.reason).toBe("outage");
     expect(transport.status().lastError).toBe("quota");
   });
 
@@ -573,7 +617,10 @@ describe("status and errors", () => {
       transport.append(VAULT, A, 1, 0, pattern(3)),
       transport.purge(VAULT),
     ]) {
-      expect((await failure(p)).code).toBe("unavailable");
+      const refused = await failure(p);
+      expect(refused.code).toBe("unavailable");
+      // G1: a member doc deleted (this Mac removed) is a refusal, never an outage.
+      expect(refused.reason).toBe("refused");
     }
     expect(transport.status().lastError).toBe("forbidden");
   });
@@ -616,7 +663,9 @@ describe("status and errors", () => {
       () => transport.purge(VAULT),
       () => transport.list(VAULT),
     ]) {
-      expect((await failure(call())).code).toBe("unavailable");
+      const lost = await failure(call());
+      expect(lost.code).toBe("unavailable");
+      expect(lost.reason).toBe("identity-lost");
       expect(transport.status().lastError).toBe("relay-identity-lost");
     }
     // Membership granted again: the label clears with the first success.
@@ -638,7 +687,9 @@ describe("status and errors", () => {
     const { transport, auth } = r.handle();
     await auth.token();
     r.fake.faults.slow(200);
-    expect((await failure(transport.list(VAULT))).code).toBe("unavailable");
+    const slow = await failure(transport.list(VAULT));
+    expect(slow.code).toBe("unavailable");
+    expect(slow.reason).toBe("outage");
     expect(transport.status().lastError).toBe("unavailable");
   });
 
@@ -648,12 +699,15 @@ describe("status and errors", () => {
     await transport.append(VAULT, A, 1, 0, pattern(12));
     const segment = `vaults/${VAULT}/segments/${segmentId(A, 1)}`;
     await rest.delete(chunkPath(segment, 4));
-    expect((await failure(transport.read(VAULT, A, 1, 0))).message).toBe(
-      "firestore segment has a gap",
-    );
+    const gap = await failure(transport.read(VAULT, A, 1, 0));
+    expect(gap.message).toBe("firestore segment has a gap");
+    // G1: an answer that does not make sense is no outage either.
+    expect(gap.reason).toBe("protocol");
     expect(await transport.read(VAULT, A, 1, 8)).toEqual(pattern(12).slice(8));
     await rest.commit([{ update: { name: segment, fields: { size: { stringValue: "x" } } } }]);
-    expect((await failure(transport.read(VAULT, A, 1, 0))).code).toBe("unavailable");
+    const unreadable = await failure(transport.read(VAULT, A, 1, 0));
+    expect(unreadable.code).toBe("unavailable");
+    expect(unreadable.reason).toBe("protocol");
     expect((await failure(transport.append(VAULT, A, 1, 12, pattern(1)))).code).toBe("unavailable");
     expect(await transport.list(VAULT)).toEqual([]);
   });
@@ -685,6 +739,31 @@ describe("payload timeouts", () => {
 });
 
 describe("purge", () => {
+  it("says how far a failed purge got: nothing deleted, or partly done", async () => {
+    const r = rig();
+    const { transport, rest } = r.handle({ maxChunkBytes: 4, maxCommitBytes: 8 });
+    await transport.append(VAULT, A, 1, 0, pattern(10));
+    // Another device's member document: its delete is a commit of its own, before the segments.
+    const phone = `vaults/${VAULT}/members/uid-phone`;
+    await rest.commit([{ update: { name: phone, fields: { device: { stringValue: B } } } }]);
+    const before = r.commitBodies.length;
+    r.control.forbidAll = true;
+    await failure(transport.purge(VAULT));
+    expect(transport.purgeCommits).toBe(0);
+    r.control.forbidAll = false;
+    // The first delete commit lands, the second fails.
+    r.control.beforeCommit = (n) => {
+      if (n === before + 2) r.control.forbidCommits = true;
+    };
+    await failure(transport.purge(VAULT));
+    expect(transport.purgeCommits).toBe(1);
+    r.control.forbidCommits = false;
+    r.control.beforeCommit = undefined;
+    await transport.purge(VAULT);
+    expect(await transport.list(VAULT)).toEqual([]);
+    expect(r.fake.documents(phone).size).toBe(0);
+  });
+
   it("deletes every segment and chunk document of the vault and nothing else", async () => {
     const r = rig();
     const { transport } = r.handle({ maxChunkBytes: 4, maxCommitBytes: 8 });
@@ -698,18 +777,18 @@ describe("purge", () => {
     expect(await transport.read(OTHER_VAULT, A, 1, 0)).toEqual(pattern(3));
   });
 
-  it("never deletes the vault or member documents, asks for names only, at most 100 deletes per commit", async () => {
+  it("never deletes the vault or the caller's member document, asks for names only, at most 20 deletes per commit", async () => {
     const r = rig();
-    const { transport, rest } = r.handle({
+    const { transport, rest, auth } = r.handle({
       maxChunkBytes: 4,
-      maxCommitBytes: 36,
-      maxChunksPerCommit: 9,
+      maxCommitBytes: 24,
+      maxChunksPerCommit: 6,
     });
     await transport.append(VAULT, A, 1, 0, pattern(600)); // 150 chunks
     await transport.append(VAULT, A, 2, 0, pattern(8)); // 2 chunks
     await transport.append(VAULT, B, 1, 0, pattern(4)); // 1 chunk
     const vaultDoc = `vaults/${VAULT}`;
-    const memberDoc = `vaults/${VAULT}/members/uid-x`;
+    const memberDoc = `vaults/${VAULT}/members/${await auth.uid()}`;
     await rest.commit([
       { update: { name: vaultDoc, fields: { admins: { arrayValue: {} } } } },
       { update: { name: memberDoc, fields: { device: { stringValue: A } } } },
@@ -717,10 +796,61 @@ describe("purge", () => {
     r.commitWrites.length = 0;
     r.queries.length = 0;
     await transport.purge(VAULT);
-    // Segment A_1: 100 chunks, then its last 50 + meta with A_2 (2 + meta) and B_1 (1 + meta).
-    expect(r.commitWrites).toEqual([100, 56]);
-    expect(r.queries).toHaveLength(4);
+    // Members, recovery proofs and pairings (none besides the caller), then segment A_1: 7 x 20 chunks,
+    // then its last 10 + meta with A_2 (2 + meta) and B_1 (1 + meta). 20 deletes = 20 rule access calls,
+    // Firestore's per-request limit (firestore.rules header).
+    expect(r.commitWrites).toEqual([20, 20, 20, 20, 20, 20, 20, 16]);
+    // members, recoveries, pairings, segments, then one chunk query per segment.
+    expect(r.queries).toHaveLength(7);
     for (const q of r.queries) expect(q.select?.fields).toEqual([{ fieldPath: "__name__" }]);
     expect([...r.fake.documents(vaultDoc).keys()]).toEqual([vaultDoc, memberDoc]);
+  });
+
+  it("removes every other member first, then pairings with their messages, then the segments (S5)", async () => {
+    const r = rig();
+    const { transport, rest, auth } = r.handle();
+    const own = await auth.uid();
+    const vaultDoc = `vaults/${VAULT}`;
+    const member = (uid: string) => `${vaultDoc}/members/${uid}`;
+    const pairing = (sid: string) => `${vaultDoc}/pairings/${sid}`;
+    const message = (sid: string, n: string) => `${pairing(sid)}/messages/${n}`;
+    const doc = (name: string) => ({ update: { name, fields: { x: { stringValue: "y" } } } });
+    await rest.commit([
+      doc(vaultDoc),
+      doc(member(own)),
+      doc(member("phone-uid")),
+      doc(member("tablet-uid")),
+      // A recovery proof left by an interrupted recovery: a purge removes it too.
+      doc(`${vaultDoc}/recoveries/lost-uid`),
+      doc(pairing("s1")),
+      doc(message("s1", "0001")),
+      doc(message("s1", "0002")),
+      doc(pairing("s2")),
+      doc(`vaults/${OTHER_VAULT}/members/phone-uid`),
+      doc(`vaults/${OTHER_VAULT}/pairings/s9`),
+    ]);
+    await transport.append(VAULT, A, 1, 0, pattern(10));
+    const order: string[][] = [];
+    r.control.beforeCommit = () => {
+      order.push([...r.fake.documents(`${vaultDoc}/`).keys()]);
+    };
+    await transport.purge(VAULT);
+    // Before the second commit (pairings) the other members are gone already, the segment not yet.
+    expect(order[1]).toEqual(
+      expect.arrayContaining([member(own), pairing("s1"), `${vaultDoc}/segments/${A}_0000000001`]),
+    );
+    expect(order[1]).not.toContain(member("phone-uid"));
+    expect(order[1]).not.toContain(member("tablet-uid"));
+    expect([...r.fake.documents(`${vaultDoc}`).keys()]).toEqual([vaultDoc, member(own)]);
+    // Another vault is untouched.
+    expect([...r.fake.documents(`vaults/${OTHER_VAULT}/`).keys()]).toEqual([
+      `vaults/${OTHER_VAULT}/members/phone-uid`,
+      `vaults/${OTHER_VAULT}/pairings/s9`,
+    ]);
+    // A former member's append is refused once its member document is gone (the rules in short).
+    r.control.members = new Set([own]);
+    const phone = r.handle().transport;
+    await failure(phone.append(VAULT, B, 1, 0, pattern(4)));
+    expect(phone.status().lastError).toBe("forbidden");
   });
 });
