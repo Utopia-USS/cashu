@@ -213,7 +213,7 @@ describe("the position page over the real synchronous store", () => {
     expect(ready().hero.risk).toBe(false);
     expect(ready().rows.find((r) => r.kind === "decision")).toMatchObject({
       title: "Nothing for now - “results first”",
-      sub: "Nov 12, 2026",
+      sub: "12 Nov 2026",
     });
   });
 

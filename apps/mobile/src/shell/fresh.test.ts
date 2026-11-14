@@ -26,6 +26,14 @@ describe("bankFresh", () => {
     });
   });
 
+  it("writes the time on 24 h on a phone set to US English (the desktop's rule)", () => {
+    setLanguageForTests("en");
+    expect(bankFresh(local(12, 19, 30), new Date(2026, 10, 12, 21), "en-US")).toEqual({
+      tone: "ok",
+      text: "Bank data from 19:30",
+    });
+  });
+
   it("names the weekday of yesterday's batch while it is younger than the threshold", () => {
     setLanguageForTests("en");
     expect(bankFresh(local(11, 7, 30), now, "en-GB")).toEqual({

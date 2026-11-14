@@ -322,9 +322,19 @@ export class FirestorePairingLink implements PairingLink {
     this.#nextSend = n;
   }
 
-  /** The peer's next message (its parts reassembled in order); waits by polling. */
-  async receive(): Promise<Uint8Array> {
-    this.#open();
+  /**
+   * The peer's next message (its parts reassembled in order); waits by polling. `signal` stops the
+   * wait: once it aborts, no further relay request is made and the call rejects with `closed` (a
+   * request already in flight still completes, its answer is dropped and no message is consumed).
+   * The link itself stays open.
+   */
+  async receive(options: { readonly signal?: AbortSignal } = {}): Promise<Uint8Array> {
+    const { signal } = options;
+    const live = () => {
+      this.#open();
+      if (signal?.aborted) throw new PairingLinkError("closed");
+    };
+    live();
     const deadline = this.#now() + this.#receiveTimeoutMs;
     const chunks: Uint8Array[] = [];
     let parts: number | undefined;
@@ -332,20 +342,23 @@ export class FirestorePairingLink implements PairingLink {
     let empty = 0;
     let failed = 0;
     for (;;) {
-      this.#open();
+      live();
       if (n > MAX_MESSAGE_N) throw new PairingLinkError("malformed");
       let doc: FsDocument | undefined;
       try {
         doc = await this.#rest.get(messagePath(this.#path, n));
         failed = 0;
       } catch (error) {
+        live();
         if (!transient(error)) throw this.#sessionError(error);
         if (++failed >= MAX_FAILED_POLLS) throw new PairingLinkError("unavailable");
       }
+      live();
       if (doc) {
         const message = parseMessage(doc, n);
         if (!message) throw new PairingLinkError("malformed");
         await this.#checkPeer(message.from);
+        live();
         if (parts === undefined) {
           if (message.part !== 0) throw new PairingLinkError("malformed");
           parts = message.parts;
@@ -365,8 +378,27 @@ export class FirestorePairingLink implements PairingLink {
         throw new PairingLinkError("expired");
       }
       if (t >= deadline) throw new PairingLinkError("timeout");
-      if (++empty % SESSION_CHECK_EVERY === 0) await this.#checkSession();
-      await this.#sleep(this.#pollMs);
+      if (++empty % SESSION_CHECK_EVERY === 0) {
+        await this.#checkSession();
+        live();
+      }
+      await this.#pause(this.#pollMs, signal);
+    }
+  }
+
+  /** The poll interval, cut short when `signal` aborts (the caller's next check then throws). */
+  async #pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+    if (signal === undefined) return this.#sleep(ms);
+    if (signal.aborted) return;
+    let onAbort = () => {};
+    const aborted = new Promise<void>((resolve) => {
+      onAbort = () => resolve();
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    try {
+      await Promise.race([this.#sleep(ms), aborted]);
+    } finally {
+      signal.removeEventListener("abort", onAbort);
     }
   }
 

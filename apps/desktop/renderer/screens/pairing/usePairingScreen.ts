@@ -18,6 +18,8 @@ type Phase =
   | "refused"
   /** A cancel came too late: the host had already written the phone into the vault. */
   | "already_added"
+  /** The phone left the pairing (closed its six-digit step) before it was added. */
+  | "phone_cancelled"
   | "expired"
   /** The invite was refused because this profile's sync is off (or this build has none). */
   | "sync_off";
@@ -189,11 +191,11 @@ export function usePairingScreen(): PairingViewState {
       setInvite(null);
       inviteRef.current = null;
       setPhase("waiting");
-    } else if (result.kind === "not_started") {
+    } else if (result.kind === "not_started" || result.kind === "phone_cancelled") {
       currentAttempt.current = null;
       setInvite(null);
       inviteRef.current = null;
-      setPhase("refused");
+      setPhase(result.kind === "phone_cancelled" ? "phone_cancelled" : "refused");
     } else {
       setPhase("unknown");
     }
@@ -294,7 +296,7 @@ export function usePairingScreen(): PairingViewState {
         setInvite(null);
         inviteRef.current = null;
         currentAttempt.current = null;
-        setPhase("refused");
+        setPhase(result.code === "phone_cancelled" ? "phone_cancelled" : "refused");
       }
     } catch {
       if (generation === epoch.current) {
@@ -414,6 +416,7 @@ export function usePairingScreen(): PairingViewState {
   if (phase === "completed") return { kind: "completed", onCreate: create };
   if (phase === "refused") return { kind: "refused", onCreate: create };
   if (phase === "already_added") return { kind: "already_added", onCreate: create };
+  if (phase === "phone_cancelled") return { kind: "phone_cancelled", onCreate: create };
   if (phase === "expired") return { kind: "expired", onCreate: create };
   if (phase === "sync_off") return { kind: "sync_off", onCreate: create };
   return { kind: "idle", onCreate: create };

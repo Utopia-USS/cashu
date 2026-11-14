@@ -44,6 +44,11 @@ async function mount(bridge: Record<string, unknown>) {
     container,
     button: (label: string) =>
       [...document.querySelectorAll("button")].find((node) => node.textContent === label),
+    /** A host push: a new device list snapshot (the host checked the vault again). */
+    async push() {
+      bindings.list = { status: "unavailable" };
+      await act(async () => root.render(<Harness />));
+    },
     async close() {
       await act(async () => root.unmount());
       container.remove();
@@ -139,6 +144,37 @@ it("says a removed device can still receive data and tries again on Try now", as
     expect(syncNow).toHaveBeenCalledWith({ vault: bindings.vault });
     expect(view.button("Try now")).toBeUndefined();
     expect(view.container.textContent).toContain("Synced at 10:12");
+  } finally {
+    await view.close();
+  }
+});
+
+it("keeps the purge result and the switch off when the host pushes the device list mid-purge", async () => {
+  let finish!: (result: { kind: "done" }) => void;
+  const purge = vi.fn(
+    () =>
+      new Promise<{ kind: "done" }>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  let purged = false;
+  const status = vi.fn(async () => (purged ? { ...healthy, enabled: false, devices: 1 } : healthy));
+  const view = await mount({ status, purge });
+  try {
+    await act(async () => view.button("Remove from sync")?.click());
+    await act(async () => view.button("Yes, remove")?.click());
+    expect(purge).toHaveBeenCalledWith({ vault: bindings.vault });
+    // The purge writes the switch off: the host re-checks the vault and pushes the list before it replies.
+    purged = true;
+    await view.push();
+    await act(async () => finish({ kind: "done" }));
+    expect(view.container.textContent).toContain("This profile's data was removed from sync.");
+    const toggle = view.container.querySelector('[role="switch"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    // Not stuck busy: the switch takes input again.
+    expect(
+      toggle?.hasAttribute("disabled") || toggle?.getAttribute("aria-disabled") === "true",
+    ).toBe(false);
   } finally {
     await view.close();
   }

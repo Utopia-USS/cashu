@@ -126,7 +126,7 @@ describe("decide card text", () => {
     expect(decideWhy(rules, c)).toBe("");
     expect(decideFacts(rules, c)).toEqual([
       "CD Projekt is 7.5% of the portfolio (your limit 5%)",
-      "No contribution for 41 days (last Oct 2). Your plan expects PLN\u00a02,500 a month by the 10th.",
+      "No contribution for 41 days (last 2 Oct). Your plan expects PLN\u00a02,500 a month by the 10th.",
       "Old rule: 12.5% over",
     ]);
   });
@@ -136,7 +136,7 @@ describe("decide card text", () => {
     const c = ctx({ locale: "en-US", privacy: true }, [heavy, gap]);
     expect(decideFacts(rules, c)).toEqual([
       "CD Projekt is 7.5% of the portfolio (your limit 5%)",
-      "No contribution for 41 days (last Oct 2). Your plan expects ••• a month by the 10th.",
+      "No contribution for 41 days (last 2 Oct). Your plan expects ••• a month by the 10th.",
       "Old rule: •••% over",
     ]);
   });

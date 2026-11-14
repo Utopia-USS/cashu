@@ -11,7 +11,7 @@ import {
   WEEKLY_HOUR,
 } from "@cashu/domain/core/notifications";
 import { intlLocale, lang } from "@cashu/i18n";
-import { formatClockTime } from "@cashu/i18n/values";
+import { appClockLocale, formatClockTime } from "@cashu/i18n/values";
 import { markedAlerts, notificationPrefs, setNotificationPrefs } from "@cashu/store/device";
 import { useCommand, useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
@@ -31,9 +31,10 @@ import type { NotificationsViewProps } from "./NotificationsView";
 /** The dev preview arrives this long after the tap (time to lock the screen). */
 const PREVIEW_DELAY_MS = 5_000;
 
-/** A wall-clock hour as a setting label reads it ("18:00", "6:00 PM"). */
+/** A wall-clock hour as a setting label reads it: "18:00" in both languages (`appClockLocale`, 24 h
+ * whatever English region the phone is set to). */
 function hourText(hour: number, locale: string): string {
-  return formatClockTime(new Date(2000, 0, 2, hour), locale, { naturalHour: true });
+  return formatClockTime(new Date(2000, 0, 2, hour), appClockLocale(locale));
 }
 
 export function useNotificationsScreen(args: {

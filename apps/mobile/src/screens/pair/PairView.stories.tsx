@@ -56,6 +56,7 @@ export const FirstSyncWaiting = {
     profile: null,
     progress: null,
     canOpen: false,
+    suggestLock: true,
     done: false,
     onOpen: noop,
   },
@@ -66,6 +67,7 @@ export const FirstSyncProgress = {
     profile: null,
     progress: { applied: 12_400, expected: 64_000 },
     canOpen: false,
+    suggestLock: true,
     done: false,
     onOpen: noop,
   },
@@ -76,6 +78,7 @@ export const FirstSyncOpenable = {
     profile: "Ala",
     progress: { applied: 40_000, expected: 64_000 },
     canOpen: true,
+    suggestLock: true,
     done: false,
     onOpen: noop,
   },
@@ -86,10 +89,13 @@ export const Done = {
     profile: "Ala",
     progress: null,
     canOpen: true,
+    suggestLock: true,
     done: true,
     onOpen: noop,
   },
 };
+/** Done with the app lock on after the flow (the default of a paired phone): no "Turn on Face ID". */
+export const DoneLockOn = { args: { ...Done.args, suggestLock: false } };
 const failed = (reason: string, canScanAgain = true) => ({
   args: { kind: "failed", reason, canScanAgain, onScanAgain: noop, onCancel: noop },
 });

@@ -1,6 +1,7 @@
 // Stories of the profile sheet (CSF 3, synthetic profiles): the owner with two profiles and nothing
 // waiting (no "Waiting for you on the Mac" section, only the line about the Mac), proposals waiting, incognito on, notifications off in iOS Settings, a partner phone with one profile, a release build, the app
-// lock on, a Touch ID phone and a phone with nothing set up to unlock with.
+// lock on, a Touch ID phone and a phone with nothing set up to unlock with; a paired phone whose sync is paused or
+// was turned off on the Mac.
 import { ProfileSheetView, type ProfileSheetViewProps } from "./ProfileSheetView";
 
 const base: ProfileSheetViewProps = {
@@ -31,6 +32,7 @@ const base: ProfileSheetViewProps = {
   role: null,
   unavailable: [],
   removeFailed: false,
+  sync: { line: null, notice: null },
   onPair: () => {},
   onRoleChanged: () => {},
   onRemoveCopy: () => {},
@@ -94,5 +96,33 @@ export const ProfileDoesNotOpen = {
         text: "cashU can't open Home on this phone. Pair it again with your Mac, or remove this copy.",
       },
     ],
+  },
+};
+export const SyncPaused = {
+  args: {
+    ...PairedOwner.args,
+    sync: {
+      line: { text: "Sync paused since 19:50 · cashU works as usual", tone: "muted" as const },
+      notice: null,
+    },
+  },
+};
+export const SyncTurnedOff = {
+  args: {
+    ...PairedOwner.args,
+    sync: {
+      line: null,
+      notice: {
+        kind: "syncOff" as const,
+        title:
+          "Sync for Anna was turned off on your Mac. The copy on this phone stays until you remove it.",
+        body: null,
+        actions: [
+          { label: "Remove this copy", tone: "danger" as const, onPress: () => {} },
+          { label: "Keep for now", tone: "secondary" as const, onPress: () => {} },
+        ],
+        failed: false,
+      },
+    },
   },
 };

@@ -93,8 +93,11 @@ export function useTodayScreen(args: {
     openProfile: args.openProfile,
     onShowRunning: () => void putAwayCommand.run({ vault, month: closedMonth }),
   });
-  if (showsClosed(args.today, closed.complete, closed.planSaved, putAway)) {
-    return { kind: "closed", month: closedMonth, ...closed.view };
+  // A sync state that asks the owner (removed, sync turned off on the Mac, a profile that does not open)
+  // must be seen: the running month (whose banner slot shows it) wins over the closed month meanwhile.
+  if (sync.notice === null && showsClosed(args.today, closed.complete, closed.planSaved, putAway)) {
+    // The quiet line (paused, stuck changes, today's limit) keeps Today's slot under the header.
+    return { kind: "closed", month: closedMonth, ...closed.view, sync };
   }
 
   const currency = month.currency;

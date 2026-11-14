@@ -28,6 +28,8 @@ import {
   RELAY_PULL_INTERVAL_MS,
   RELAY_PUSH_DEBOUNCE_MS,
   RELAY_QUOTA_BACKOFF_MS,
+  RELAY_WATCH_MAX_MS,
+  RELAY_WATCH_PULL_MS,
 } from "./policy.js";
 
 const harness = relayHarness();
@@ -636,4 +638,72 @@ it("answers retry for a purge that stopped part way, offline for one that delete
   gate.failFrom = Number.POSITIVE_INFINITY;
   expect((await host.relay.purge(env.vault)).result).toEqual({ kind: "done" });
   expect(relayBytes(env.fake, env.vault)).toBe(0);
+});
+
+it("pulls every 5 s while a pairing waits for the phone, holds during the quota hour, ends after 3 min or at stop", async () => {
+  const env = await setup();
+  const host = await enabled(env);
+  const passes = enginePasses(host, env.vault);
+  const settled = async (count: number) => {
+    await until(() => host.relay.pending() === 0 && passes.count === count);
+    await vaultQueueDrained(host, env.vault);
+  };
+  // The open pass ran just now: the first watch pull waits its 5 s (literal seconds, not the constant).
+  const stop = host.relay.watchPairing(env.vault);
+  env.timers.advance(4_999);
+  await vaultQueueDrained(host, env.vault);
+  expect(passes.count).toBe(0);
+  env.timers.advance(1);
+  await settled(1);
+  const before = relayRequests(env.fake);
+  env.timers.advance(5_000);
+  await settled(2);
+  // What one watch pull of an unchanged vault asks the relay (the cost per 5 s).
+  const perPull = relayRequests(env.fake) - before;
+  expect(perPull).toBe(2);
+
+  // Over quota: the failing pull arms the 1 h back-off and the watch reaches nothing meanwhile.
+  env.fake.faults.quota(1_000);
+  env.timers.advance(5_000);
+  await settled(3);
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("quota");
+  const failed = relayRequests(env.fake);
+  for (let i = 0; i < 6; i++) env.timers.advance(5_000);
+  await vaultQueueDrained(host, env.vault);
+  expect(passes.count).toBe(3);
+  expect(relayRequests(env.fake)).toBe(failed);
+  env.fake.faults.reset();
+  stop();
+
+  // A new watch after the hour: pulls until 3 minutes after it started, then only the 5-minute timer.
+  env.timers.advance(RELAY_QUOTA_BACKOFF_MS);
+  await until(() => host.relay.pending() === 0);
+  await vaultQueueDrained(host, env.vault);
+  const start = passes.count;
+  host.relay.watchPairing(env.vault);
+  for (let i = 1; i <= RELAY_WATCH_MAX_MS / RELAY_WATCH_PULL_MS + 4; i++) {
+    env.timers.advance(5_000);
+    await until(() => host.relay.pending() === 0);
+    await vaultQueueDrained(host, env.vault);
+  }
+  // Ticks at 5 s .. 175 s pull (35); the one at 3 min finds the deadline reached and ends the watch.
+  // A 5-minute tick inside the span is refused by the 60 s pull gap (a watch pull ran just before).
+  expect(passes.count - start).toBe(35);
+  const ended = passes.count;
+  for (let i = 0; i < 6; i++) env.timers.advance(5_000);
+  await vaultQueueDrained(host, env.vault);
+  expect(passes.count).toBe(ended);
+  expect(env.timers.pendingDelays()).toHaveLength(1);
+
+  // A stopped watch ends at once.
+  const stopNow = host.relay.watchPairing(env.vault);
+  env.timers.advance(60_000);
+  await until(() => host.relay.pending() === 0);
+  await vaultQueueDrained(host, env.vault);
+  const stoppedAt = passes.count;
+  stopNow();
+  for (let i = 0; i < 6; i++) env.timers.advance(5_000);
+  await vaultQueueDrained(host, env.vault);
+  expect(passes.count).toBe(stoppedAt);
+  expect(env.timers.pendingDelays()).toHaveLength(1);
 });

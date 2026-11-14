@@ -1,8 +1,11 @@
 // Display text the alert sheet, the position page and the note reader put into their copy: instants of
 // the store's views as device-local times, calendar days, public prices and shares (never hidden), and
 // the owner's own average cost (hidden while amounts are hidden). Pure: the hooks pass the locale in.
+// Times and dates go through `appClockLocale` (24 h "19:40", "14 Nov 2026" / "14 lis 2026") whatever
+// English region the phone is set to; numbers keep the device locale.
 import { D, Decimal, daysBetween, type IsoDate } from "@cashu/domain";
 import {
+  appClockLocale,
   formatCalendarDate,
   formatCalendarDay,
   formatClockTime,
@@ -37,19 +40,20 @@ export function momentText(
   const at = instantOf(stamp);
   const day = localToday(at);
   const days = daysBetween(day, today);
+  const clock = appClockLocale(locale);
   return {
     today: days === 0,
     day:
       days > 0 && days <= WEEKDAY_DAYS
-        ? formatCalendarDay(day, locale).weekday
-        : formatCalendarDate(day, locale, "medium"),
-    time: formatClockTime(at, locale),
+        ? formatCalendarDay(day, clock).weekday
+        : formatCalendarDate(day, clock, "medium"),
+    time: formatClockTime(at, clock),
   };
 }
 
-/** A calendar day in the medium style ("Nov 7, 2026" / "7 lis 2026"). */
+/** A calendar day in the medium style ("7 Nov 2026" / "7 lis 2026"). */
 export function dayText(day: IsoDate, locale: string): string {
-  return formatCalendarDate(day, locale, "medium");
+  return formatCalendarDate(day, appClockLocale(locale), "medium");
 }
 
 /** A public market price ("PLN 214.60"): quotes and levels are never hidden. */
@@ -97,12 +101,13 @@ export function averageCostOf(position: {
 }
 
 const shortFormats = new Map<string, Intl.DateTimeFormat>();
-/** A chart axis day: "Nov 12" / "12 lis" (on its ISO day in every device timezone). */
+/** A chart axis day: "12 Nov" / "12 lis" (on its ISO day in every device timezone). */
 export function axisDayText(day: IsoDate, locale: string): string {
-  let format = shortFormats.get(locale);
+  const clock = appClockLocale(locale);
+  let format = shortFormats.get(clock);
   if (!format) {
-    format = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" });
-    shortFormats.set(locale, format);
+    format = new Intl.DateTimeFormat(clock, { day: "numeric", month: "short", timeZone: "UTC" });
+    shortFormats.set(clock, format);
   }
   return format.format(new Date(`${day}T12:00:00Z`));
 }

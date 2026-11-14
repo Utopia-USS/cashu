@@ -2,6 +2,7 @@
 // a sentence already honours privacy); the View only lays it out.
 import type { Money } from "@cashu/domain";
 import type { TabFresh, TabHeaderProps } from "../../shell/TabHeader";
+import type { SyncSlot } from "../../sync/useSyncNotice";
 
 /** Where the screen sits: Today's tab root (the tab header) or pushed from Spending (a native header). */
 type MonthClosedChrome =
@@ -55,6 +56,9 @@ export interface MonthClosedViewProps {
   readonly chrome: MonthClosedChrome;
   /** "November closed". */
   readonly title: string;
+  /** Today's sync slot under the tab header (a quiet line such as "Sync paused since 19:40"); absent when
+   * pushed from Spending. A notice that asks the owner never reaches here: the running month wins then. */
+  readonly sync?: SyncSlot;
   readonly hero: {
     /** "Kept in November" (the View appends the bananas suffix while amounts are hidden). */
     readonly label: string;

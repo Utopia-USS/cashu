@@ -16,15 +16,20 @@ import { type PairScreenArgs, usePairScreen } from "./usePairScreen";
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
 
 let mockCameraGranted = true;
+/** Never answered yet (iOS would prompt): `request` counts the prompts. */
+let mockCameraUnknown = false;
+const mockRequest = jest.fn(async () => undefined);
 // Like expo-camera, the same permission object (and request function) until the answer changes:
 // the platform hook answers once per change, not on every render.
 const mockPermissions = {
   granted: [{ granted: true, canAskAgain: false, status: "granted" }, async () => undefined],
   denied: [{ granted: false, canAskAgain: false, status: "denied" }, async () => undefined],
+  unknown: [{ granted: false, canAskAgain: true, status: "undetermined" }, mockRequest],
 };
 jest.mock("expo-camera", () => ({
   CameraView: () => null,
-  useCameraPermissions: () => mockPermissions[mockCameraGranted ? "granted" : "denied"],
+  useCameraPermissions: () =>
+    mockPermissions[mockCameraUnknown ? "unknown" : mockCameraGranted ? "granted" : "denied"],
 }));
 
 const services = {
@@ -66,6 +71,8 @@ function wrap(children: ReactNode) {
 beforeEach(() => {
   setLanguageForTests("en");
   mockCameraGranted = true;
+  mockCameraUnknown = false;
+  mockRequest.mockClear();
   pairFlow.reset();
 });
 
@@ -175,6 +182,38 @@ it("saves the role picked and moves on to the first sync", async () => {
   expect(saveRole).toHaveBeenCalledWith("v1", "partner");
   expect(screen.getByText("Waiting for your data from your Mac...")).toBeOnTheScreen();
   expect(screen.getByLabelText("Open cashU")).toBeDisabled();
+});
+
+it("asks for the camera only once the modal's presentation finished and the scan step drew", async () => {
+  mockCameraUnknown = true;
+  const view = await render(wrap(<Screen close={() => {}} presented={false} />));
+  await fireEvent(screen.getByText("Scan the code on your Mac"), "layout", {
+    nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 80 } },
+  });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  // Still sliding in: iOS would draw the prompt over a modal that shows nothing yet.
+  expect(mockRequest).not.toHaveBeenCalled();
+  await view.rerender(wrap(<Screen close={() => {}} presented />));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(mockRequest).toHaveBeenCalledTimes(1);
+});
+
+it("suggests Face ID on the last step only when the lock will be off", async () => {
+  const toDone = async () => {
+    await act(async () => {
+      pairFlow.dispatch({ type: "connecting" });
+      pairFlow.dispatch({ type: "sas", sas: "418207", expiresAt: Date.now() + 60_000 });
+      pairFlow.dispatch({ type: "storing" });
+      pairFlow.dispatch({ type: "stored", vault: "v1" });
+      pairFlow.dispatch({ type: "roleSaved" });
+    });
+  };
+  const view = await render(wrap(<Screen close={() => {}} lockAfter />));
+  await toDone();
+  expect(screen.getByText("Stored encrypted on this phone.")).toBeOnTheScreen();
+  expect(screen.queryByText(/Turn on Face ID/)).toBeNull();
+  await view.rerender(wrap(<Screen close={() => {}} lockAfter={false} />));
+  expect(screen.getByText(/Turn on Face ID so only you can open it/)).toBeOnTheScreen();
 });
 
 describe("PairView stories", () => {

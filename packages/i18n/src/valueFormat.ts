@@ -220,6 +220,16 @@ export function formatCalendarDay(
   return { day: formats[0].format(date), weekday: formats[1].format(date) };
 }
 
+/**
+ * The locale of the app's own times and dates, on every platform (the desktop's Settings rule): Polish
+ * writes as pl-PL, every English locale as en-GB, so a time reads "19:40" (24 h) and a date "14 Nov 2026"
+ * / "14 lis 2026" whatever English region the device is set to. Pass it to `formatClockTime` and
+ * `formatCalendarDate`.
+ */
+export function appClockLocale(locale: string): string {
+  return /^pl\b/i.test(locale) ? "pl-PL" : "en-GB";
+}
+
 const clockFormats = new Map<string, Intl.DateTimeFormat>();
 function clockFormat(
   locale: string,

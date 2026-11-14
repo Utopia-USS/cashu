@@ -60,6 +60,8 @@ export type PairScreenState =
       readonly progress: { readonly applied: number; readonly expected: number } | null;
       /** The profile and its accounts are here: "Open cashU" works. */
       readonly canOpen: boolean;
+      /** The app lock will be off once the flow is done: the note suggests turning on Face ID. */
+      readonly suggestLock: boolean;
       /** Everything arrived. */
       readonly done: boolean;
       onOpen(): void;
@@ -84,6 +86,13 @@ export interface PairScreenArgs {
   saveRole(vault: string, role: ProfileRole): Promise<void>;
   /** The profile names this phone holds now (the first sync's title). */
   profileName(vault: string): string | null;
+  /**
+   * The modal's presentation finished (`useTransitionEnded`): the camera prompt waits for it, since iOS
+   * draws the prompt over a modal still sliding in, which shows nothing yet. Defaults to true.
+   */
+  readonly presented?: boolean;
+  /** The app lock is on once the flow is done (`useLockAfterPairing`); defaults to false. */
+  readonly lockAfter?: boolean;
   readonly now?: () => number;
 }
 
@@ -98,16 +107,20 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
 
   // The permission as last answered: the platform hook answers once per change, so a new scan after
   // a failure starts from it (a denied camera goes straight to the paste path).
-  // The system prompt is asked for only once the scan step drew its title and hint (one frame after
-  // their layout): asked earlier, iOS covers a modal that shows nothing yet.
+  // The system prompt is asked for only once the modal's presentation finished and the scan step drew its
+  // title and hint (one frame after their layout): asked earlier, iOS covers a modal that shows nothing
+  // yet.
   const [camera, setCamera] = useState<CameraAccess>("unknown");
   const [shown, setShown] = useState(false);
-  useCameraAccess((access) => {
-    setCamera(access);
-    if (state.kind === "scan" && state.camera !== access) {
-      pairFlow.dispatch({ type: "camera", access });
-    }
-  }, shown);
+  useCameraAccess(
+    (access) => {
+      setCamera(access);
+      if (state.kind === "scan" && state.camera !== access) {
+        pairFlow.dispatch({ type: "camera", access });
+      }
+    },
+    shown && (args.presented ?? true),
+  );
 
   // The six digits' countdown; at zero the run stops and the flow says "Scan again".
   const tick = useEffectEvent(() => {
@@ -201,6 +214,7 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
         profile: ready ? args.profileName(state.vault) : null,
         progress: status?.progress ?? null,
         canOpen: ready,
+        suggestLock: args.lockAfter !== true,
         done: ready && status?.syncing !== true,
         onOpen: () => pairFlow.dispatch({ type: "finish" }),
       };

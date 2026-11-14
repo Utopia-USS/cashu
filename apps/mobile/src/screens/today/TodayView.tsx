@@ -4,7 +4,6 @@
 // month-closed state the closed month takes the place of all of it.
 import {
   Banner,
-  Button,
   DateLead,
   Figure,
   Icon,
@@ -20,7 +19,7 @@ import {
 } from "@cashu/ui/native";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { TabHeader } from "../../shell/TabHeader";
-import { S as SyncS } from "../../sync/Sync.strings";
+import { SyncSlotView } from "../../sync/SyncSlotView";
 import { MonthClosedView } from "../monthClosed/MonthClosedView";
 import { S } from "./Today.strings";
 import type { TodayAttentionRow, TodayReady, TodayState } from "./today-contracts";
@@ -180,46 +179,6 @@ function WhereItWent({ state }: { state: TodayReady }) {
         </Pressable>
       )}
     </Tile>
-  );
-}
-
-/** Sync in the banner slot: a quiet line, or the notice that asks the owner with its buttons. */
-function SyncSlotView({ slot }: { slot: TodayReady["sync"] }) {
-  if (slot.notice !== null) {
-    return (
-      <Tile title={slot.notice.title}>
-        <View className="gap-3">
-          {slot.notice.body !== null && (
-            <Text className="text-body text-fg-secondary">{slot.notice.body}</Text>
-          )}
-          {slot.notice.failed && (
-            <Text accessibilityRole="alert" className="text-caption text-negative">
-              {SyncS.couldNotRemove}
-            </Text>
-          )}
-          {slot.notice.actions.map((action) => (
-            <Button
-              key={action.label}
-              variant={action.tone}
-              block
-              label={action.label}
-              onPress={action.onPress}
-            >
-              {action.label}
-            </Button>
-          ))}
-        </View>
-      </Tile>
-    );
-  }
-  if (slot.line === null) return null;
-  return (
-    <Text
-      accessibilityLiveRegion="polite"
-      className={`px-1 text-caption ${slot.line.tone === "warning" ? "text-warning" : "text-fg-muted"}`}
-    >
-      {slot.line.text}
-    </Text>
   );
 }
 

@@ -16,6 +16,7 @@ import {
 } from "@cashu/ui/native";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { TabHeader } from "../../shell/TabHeader";
+import { SyncSlotView } from "../../sync/SyncSlotView";
 import { S as Today } from "../today/Today.strings";
 import { S } from "./MonthClosed.strings";
 import type { MonthClosedStrategy, MonthClosedViewProps } from "./monthClosed-contracts";
@@ -146,6 +147,7 @@ function Categories({ categories }: Pick<MonthClosedViewProps, "categories">) {
 function MonthClosedContent(props: MonthClosedViewProps) {
   return (
     <View className="gap-3 p-4">
+      {props.sync !== undefined && <SyncSlotView slot={props.sync} />}
       <Kept hero={props.hero} />
       <Strategy strategy={props.strategy} />
       {props.strategy.kind !== "off" && <NoteLine icon="shield">{S.planNote}</NoteLine>}

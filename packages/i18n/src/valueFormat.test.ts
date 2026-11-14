@@ -1,6 +1,7 @@
 import { D } from "@cashu/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  appClockLocale,
   fillNumberTemplate,
   formatBananaValue,
   formatCalendarDate,
@@ -164,5 +165,17 @@ describe("number formatting without Intl.NumberFormat.formatToParts (Hermes on i
     expect(fillNumberTemplate("1,00 z\u0142", "12 345", "05", 2)).toBe("12 345,05 z\u0142");
     expect(fillNumberTemplate("0.0%", "12", "3", 1)).toBe("12.3%");
     expect(fillNumberTemplate("PLN 1", "999", "", 0)).toBe("PLN 999");
+  });
+});
+
+describe("appClockLocale", () => {
+  it("writes times on 24 h and dates day first in both languages, whatever the English region", () => {
+    const at = new Date(2026, 10, 14, 19, 40);
+    for (const locale of ["en-US", "en", "en-GB", "en-AU"]) {
+      expect(formatClockTime(at, appClockLocale(locale))).toBe("19:40");
+      expect(formatCalendarDate("2026-11-14", appClockLocale(locale))).toBe("14 Nov 2026");
+    }
+    expect(formatClockTime(at, appClockLocale("pl-PL"))).toBe("19:40");
+    expect(formatCalendarDate("2026-11-14", appClockLocale("pl"))).toBe("14 lis 2026");
   });
 });

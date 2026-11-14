@@ -441,3 +441,24 @@ it("says the phone is already added when the host refuses the cancel with alread
     await view.close();
   }
 });
+
+it("returns to Create invitation with a line when the host says the phone cancelled", async () => {
+  const inspect = vi
+    .fn()
+    .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: true })
+    .mockResolvedValueOnce({ kind: "phone_cancelled", operationId: OP });
+  const view = await created(readyBridge({ inspect }));
+  try {
+    expect(view.container.textContent).toContain("Type the six digits shown on your phone.");
+    // The host ended the invitation on the phone's abort and pushed a new pairing revision.
+    await view.push();
+    expect(view.container.textContent).toContain(
+      "The phone cancelled pairing. Create a new invitation to try again.",
+    );
+    expect(view.container.textContent).not.toContain("Type the six digits");
+    expect(view.container.querySelector('input[inputmode="numeric"]')).toBeNull();
+    expect(view.button("Create invitation")).toBeDefined();
+  } finally {
+    await view.close();
+  }
+});

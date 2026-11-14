@@ -206,7 +206,7 @@ describe("the alert sheet over the real synchronous store", () => {
     );
     expect(covered).toEqual([{ n: 1 }]);
     expect(ready().decision).toBeNull();
-    expect(ready().settled).toBe("Noted: Nothing for now · Nov 12, 2026");
+    expect(ready().settled).toBe("Noted: Nothing for now · 12 Nov 2026");
   });
 
   it("writes one decision for two taps on Save before the next render", async () => {

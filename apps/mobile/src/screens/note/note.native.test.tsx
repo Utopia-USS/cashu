@@ -125,16 +125,16 @@ describe("the research note reader over the real synchronous store", () => {
   it("reads the note with its verdict, the quoted thesis and its sources, and marks it read", async () => {
     const { fixture, gid, ready } = await show("Q3 and the 2027 slate");
     expect(ready().tag).toEqual({ text: "weakens your thesis", tone: "negative" });
-    expect(ready().meta).toBe("CD Projekt · news · Nov 7, 2026");
+    expect(ready().meta).toBe("CD Projekt · news · 7 Nov 2026");
     expect(ready().blocks.map((b) => b.kind)).toEqual(["p", "quote", "p", "p"]);
     expect(ready().blocks[1]?.text).toMatch(
       /^Your thesis is wrong if the 2027 release slips again/,
     );
     expect(ready().sources.map((s) => s.title)).toEqual([
-      "Company Q3 report and call transcript - Nov 5, 2026",
-      "Release window report - Nov 6, 2026",
-      "Exchange quote history - Nov 7, 2026",
-      "Public broker note summary - Nov 6, 2026",
+      "Company Q3 report and call transcript - 5 Nov 2026",
+      "Release window report - 6 Nov 2026",
+      "Exchange quote history - 7 Nov 2026",
+      "Public broker note summary - 6 Nov 2026",
     ]);
     expect(ready().byAgent).toBe(true);
     expect(screen.getByText("Written by your research agent on your Mac.")).toBeOnTheScreen();
@@ -144,14 +144,14 @@ describe("the research note reader over the real synchronous store", () => {
 
   it("opens a source's link through the route", async () => {
     await show("Q3 and the 2027 slate");
-    await fireEvent.press(screen.getByText("Release window report - Nov 6, 2026"));
+    await fireEvent.press(screen.getByText("Release window report - 6 Nov 2026"));
     expect(openLink).toHaveBeenCalledWith("https://research.example.com/cdr/release-window");
   });
 
   it("shows a theme note without a verdict as background, without a quote", async () => {
     const { ready } = await show("USD/PLN: what moved it this month");
     expect(ready().tag).toEqual({ text: "background", tone: "neutral" });
-    expect(ready().meta).toMatch(/^usd_pln · macro · Nov \d+, 2026$/);
+    expect(ready().meta).toMatch(/^usd_pln · macro · \d+ Nov 2026$/);
     expect(ready().blocks.every((b) => b.kind === "p")).toBe(true);
   });
 

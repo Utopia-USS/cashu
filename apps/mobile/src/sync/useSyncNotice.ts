@@ -18,6 +18,8 @@ export interface SyncSlot {
   readonly line: { readonly text: string; readonly tone: "muted" | "warning" } | null;
   /** A state that asks the owner; null when none. */
   readonly notice: {
+    /** Which state asks: removed (#23.7), sync turned off on the Mac (#25.4), a profile that does not open. */
+    readonly kind: "removed" | "syncOff" | "needsRepair";
     readonly title: string;
     readonly body: string | null;
     readonly actions: readonly SyncNoticeAction[];
@@ -77,6 +79,7 @@ export function useSyncNotice(args: {
         return {
           line: null,
           notice: {
+            kind: "removed",
             title: S.removed(args.profile),
             body: S.removedBody,
             actions: [remove],
@@ -88,6 +91,7 @@ export function useSyncNotice(args: {
         return {
           line: null,
           notice: {
+            kind: "syncOff",
             title: S.syncOff(args.profile),
             body: null,
             actions: [
@@ -105,6 +109,7 @@ export function useSyncNotice(args: {
         return {
           line: null,
           notice: {
+            kind: "needsRepair",
             title: S.needsRepair(args.profile),
             body: null,
             actions: [

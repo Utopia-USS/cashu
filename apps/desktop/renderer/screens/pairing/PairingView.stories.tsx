@@ -47,6 +47,10 @@ export const Refused = {
 export const AlreadyAdded = {
   render: () => <PairingView state={{ kind: "already_added", onCreate: noop }} />,
 };
+/** The phone closed its six-digit step: the invitation is over, a new one can start. */
+export const PhoneCancelled = {
+  render: () => <PairingView state={{ kind: "phone_cancelled", onCreate: noop }} />,
+};
 export const Unavailable = { render: () => <PairingView state={{ kind: "unavailable" }} /> };
 export const Expired = {
   render: () => <PairingView state={{ kind: "expired", onCreate: noop }} />,

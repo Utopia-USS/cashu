@@ -53,7 +53,12 @@ export const T = catalog({
     en: "Not every selected device can be recertified. Change the selection and review again.",
   },
   inspect: { pl: "Sprawdź wynik", en: "Check outcome" },
-  headTrusted: { pl: "Potwierdzony punkt odcięcia", en: "Trusted cut head" },
+  // Proposed (QA run 2 Obs. 9), for the designer: the removal keeps this device's changes up to the
+  // last one this Mac verified and leaves out later ones (the contrast to "Changes not fetched here").
+  headTrusted: {
+    pl: "Zmiany, które już dotarły z niego do tego Maca, zostają.",
+    en: "Changes that already reached this Mac stay.",
+  },
   headLocalStart: { pl: "Nie pobrano tu zmian", en: "Changes not fetched here" },
   orphanTitle: { pl: "Urządzenia, które utracą zaufanie", en: "Devices that will lose trust" },
   orphanChoice: { pl: "Zachowaj dostęp dla", en: "Keep access for" },

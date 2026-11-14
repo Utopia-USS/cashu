@@ -78,17 +78,20 @@ export function useSyncRow(): {
     onRefused: (reason: Extract<RelayActionResult, { kind: "refused" }>["reason"]) => Outcome,
   ): Promise<void> {
     if (!bridge || !online || busy) return;
-    const ticket = epoch.current;
+    // The action's result is not tied to `epoch` (the status reads): a host push during the action
+    // (the purge writes the switch off and the host re-checks the vault) must not drop the result or
+    // leave the row busy. This hook is one vault's (DevicesScreen keys it by vault), so the result
+    // always belongs here. A status read started before the action must not land after its own read.
+    epoch.current++;
     setBusy(true);
     setOutcome("none");
     try {
       const result = await run({ vault });
-      if (epoch.current !== ticket) return;
       setOutcome(result.kind === "done" ? onDone : onRefused(result.reason));
     } catch {
-      if (epoch.current === ticket) setOutcome("failed");
+      setOutcome("failed");
     } finally {
-      if (epoch.current === ticket) setBusy(false);
+      setBusy(false);
       await readStatus();
     }
   }

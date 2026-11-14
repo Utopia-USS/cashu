@@ -161,14 +161,14 @@ describe("signalText", () => {
     cases(
       "contribution_gap",
       gap,
-      "No contribution for 41 days (last Oct 2). Your plan expects PLN 2,500 a month by the 10th.",
+      "No contribution for 41 days (last 2 Oct). Your plan expects PLN 2,500 a month by the 10th.",
       "Brak wpłaty od 41 dni (ostatnia 2 paź). Plan zakłada wpłatę 2500 zł do 10. dnia każdego miesiąca.",
       portfolio,
     ),
     cases(
       "contribution_gap",
       { ...gap, day_of_month: 1, days_since_last_deposit: 1 },
-      "No contribution for 1 day (last Oct 2). Your plan expects PLN 2,500 a month by the 1st.",
+      "No contribution for 1 day (last 2 Oct). Your plan expects PLN 2,500 a month by the 1st.",
       "Brak wpłaty od 1 dnia (ostatnia 2 paź). Plan zakłada wpłatę 2500 zł do 1. dnia każdego miesiąca.",
       portfolio,
     ),
@@ -419,7 +419,7 @@ describe("signalText", () => {
     const hidden: DisplayEnv = { locale: "en-US", privacy: true };
     expect(
       signalText({ kind: "contribution_gap", message: "raw", payload: gap }, portfolio, hidden),
-    ).toBe("No contribution for 41 days (last Oct 2). Your plan expects ••• a month by the 10th.");
+    ).toBe("No contribution for 41 days (last 2 Oct). Your plan expects ••• a month by the 10th.");
     expect(
       signalText(
         {
@@ -473,7 +473,7 @@ describe("signalText", () => {
         { ...portfolio, baseCurrency: null },
         hidden,
       ),
-    ).toBe("No contribution for 41 days (last Oct 2). Your plan expects ••• a month by the 10th.");
+    ).toBe("No contribution for 41 days (last 2 Oct). Your plan expects ••• a month by the 10th.");
   });
 
   it("makes the engine's own text safe: no owner's bucket id, amounts hidden in incognito", () => {
@@ -538,7 +538,7 @@ describe("signalText", () => {
         enUS,
       ),
     ).toBe(
-      "No contribution for 41 days (last Oct 2). Your plan expects 2,500 a month by the 10th.",
+      "No contribution for 41 days (last 2 Oct). Your plan expects 2,500 a month by the 10th.",
     );
     // A custom rule with the owner's own message keeps that message.
     const own = {

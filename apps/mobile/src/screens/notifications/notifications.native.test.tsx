@@ -86,13 +86,13 @@ describe("the notifications settings", () => {
     const fixture = moneyStore();
     closers.push(fixture.close);
     await show(fixture.services, memoryScheduler("granted"));
-    expect(screen.getByRole("switch", { name: "Evening, 7:00 PM" })).not.toBeChecked();
-    await fireEvent.press(screen.getByRole("switch", { name: "Evening, 7:00 PM" }));
+    expect(screen.getByRole("switch", { name: "Evening, 19:00" })).not.toBeChecked();
+    await fireEvent.press(screen.getByRole("switch", { name: "Evening, 19:00" }));
     const read = deviceRead(fixture.services);
     expect(notificationPrefs.run(read, { vault: MONEY_VAULT_A }).evening).toBe(true);
     expect(notificationPrefs.run(read, { vault: MONEY_VAULT_B }).evening).toBe(false);
-    expect(screen.getByRole("switch", { name: "Evening, 7:00 PM" })).toBeChecked();
-    await fireEvent.press(screen.getByRole("switch", { name: "Sunday, 6:00 PM" }));
+    expect(screen.getByRole("switch", { name: "Evening, 19:00" })).toBeChecked();
+    await fireEvent.press(screen.getByRole("switch", { name: "Sunday, 18:00" }));
     expect(notificationPrefs.run(read, { vault: MONEY_VAULT_A }).weekly).toBe(false);
   });
 
@@ -164,7 +164,7 @@ describe("the notifications settings", () => {
       screen
         .getAllByRole("switch")
         .flatMap((s) => (s.props.accessibilityLabel ? [s.props.accessibilityLabel] : [])),
-    ).toEqual(["Sunday, 6:00 PM", "Month closed", "Evening, 7:00 PM"]);
+    ).toEqual(["Sunday, 18:00", "Month closed", "Evening, 19:00"]);
     expect(screen.queryByText("Warnings, once")).toBeNull();
     expect(
       screen.getByText("Never sent: single payments, daily portfolio moves, market news, streaks."),

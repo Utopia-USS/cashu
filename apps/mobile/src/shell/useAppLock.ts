@@ -9,22 +9,47 @@ import { deviceLock } from "@cashu/store/device";
 import { useProfile, useQuery } from "@cashu/store-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppState, type AppStateStatus } from "react-native";
+import { pairFlow, pairingContinues } from "../screens/pair/pairFlow";
 import { useServices } from "../services/ServicesProvider";
 import type { Authenticator, AuthPrompt } from "./auth";
 import { S as L } from "./Lock.strings";
 import type { LockScreenViewProps } from "./LockScreenView";
 import { dueForPrompt, initialLock, type LockEvent, type LockState, reduceLock } from "./lockState";
 import { holdNavigation } from "./navigationHold";
+import { useProfileNames } from "./profileNames";
 import { initialOf } from "./tabs";
 
 const PROMPT_DELAY_MS = 300;
 
-/** The app lock is on: the owner's choice, else on for real vaults and off for the demo. */
+/**
+ * Whether the app lock is on (pure): the owner's choice, else on for real vaults and off for the demo.
+ * The default waits while a pairing's last steps run (`pairingContinues`: storing, role, first sync): the
+ * services reopen over the new vault mid-flow and would otherwise boot the lock over the role step. It
+ * applies once the flow is done; an explicit choice applies at once.
+ */
+function lockEnabled(input: {
+  readonly appLock: boolean | null;
+  readonly isDemo: boolean;
+  readonly pairing: boolean;
+}): boolean {
+  if (input.appLock !== null) return input.appLock;
+  // TRANSITIONAL(S44): the default follows `isDemo` until every phone holds paired, real vaults.
+  return !input.isDemo && !input.pairing;
+}
+
+/** The lock once no pairing waits (the pairing's last step says whether to suggest Face ID). */
+export function useLockAfterPairing(): boolean {
+  const { isDemo } = useServices();
+  const { appLock } = useQuery(deviceLock);
+  return lockEnabled({ appLock, isDemo, pairing: false });
+}
+
+/** The app lock is on now (`lockEnabled`). */
 export function useLockEnabled(): boolean {
   const { isDemo } = useServices();
   const { appLock } = useQuery(deviceLock);
-  // TRANSITIONAL(S44): the default follows `isDemo` until every phone holds paired, real vaults.
-  return appLock ?? !isDemo;
+  const pairing = useSyncExternalStore(pairFlow.subscribe, pairingContinues, pairingContinues);
+  return lockEnabled({ appLock, isDemo, pairing });
 }
 
 /** The system prompt's texts, with `message` saying what the check is for. */
@@ -133,7 +158,7 @@ export interface AppLock extends LockScreenViewProps {
 }
 
 export function useAppLock(): AppLock {
-  const { auth, profiles } = useServices();
+  const { auth } = useServices();
   const vault = useProfile();
   const enabled = useLockEnabled();
   const [store] = useState(() => createLockStore(enabled));
@@ -145,7 +170,7 @@ export function useAppLock(): AppLock {
     const timer = setTimeout(() => void store.unlock(auth), PROMPT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [due, store, auth]);
-  const name = profiles.find((p) => p.vault === vault)?.name;
+  const name = useProfileNames().get(vault);
   return {
     locked: state.locked,
     initial: name === undefined ? null : initialOf(name),

@@ -17,6 +17,8 @@ const refusal = z.strictObject({
     // The vault's sync is switched off on this Mac / this build has no sync config (invite only).
     "relay_off",
     "no_config",
+    // The phone left the pairing (closed its digits step) before the commit point (confirm only).
+    "phone_cancelled",
   ]),
 });
 
@@ -79,8 +81,19 @@ export const pairingInspectResultSchema = z.union([
     /** The phone scanned the code and its hello reached this Mac: it now shows the six digits. */
     phoneConnected: z.boolean(),
   }),
+  /**
+   * `phone_cancelled`: the phone left the pairing before the commit point (nothing was kept on either
+   * side); the invitation is over and a new one can be created. Answered for a minute after it, then
+   * `not_started`.
+   */
   z.strictObject({
-    kind: z.enum(["waiting_for_phone", "completed", "outcome_unknown", "not_started"]),
+    kind: z.enum([
+      "waiting_for_phone",
+      "completed",
+      "outcome_unknown",
+      "not_started",
+      "phone_cancelled",
+    ]),
     operationId,
   }),
   refusal,

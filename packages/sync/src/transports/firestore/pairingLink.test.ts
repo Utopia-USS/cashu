@@ -400,6 +400,33 @@ describe("FirestorePairingLink (fake relay)", () => {
     expect(r.docs()).toEqual([]);
   });
 
+  it("an aborted receive makes no further relay request and consumes no message", async () => {
+    const r = rig();
+    const { inviter, joiner } = await opened(r);
+    await joiner.claim();
+    const requests = () => Object.values(r.fake.counters).reduce((sum, n) => sum + n, 0);
+    const watch = new AbortController();
+    const waiting = code(inviter.receive({ signal: watch.signal }));
+    // The wait polls the relay (message reads, and the session every few empty polls).
+    const polling = requests();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(requests()).toBeGreaterThan(polling + 4);
+    watch.abort();
+    const settled = new Promise<string>((resolve) => setTimeout(() => resolve("waiting"), 1_000));
+    expect(await Promise.race([waiting, settled])).toBe("closed");
+    const after = requests();
+    // Real time passes (each poll would also move the fake clock): not one request more.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(requests()).toBe(after);
+    // The link stays open: the joiner's next message is still the inviter's next one.
+    await joiner.send(payload(20, 9));
+    expect(await inviter.receive()).toEqual(payload(20, 9));
+    // A receive given an already aborted signal makes no request at all.
+    const before = requests();
+    expect(await code(inviter.receive({ signal: watch.signal }))).toBe("closed");
+    expect(requests()).toBe(before);
+  });
+
   it("a joiner's close stops it locally and deletes nothing", async () => {
     const r = rig();
     const { joiner } = await opened(r);

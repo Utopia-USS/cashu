@@ -11,6 +11,7 @@ import { UiEnvProvider } from "@cashu/ui/native";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import { type ComponentType, type ReactNode, useEffect } from "react";
 import { ServicesProvider } from "../../services/ServicesProvider";
+import type { VaultSyncStatus } from "../../services/vaultEngine";
 import monthClosedMeta, * as monthClosedStories from "../monthClosed/MonthClosedView.stories";
 import {
   applyMoneyCommand,
@@ -363,6 +364,96 @@ describe("the month-closed state over the real store", () => {
     expect(
       fixture.device.read("SELECT value FROM device_settings WHERE key = 'monthClosedSeen'"),
     ).toEqual([{ value: JSON.stringify({ [MONEY_VAULT_A]: "2026-10" }) }]);
+  });
+
+  it("gives way to a sync state that asks the owner (QA: sync turned off on the Mac)", async () => {
+    const fixture = setup();
+    seedMonths(fixture);
+    // The relay refused this phone on the last pass (403): the Mac turned sync off or removed it.
+    const refused: VaultSyncStatus = {
+      vault: MONEY_VAULT_A,
+      phase: "ready",
+      syncing: false,
+      remote: true,
+      unpushed: false,
+      failure: "relay_unreachable",
+      relay: {
+        lastOk: Date.parse("2026-11-01T18:00:00Z"),
+        lastError: "forbidden",
+        lastErrorAt: Date.parse("2026-11-02T07:00:00Z"),
+      },
+    };
+    const synced: MoneyStore = {
+      ...fixture,
+      services: {
+        ...fixture.services,
+        vaults: {
+          ...fixture.services.vaults,
+          unavailable: (vault) => (vault === MONEY_VAULT_A ? refused : undefined),
+        },
+      },
+    };
+    let state: TodayState | undefined;
+    await render(
+      <Frame fixture={synced}>
+        <TodayScreen
+          today="2026-11-02"
+          now="2026-11-02T08:00:00.000Z"
+          observed={(s) => {
+            state = s;
+          }}
+        />
+      </Frame>,
+    );
+    expect(ready(state).sync.notice?.kind).toBe("syncOff");
+    expect(
+      screen.getByText(
+        "Sync for Synthetic A was turned off on your Mac. The copy on this phone stays until you remove it.",
+      ),
+    ).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Keep for now" })).toBeOnTheScreen();
+  });
+
+  it("keeps the quiet sync line under its header (QA: paused never showed in a month's first days)", async () => {
+    const fixture = setup();
+    seedMonths(fixture);
+    // The relay was out on the last pass: a paused line, not a notice, so the closed month stays.
+    const out: VaultSyncStatus = {
+      vault: MONEY_VAULT_A,
+      phase: "ready",
+      syncing: false,
+      remote: true,
+      unpushed: false,
+      relay: {
+        lastOk: new Date(2026, 10, 2, 7, 5).getTime(),
+        lastError: "unavailable",
+        lastErrorAt: new Date(2026, 10, 2, 7, 30).getTime(),
+      },
+    };
+    const paused: MoneyStore = {
+      ...fixture,
+      services: {
+        ...fixture.services,
+        vaults: {
+          ...fixture.services.vaults,
+          unavailable: (vault) => (vault === MONEY_VAULT_A ? out : undefined),
+        },
+      },
+    };
+    let state: TodayState | undefined;
+    await render(
+      <Frame fixture={paused}>
+        <TodayScreen
+          today="2026-11-02"
+          now="2026-11-02T08:00:00.000Z"
+          observed={(s) => {
+            state = s;
+          }}
+        />
+      </Frame>,
+    );
+    expect(closedState(state).title).toBe("October closed");
+    expect(screen.getByText("Sync paused since 07:05 · cashU works as usual")).toBeOnTheScreen();
   });
 
   it("remembers the running month on this device until a later month closes", async () => {

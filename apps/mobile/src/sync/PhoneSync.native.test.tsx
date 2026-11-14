@@ -1,5 +1,6 @@
 // The running app's sync triggers: a pass request after the first frame, one on the way back from the
-// background (not after an inactive blip), one on the arrival in the background, none after unmount.
+// background (not after an inactive blip), one on the arrival in the background, none after unmount; the
+// runner's foreground timer follows the app's state.
 // The runner's own rules (one pass per vault, 30 s, push-only) are pinned in syncRunner.test.ts.
 import { act, cleanup, render } from "@testing-library/react-native";
 import { AppState, type AppStateStatus } from "react-native";
@@ -32,10 +33,14 @@ afterEach(() => {
 it("requests passes after the first frame, on return and on leaving", async () => {
   jest.useFakeTimers();
   const triggers: SyncTrigger[] = [];
+  const foreground: boolean[] = [];
   const services = {
     sync: {
       request: async (trigger: SyncTrigger) => {
         triggers.push(trigger);
+      },
+      foreground: (active: boolean) => {
+        foreground.push(active);
       },
     },
   } as unknown as Services;
@@ -59,6 +64,10 @@ it("requests passes after the first frame, on return and on leaving", async () =
   expect(triggers).toEqual(["start", "background"]);
   await act(() => listener?.("active"));
   expect(triggers).toEqual(["start", "background", "foreground"]);
+  // The runner's foreground timer: on while in the foreground (an inactive spell keeps it), off in the
+  // background and after unmount.
+  expect(foreground).toEqual([true, true, true, true, false, true]);
   await view.unmount();
+  expect(foreground.at(-1)).toBe(false);
   expect(removed).toBe(true);
 });

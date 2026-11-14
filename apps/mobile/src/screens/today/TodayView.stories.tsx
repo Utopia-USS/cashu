@@ -322,6 +322,7 @@ export const SyncRemoved = {
       sync: {
         line: null,
         notice: {
+          kind: "removed",
           title: "This phone was removed from Anna on your Mac",
           body: "The copy stays on this phone until you remove it.",
           actions: [{ label: "Remove this copy", tone: "danger", onPress: noop }],
@@ -338,6 +339,7 @@ export const SyncTurnedOff = {
       sync: {
         line: null,
         notice: {
+          kind: "syncOff",
           title:
             "Sync for Anna was turned off on your Mac. The copy on this phone stays until you remove it.",
           body: null,

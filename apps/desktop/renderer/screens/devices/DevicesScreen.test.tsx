@@ -443,3 +443,23 @@ it("adds the day a device was added when the host knows it, in both languages", 
   await render();
   expect(origins()).toContain("Target: Dodane przez This device · 12 lis 2026");
 });
+
+it("says in plain words what a removal keeps from a device this Mac has changes from", async () => {
+  bindings.list = deviceList();
+  const trusted = {
+    ...prepared(false),
+    targets: [{ device: target, cut: { seg: 1, offset: 0 }, head: "trusted" as const }],
+    affected: [],
+    localStartConfirmationRequired: false,
+  };
+  bindings.bridge = {
+    revokePreview: vi.fn(async () => trusted),
+    revokeCancel: vi.fn(async () => ({ kind: "cancelled" as const })),
+    revokeCommit: vi.fn(),
+    revokeInspect: async () => ({ kind: "not_found", operationId: "0".repeat(26) }),
+  };
+  await reviewRemoval();
+  const text = container.textContent ?? "";
+  expect(text).toContain("Target: Changes that already reached this Mac stay.");
+  expect(text.toLowerCase()).not.toContain("cut head");
+});

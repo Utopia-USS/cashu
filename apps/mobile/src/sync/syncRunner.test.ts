@@ -6,6 +6,7 @@ import type { VaultSyncStatus } from "../services/vaultEngine";
 import {
   createSyncRunner,
   FOREGROUND_MIN_INTERVAL_MS,
+  FOREGROUND_PASS_EVERY_MS,
   type SyncTarget,
   syncCause,
   TASK_OPEN_WAIT_MS,
@@ -106,6 +107,38 @@ describe("the sync runner", () => {
     now += FOREGROUND_MIN_INTERVAL_MS + 5_000;
     await runner.request("foreground");
     expect(fake.passes).toEqual(["full", "full"]);
+  });
+
+  it("passes every few minutes while the app stays in the foreground, and stops when it leaves", async () => {
+    let now = 1_000_000;
+    const fake = fakeTarget();
+    const timers: { ms: number; tick: () => void; stopped: boolean }[] = [];
+    const runner = createSyncRunner({
+      targets: () => [fake.target],
+      now: () => now,
+      every: (ms, tick) => {
+        const timer = { ms, tick, stopped: false };
+        timers.push(timer);
+        return () => {
+          timer.stopped = true;
+        };
+      },
+    });
+    const start = runner.request("start");
+    fake.finish();
+    await start;
+    runner.foreground(true);
+    runner.foreground(true);
+    // One timer, under the 5 minutes the owner may wait for the paused line.
+    expect(timers.map((t) => t.ms)).toEqual([FOREGROUND_PASS_EVERY_MS]);
+    expect(FOREGROUND_PASS_EVERY_MS).toBeLessThanOrEqual(5 * MINUTE);
+    now += FOREGROUND_PASS_EVERY_MS;
+    timers[0]?.tick();
+    fake.finish();
+    await flush();
+    expect(fake.passes).toEqual(["full", "full"]);
+    runner.foreground(false);
+    expect(timers[0]?.stopped).toBe(true);
   });
 
   it("pushes on the arrival in the background only when own writes wait", async () => {

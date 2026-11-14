@@ -117,6 +117,12 @@ export const S = catalog({
     pl: "Dane są zaszyfrowane na tym telefonie. Włącz Face ID, żeby nikt poza Tobą ich nie otworzył.",
     en: "Stored encrypted on this phone. Turn on Face ID so only you can open it.",
   },
+  // Proposed (QA run 2, Obs. 9): the same note while the app lock is on (the first sentence of the
+  // designer's copy above, without the suggestion).
+  storedNoteLocked: {
+    pl: "Dane są zaszyfrowane na tym telefonie.",
+    en: "Stored encrypted on this phone.",
+  },
   open: { pl: "Otwórz cashU", en: "Open cashU" },
   // Stopped (#23.8 and proposed).
   scanAgain: { pl: "Skanuj ponownie", en: "Scan again" },

@@ -1,5 +1,7 @@
 // When the phone syncs (M4-D section 3; there is no push service and no "sync now"): after the first
-// frame, on the return to the foreground (at most every 30 s per vault), a push-only pass on the
+// frame, on the return to the foreground (at most every 30 s per vault), every
+// `FOREGROUND_PASS_EVERY_MS` while the app stays in the foreground (the runner owns that timer: a relay
+// that went away shows as paused, a Mac's change arrives, without the owner leaving the app), a push-only pass on the
 // arrival in the background when own writes wait, and inside the background task before the
 // notification plan. One pass in flight per vault: a trigger while one runs joins it. Every pass goes
 // through the vault's command queue (`VaultSession.pass`), so it never overlaps a command. A trigger
@@ -32,10 +34,18 @@ export interface SyncTarget {
 export interface SyncRunner {
   /** Run the passes `trigger` asks for; resolves when every pass it started or joined settled. */
   request(trigger: SyncTrigger): Promise<void>;
+  /**
+   * The app is in the foreground (true) or left it (false): while in it, a `foreground` request every
+   * `FOREGROUND_PASS_EVERY_MS`. Idempotent.
+   */
+  foreground(active: boolean): void;
 }
 
 /** The least time between two foreground passes of one vault. */
 export const FOREGROUND_MIN_INTERVAL_MS = 30_000;
+
+/** While the app stays in the foreground, a foreground pass at least this often (under 5 minutes). */
+export const FOREGROUND_PASS_EVERY_MS = 4 * 60_000;
 
 /** How long the background task's sync step may take before it plans with what synced. */
 export const TASK_OPEN_WAIT_MS = 20_000;
@@ -66,6 +76,8 @@ export function createSyncRunner(options: {
   readonly now: () => number;
   /** Resolves after `ms` (a cleared `setTimeout` when omitted); the task's sync deadline. */
   readonly sleep?: (ms: number) => Promise<void>;
+  /** Runs `tick` every `ms` until the returned stop is called (`setInterval` when omitted). */
+  readonly every?: (ms: number, tick: () => void) => () => void;
 }): SyncRunner {
   const inFlight = new Map<string, Promise<void>>();
   const startedAt = new Map<string, number>();
@@ -146,7 +158,24 @@ export function createSyncRunner(options: {
     return entry.run;
   };
 
-  return {
+  const every =
+    options.every ??
+    ((ms: number, tick: () => void) => {
+      const timer = setInterval(tick, ms);
+      return () => clearInterval(timer);
+    });
+  let stopForeground: (() => void) | undefined;
+
+  const runner: SyncRunner = {
+    foreground(active) {
+      if (!active) {
+        stopForeground?.();
+        stopForeground = undefined;
+        return;
+      }
+      if (stopForeground !== undefined) return;
+      stopForeground = every(FOREGROUND_PASS_EVERY_MS, () => void runner.request("foreground"));
+    },
     request(trigger) {
       const passes = options.targets().map((target) => {
         maybeRetry(target, trigger);
@@ -165,6 +194,7 @@ export function createSyncRunner(options: {
       return Promise.race([all, deadline]).finally(() => clearTimeout(timer));
     },
   };
+  return runner;
 }
 
 /** Why a vault's data may be behind, for the stale banner; null when sync is not the reason. */

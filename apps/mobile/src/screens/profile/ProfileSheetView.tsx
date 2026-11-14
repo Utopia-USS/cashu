@@ -5,6 +5,7 @@ import { Button, GroupSection, Icon, ListRow, NoteLine, ToggleRow } from "@cashu
 import { ScrollView, Text, View } from "react-native";
 import { ProfileAvatar } from "../../shell/ProfileAvatar";
 import { S as Sync } from "../../sync/Sync.strings";
+import { SyncSlotView } from "../../sync/SyncSlotView";
 import { S } from "./Profile.strings";
 import type { ProfileSheetState } from "./useProfileSheet";
 
@@ -35,6 +36,7 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
           />
         ))}
       </GroupSection>
+      <SyncSlotView slot={props.sync} />
       {props.unavailable.length > 0 && (
         <GroupSection title={S.unavailableTitle}>
           {props.unavailable.map((u, i) => (

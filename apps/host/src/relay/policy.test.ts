@@ -4,6 +4,7 @@ import {
   RELAY_BACKOFF_START_MS,
   RELAY_MIN_PULL_GAP_MS,
   RELAY_QUOTA_BACKOFF_MS,
+  RELAY_WATCH_PULL_MS,
   RelayPolicy,
 } from "./policy.js";
 
@@ -115,4 +116,16 @@ it("reports the quota's end only while the quota back-off runs, and a reset clea
   // The failure counts restarted: the next outage waits the first step again.
   policy.failed("unavailable", 4_000, "outage", "write");
   expect(policy.blockedUntil - 4_000).toBe(60_000);
+});
+
+it("spaces watch pulls 5 s apart and holds them during a back-off or the quota hour", () => {
+  const policy = new RelayPolicy();
+  policy.started(0);
+  expect(policy.allows("watch", RELAY_WATCH_PULL_MS - 1)).toBe(false);
+  expect(policy.allows("watch", RELAY_WATCH_PULL_MS)).toBe(true);
+  policy.failed("unavailable", 10_000, "outage", "read");
+  expect(policy.nextAt("watch", 15_000)).toBe(10_000 + RELAY_BACKOFF_START_MS);
+  policy.succeeded("read");
+  policy.failed("quota", 20_000, "outage", "read");
+  expect(policy.nextAt("watch", 25_000)).toBe(20_000 + RELAY_QUOTA_BACKOFF_MS);
 });

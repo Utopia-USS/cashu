@@ -52,6 +52,11 @@ const REVEAL_GRACE_MS = 60_000;
  */
 const RETIRE_GRACE_MS = 60_000;
 const PRUNE_EVERY_MS = 15_000;
+/**
+ * How long an invitation the phone cancelled stays answerable in memory (`inspect` says
+ * `phone_cancelled`); after it the journal's answer is `not_started`.
+ */
+const PHONE_CANCELLED_KEEP_MS = 60_000;
 
 type CodeResolver = (value: string | undefined) => void;
 
@@ -86,6 +91,14 @@ interface LiveInvite {
   stopWatch?: () => void;
   /** When the session is closed at the relay and the invite forgotten. */
   retireAt?: number;
+  /**
+   * The peer watch (a message of the joiner while the owner types the digits): its abort stops the
+   * watching read at once (no relay request after it) once the commit point is passed or the pairing
+   * ended; otherwise the read would poll the finished session until it closes at retirement.
+   */
+  peerWatch?: AbortController;
+  /** The joiner left the pairing (its abort, or any message after its reveal): `phone_cancelled`. */
+  phoneLeft?: boolean;
   closing?: Promise<void>;
 }
 
@@ -112,6 +125,7 @@ export interface PairingServiceInput {
     | "addMember"
     | "listMembers"
     | "requestPull"
+    | "watchPairing"
     | "pruneExpiredPairings"
   >;
   readonly now: () => number;
@@ -157,9 +171,13 @@ export function createPairingService(input: PairingServiceInput): PairingService
   };
 
   /** Ends an invite that is still running (cancel, expiry): no commit happened, nothing is kept. */
-  const abandon = (live: LiveInvite, code: "expired" | "invalid"): Promise<void> => {
+  const abandon = (
+    live: LiveInvite,
+    code: "expired" | "invalid" | "phone_cancelled",
+  ): Promise<void> => {
+    live.peerWatch?.abort();
     live.outcome = { kind: "refused", code };
-    live.retireAt = now();
+    live.retireAt = code === "phone_cancelled" ? now() + PHONE_CANCELLED_KEEP_MS : now();
     live.code?.(undefined);
     live.code = undefined;
     live.codeResult?.(live.outcome);
@@ -171,6 +189,8 @@ export function createPairingService(input: PairingServiceInput): PairingService
   /**
    * After `waiting_for_phone`: each device change (a sync pass settled) checks whether the phone's
    * first signed head arrived, and pushes once it did. Ends with `completed`, retirement or close.
+   * Meanwhile the relay pulls the vault every 5 s (at most 3 minutes after the admission), so the
+   * phone's first frames reach this Mac in seconds instead of on the next 5-minute pull.
    */
   const watchFirstSync = (live: LiveInvite, vault: NativeVaultSession) => {
     let checking = false;
@@ -202,7 +222,37 @@ export function createPairingService(input: PairingServiceInput): PairingService
           checking = false;
         });
     };
-    live.stopWatch = vault.onDevicesChanged(check);
+    const offDevices = vault.onDevicesChanged(check);
+    const stopPulls = relay.watchPairing(live.vault);
+    live.stopWatch = () => {
+      offDevices();
+      stopPulls();
+    };
+  };
+
+  /**
+   * While the owner types the six digits the protocol reads nothing from the link, so the phone's
+   * abort (sent when it leaves the digits step) would wait unread until the code window ends. This
+   * reads the joiner's next message meanwhile. The link takes messages only from the session's
+   * claimant, and after its reveal a joiner sends nothing but an abort until the welcome, so ANY such
+   * message means the phone left (it can only end its own pairing). Before the digits were typed the
+   * invite ends at once; while a typed code is being committed, the membership write is not started
+   * (`admit` reads `cancelled`) and the outcome says so. Ends with the link (close, expiry, timeout).
+   */
+  const watchPeer = (live: LiveInvite) => {
+    if (live.peerWatch !== undefined) return;
+    live.peerWatch = new AbortController();
+    live.link.receive({ signal: live.peerWatch.signal }).then(
+      () => {
+        if (live.outcome !== undefined || live.committed) return;
+        live.phoneLeft = true;
+        live.cancelled = true;
+        if (!live.dispatched) void abandon(live, "phone_cancelled");
+      },
+      () => {
+        // The link closed or the session ended: the run settles on its own.
+      },
+    );
   };
 
   const prune = () => {
@@ -260,6 +310,8 @@ export function createPairingService(input: PairingServiceInput): PairingService
           // An earlier pairing of the same phone (same uid, older device) is overwritten in place:
           // the member document is keyed by the uid, the relay drops the stale setting entry.
           live.committed = true;
+          // Past the commit point a message of the phone changes nothing: stop reading the session.
+          live.peerWatch?.abort();
           try {
             await relay.addMember(live.vault, { device, uid, role: "member" });
             return "admitted";
@@ -296,8 +348,10 @@ export function createPairingService(input: PairingServiceInput): PairingService
     result: devices.PairingStep<devices.InviterWelcome> | undefined,
     failure: "expired" | "unavailable",
   ): Promise<void> => {
+    // The run ended: whatever the outcome, nothing more is read from the session.
+    live.peerWatch?.abort();
     if (live.outcome?.kind === "refused" && !live.committed) {
-      // Cancelled or expired meanwhile: the session is closed already.
+      // Cancelled, expired or left by the phone meanwhile: the session is closed already.
       await closeLink(live);
       return;
     }
@@ -319,17 +373,25 @@ export function createPairingService(input: PairingServiceInput): PairingService
           ? { kind: "outcome_unknown", operationId: live.operationId }
           : {
               kind: "refused",
-              // A protocol refusal (wrong codes, an abort) vs the session's end or a relay failure.
+              // The phone's abort, a protocol refusal (wrong codes) vs the session's end or a relay
+              // failure.
               code:
-                result === undefined || result.ok
-                  ? failure
-                  : result.reason === "expired"
-                    ? "expired"
-                    : "invalid",
+                live.phoneLeft || (result?.ok === false && result.reason === "aborted")
+                  ? "phone_cancelled"
+                  : result === undefined || result.ok
+                    ? failure
+                    : result.reason === "expired"
+                      ? "expired"
+                      : "invalid",
             };
     live.codeResult?.(live.outcome);
     live.codeResult = undefined;
     changed(live);
+    if (live.outcome.kind === "refused" && live.outcome.code === "phone_cancelled") {
+      live.retireAt = now() + PHONE_CANCELLED_KEEP_MS;
+      await closeLink(live);
+      return;
+    }
     if (
       (live.outcome.kind === "completed" || live.outcome.kind === "waiting_for_phone") &&
       result?.ok === true
@@ -369,6 +431,8 @@ export function createPairingService(input: PairingServiceInput): PairingService
         },
         enterCode: (attemptsLeft) =>
           new Promise((resolve) => {
+            // The reveal is in: from here on the protocol reads nothing until the welcome.
+            watchPeer(live);
             if (attemptsLeft <= 0 || live.outcome !== undefined) {
               resolve(undefined);
               return;
@@ -525,6 +589,8 @@ export function createPairingService(input: PairingServiceInput): PairingService
       if (live.outcome?.kind === "completed" || live.outcome?.kind === "waiting_for_phone")
         return { kind: live.outcome.kind, operationId };
       if (live.outcome?.kind === "outcome_unknown") return { kind: "outcome_unknown", operationId };
+      if (live.outcome?.kind === "refused" && live.outcome.code === "phone_cancelled")
+        return { kind: "phone_cancelled", operationId };
       if (live.outcome?.kind === "refused") return { kind: "not_started", operationId };
       return { kind: "pending", operationId, phoneConnected: live.helloAt !== undefined };
     },
@@ -567,6 +633,7 @@ export function createPairingService(input: PairingServiceInput): PairingService
       stopPruning();
       const closing: Promise<void>[] = [];
       for (const live of invites.values()) {
+        live.peerWatch?.abort();
         live.stopWatch?.();
         live.stopWatch = undefined;
         if (active(live)) {

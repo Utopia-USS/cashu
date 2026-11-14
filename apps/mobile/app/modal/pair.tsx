@@ -11,6 +11,8 @@ import { pairingPorts } from "../../src/screens/pair/pairingPorts";
 import { usePairScreen } from "../../src/screens/pair/usePairScreen";
 import { useServices } from "../../src/services/ServicesProvider";
 import { setPairedVaultRole } from "../../src/services/services";
+import { useLockAfterPairing } from "../../src/shell/useAppLock";
+import { useTransitionEnded } from "../../src/shell/useTransitionEnded";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -18,7 +20,11 @@ export default function PairRoute() {
   const router = useRouter();
   const services = useServices();
   const insets = useSafeAreaInsets();
+  const presented = useTransitionEnded();
+  const lockAfter = useLockAfterPairing();
   const props = usePairScreen({
+    presented,
+    lockAfter,
     defaultName: defaultDeviceName(),
     ports: () => pairingPorts(services),
     close: () => {

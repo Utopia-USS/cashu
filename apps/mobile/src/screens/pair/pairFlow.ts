@@ -94,8 +94,12 @@ onBeforeWipe(() => {
   pairFlow.reset();
 });
 
-/** A pairing whose vault is on the phone and whose last steps (role, first sync) still wait. */
+/**
+ * A pairing past its commit point whose last steps still wait: storing (the services reopen over the new
+ * vault meanwhile, which remounts the tree and the modal with it), role and first sync. The shell presents
+ * the modal again while this holds, and the app lock's default waits until it no longer does.
+ */
 export function pairingContinues(): boolean {
   const kind = state?.kind;
-  return kind === "role" || kind === "firstSync";
+  return kind === "storing" || kind === "role" || kind === "firstSync";
 }

@@ -362,15 +362,27 @@ export class PhonePairing {
     await claim;
     if (this.#cancelled) throw new PairingLinkError("closed");
     let shown = false;
+    let received = false;
     const counted: devices.PairingLink = {
       send: (message) => {
         if (this.#cancelled) return Promise.reject(new PairingLinkError("closed"));
-        const sent = this.#sending.catch(() => undefined).then(() => link.send(message));
+        const sent = this.#sending
+          .catch(() => undefined)
+          .then(() => link.send(message))
+          .catch((error: unknown) => {
+            // The hello's slot already holds another message of this phone (only the claimant may write
+            // there, and the claim found this phone's uid already in it): an earlier run of this phone
+            // used the code, so it is taken, not a broken session.
+            if (!received && error instanceof PairingLinkError && error.code === "malformed")
+              throw new PairingStopped("taken");
+            throw error;
+          });
         this.#sending = sent;
         return sent;
       },
       receive: async () => {
         const message = await link.receive();
+        received = true;
         if (shown && !this.#cancelled) this.#dispatch({ type: "part" });
         return message;
       },

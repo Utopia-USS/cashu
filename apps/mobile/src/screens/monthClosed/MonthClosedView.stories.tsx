@@ -103,6 +103,16 @@ const meta = { title: "Mobile/MonthClosed", component: MonthClosedView, args: mo
 export default meta;
 
 export const WithPlan = { args: monthClosedOwner };
+/** Sync paused on Today's tab: the quiet line sits under the header, one line above the tiles. */
+export const SyncPaused = {
+  args: {
+    ...monthClosedOwner,
+    sync: {
+      line: { text: "Sync paused since 19:40 · cashU works as usual", tone: "muted" },
+      notice: null,
+    },
+  } satisfies MonthClosedViewProps,
+};
 export const Planned = {
   args: {
     ...monthClosedOwner,

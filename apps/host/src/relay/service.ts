@@ -4,6 +4,8 @@
 //   - at vault open (a first full push after enabling),
 //   - 2 s after own writes (debounced, coalescing),
 //   - every 5 minutes while the host runs (a pull at most every 60 s),
+//   - every 5 s while a pairing of the vault waits for the new phone's first sync (`watchPairing`, at
+//     most 3 minutes after the admission; then the 5-minute schedule again),
 //   - a final push before the idle exit,
 // each one a normal session pass in the vault queue (`session.sync()`), throttled by the back-off of
 // relay/policy.ts. The engine reads its remotes once at open, so switching a vault on or off writes the
@@ -67,6 +69,8 @@ import {
   RELAY_FINAL_PUSH_TIMEOUT_MS,
   RELAY_PULL_INTERVAL_MS,
   RELAY_PUSH_DEBOUNCE_MS,
+  RELAY_WATCH_MAX_MS,
+  RELAY_WATCH_PULL_MS,
   type RelayDirection,
   type RelayPassReason,
   RelayPolicy,
@@ -235,6 +239,12 @@ export interface HostRelay {
   /** Asks for a pull pass of the vault soon (its policy still spaces pulls); no-op when off. */
   requestPull(vault: string): void;
   /**
+   * A pairing of the vault was admitted and waits for the new phone's first sync: pulls the vault
+   * every 5 s (the policy's back-off and quota hour still hold them) until the returned stop is called
+   * or 3 minutes passed, whichever comes first. Watches of one vault share one timer. No-op when off.
+   */
+  watchPairing(vault: string): () => void;
+  /**
    * The inviter's pairing link of one session over this Mac's own relay identity and client. Throws
    * `relay_off` when the vault's relay is not switched on here (`relay_no_config` without a config).
    */
@@ -369,6 +379,7 @@ function unconfiguredRelay(): HostRelay {
     adoptMembers: () => Promise.resolve(),
     noteRemovalsFailing() {},
     requestPull() {},
+    watchPairing: () => () => {},
     pruneExpiredPairings: () => Promise.resolve(0),
     pairingLink: () => {
       throw new Error("relay_no_config");
@@ -399,6 +410,8 @@ export function createHostRelay(input: {
   let context: RelayHostContext | undefined;
   let closed = false;
   let cancelPull: (() => void) | undefined;
+  /** Running pairing watches per vault (their deadlines on the relay clock) and the vault's 5 s timer. */
+  const watches = new Map<string, { readonly until: Set<{ at: number }>; cancel: () => void }>();
   let auth: AnonymousAuth | undefined;
   let rest: FirestoreRest | undefined;
   // Every relay request carries this signal: `close` aborts what is still in flight, so a stop never
@@ -558,7 +571,7 @@ export function createHostRelay(input: {
     // The switch is re-read for every pass: one turned off since the open never runs again.
     if (!enabledOn(settingOf(vault))) return;
     if (state.running !== undefined) {
-      if (reason !== "pull") state.again = true;
+      if (reason !== "pull" && reason !== "watch") state.again = true;
       return state.running;
     }
     const at = state.policy.nextAt(reason, now());
@@ -784,6 +797,8 @@ export function createHostRelay(input: {
     close() {
       closed = true;
       cancelPull?.();
+      for (const watch of watches.values()) watch.cancel();
+      watches.clear();
       for (const state of vaults.values()) {
         halt(state);
         state.unsubscribe?.();
@@ -1106,6 +1121,36 @@ export function createHostRelay(input: {
 
     requestPull(vault) {
       void request(vault, "pull");
+    },
+
+    watchPairing(vault) {
+      if (closed) return () => {};
+      const entry = { at: now() + RELAY_WATCH_MAX_MS };
+      let watch = watches.get(vault);
+      if (watch === undefined) {
+        const until = new Set<{ at: number }>();
+        const created = { until, cancel: () => {} };
+        created.cancel = timers.every(RELAY_WATCH_PULL_MS, () => {
+          const at = now();
+          for (const item of until) if (item.at <= at) until.delete(item);
+          if (until.size === 0) {
+            created.cancel();
+            if (watches.get(vault) === created) watches.delete(vault);
+            return;
+          }
+          void request(vault, "watch");
+        });
+        watches.set(vault, created);
+        watch = created;
+      }
+      const own = watch;
+      own.until.add(entry);
+      return () => {
+        own.until.delete(entry);
+        if (own.until.size > 0) return;
+        own.cancel();
+        if (watches.get(vault) === own) watches.delete(vault);
+      };
     },
 
     keepFetching(vault) {

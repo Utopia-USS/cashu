@@ -34,7 +34,11 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { type LocalHost, startLocalHost } from "../host.js";
 import { memoryLog } from "../log.js";
-import { RELAY_MIN_PULL_GAP_MS, RELAY_PULL_INTERVAL_MS } from "../relay/policy.js";
+import {
+  RELAY_MIN_PULL_GAP_MS,
+  RELAY_PULL_INTERVAL_MS,
+  RELAY_PUSH_DEBOUNCE_MS,
+} from "../relay/policy.js";
 import type { HostRelayOptions } from "../relay/service.js";
 import {
   HANDOVER_EXIT_CODE,
@@ -196,6 +200,18 @@ async function inspectUntil(paired: Paired, operationId: string, kind: string): 
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   return last;
+}
+
+/** Inspects (real time only, the clock stays) until the answer is `kind`; fails after 20 s. */
+async function inspectAsyncUntil(paired: Paired, operationId: string, kind: string): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  let last = "";
+  while (Date.now() < deadline) {
+    last = (await inspect(paired, operationId)).kind;
+    if (last === kind) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`inspect stayed ${last}, expected ${kind}`);
 }
 
 const cancel = (paired: Paired, operationId: string) =>
@@ -761,6 +777,96 @@ describe("pairing over the relay", () => {
   );
 
   it(
+    "ends the invitation when the phone leaves its six-digit step: phone_cancelled, nothing kept",
+    async () => {
+      const paired = await syncedHost();
+      const { qr, operationId } = await ready(paired);
+      const joiner = await phone(paired, qr);
+      const started = devices.PairingJoiner.start(
+        {
+          sodium: paired.env.fixture.vaultSource.provider.sodium,
+          identity: joiner.identity,
+          name: "Synthetic phone",
+        },
+        qr,
+        paired.clock.now(),
+      );
+      if (!started.ok) throw new Error(started.reason);
+      await joiner.link.claim();
+      let sent = 0;
+      const run = devices
+        .runJoiner(
+          started.value.joiner,
+          started.value.hello,
+          {
+            send: async (message) => {
+              await joiner.link.send(message);
+              sent++;
+            },
+            receive: () => joiner.link.receive(),
+          },
+          { now: paired.clock.now, showSas: () => {} },
+        )
+        .catch((error: unknown) => error);
+      // Hello and reveal are written: the phone shows the digits, the Mac asks the owner for them.
+      await until(() => sent === 2);
+      expect(await inspect(paired, operationId)).toEqual({
+        kind: "pending",
+        operationId,
+        phoneConnected: true,
+      });
+      const before = await pairingRevision(paired);
+      // The phone closes the digits step (what the app's joiner does): its abort, then its link.
+      const abort = started.value.joiner.rejectPending().reply;
+      if (abort === undefined) throw new Error("no abort");
+      await joiner.link.send(abort);
+      await joiner.link.close();
+      await run;
+
+      // No code typed, no clock moved: the Mac ends the invitation on the abort alone.
+      await inspectAsyncUntil(paired, operationId, "phone_cancelled");
+      expect(await pairingRevision(paired)).toBeGreaterThan(before);
+      expect(await confirm(paired, operationId, "123456")).toEqual({
+        kind: "refused",
+        code: "phone_cancelled",
+      });
+      await expectClean(paired, joiner.uid);
+      // The invitation is over, not busy: a new one pairs.
+      const again = await pairPhone(paired);
+      expect(again.confirmed.kind).toBe("waiting_for_phone");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "says the phone cancelled when its abort comes before its reveal",
+    async () => {
+      const paired = await syncedHost();
+      const { qr, operationId } = await ready(paired);
+      const joiner = await phone(paired, qr);
+      const started = devices.PairingJoiner.start(
+        {
+          sodium: paired.env.fixture.vaultSource.provider.sodium,
+          identity: joiner.identity,
+          name: "Synthetic phone",
+        },
+        qr,
+        paired.clock.now(),
+      );
+      if (!started.ok) throw new Error(started.reason);
+      await joiner.link.claim();
+      await joiner.link.send(started.value.hello);
+      const abort = started.value.joiner.rejectPending().reply;
+      if (abort === undefined) throw new Error("no abort");
+      await joiner.link.send(abort);
+      await joiner.link.close();
+      await inspectAsyncUntil(paired, operationId, "phone_cancelled");
+      await expectClean(paired, joiner.uid);
+    },
+    TIMEOUT,
+  );
+
+  it(
     "refuses an invite while sync is off (relay_off) or without a sync config (no_config)",
     async () => {
       const off = await syncedHost({ relay: true });
@@ -1063,6 +1169,56 @@ describe("the pairing commit point", () => {
       paired.intercept(undefined);
       await passesUntil(paired, async () => memberDoc(paired, joiner.uid) === undefined);
       await passesUntil(paired, async () => (await status()).removalsFailing === undefined);
+    },
+    TIMEOUT,
+  );
+});
+
+describe("pairing over the relay: after the admission", () => {
+  it(
+    "stops reading the session at the commit point and pulls every 5 s until the phone's first sync",
+    async () => {
+      const paired = await syncedHost();
+      const requests: string[] = [];
+      paired.intercept((url) => {
+        requests.push(decodeURIComponent(url));
+        return undefined;
+      });
+      const sessionReads = (from: number) =>
+        requests.slice(from).filter((url) => url.includes("/pairings/"));
+      const { joiner, result, confirmed, operationId } = await pairPhone(paired);
+      expect(confirmed.kind).toBe("waiting_for_phone");
+      if (!result.ok) throw new Error("joiner failed");
+
+      // The watch for the phone's abort ended with the commit: no read of the finished session in
+      // more than two of the link's 1.5 s polls (it stays at the relay until about 8 minutes on).
+      const afterWelcome = requests.length;
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      expect(sessionReads(afterWelcome)).toEqual([]);
+      expect(pairingDocs(paired).length).toBeGreaterThan(0);
+
+      // The push 2 s after the admission's own write (device.added) runs before the phone syncs, as
+      // it does in real time; the next 5-minute pull and its 60 s spacing are far off.
+      paired.clock.advance(RELAY_PUSH_DEBOUNCE_MS);
+      paired.env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
+      await until(() => paired.host.relay.pending() === 0);
+      // The phone syncs; within one 5 s tick the Mac has pulled its first frame.
+      await joiner.firstSync(result.value);
+      paired.clock.advance(5_000);
+      paired.env.timers.advance(5_000);
+      await inspectAsyncUntil(paired, operationId, "completed");
+
+      // `completed` stops the fast pulls at once: later ticks reach nothing at the relay.
+      await until(() => paired.host.relay.pending() === 0);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const afterCompleted = requests.length;
+      for (let i = 0; i < 4; i++) {
+        paired.clock.advance(5_000);
+        paired.env.timers.advance(5_000);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await until(() => paired.host.relay.pending() === 0);
+      expect(requests.slice(afterCompleted)).toEqual([]);
     },
     TIMEOUT,
   );

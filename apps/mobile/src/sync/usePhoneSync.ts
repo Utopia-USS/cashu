@@ -1,5 +1,6 @@
 // The running app's sync triggers (mounted once by `PhoneSync`): a pass for every synced vault after the
-// first frame, a pass on the return from the background (the runner keeps 30 s between two), and a
+// first frame, a pass on the return from the background (the runner keeps 30 s between two), the
+// runner's foreground timer switched on and off with the app's state, and a
 // push-only pass on the arrival in the background when own writes wait (iOS gives the app a few
 // seconds there). A Control Center pull or a Face ID prompt (`inactive`) is not a trigger. Also the
 // read side for the screens: one vault's sync status, live (`syncCause` names why it is behind).
@@ -14,14 +15,19 @@ export function usePhoneSync(): void {
     const runner = services.sync;
     const first = setTimeout(() => void runner.request("start"), 0);
     let previous = AppState.currentState;
+    // The runner's foreground timer runs until the app reaches the background (an `inactive` spell, the
+    // Face ID prompt or Control Center, keeps it).
+    runner.foreground(previous !== "background");
     const appState = AppState.addEventListener("change", (state) => {
       if (state === "active" && previous === "background") void runner.request("foreground");
       if (state === "background" && previous !== "background") void runner.request("background");
+      runner.foreground(state !== "background");
       previous = state;
     });
     return () => {
       clearTimeout(first);
       appState.remove();
+      runner.foreground(false);
     };
   }, [services]);
 }

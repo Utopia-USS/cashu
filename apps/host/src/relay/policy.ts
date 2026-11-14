@@ -1,5 +1,6 @@
 // When the host may run a relay pass for one vault (M4-C section 2). Pure: the clock is a parameter.
 //   - a pull (the 5-minute timer) waits at least 60 s after the previous pass started,
+//   - a watch pull (a pairing waits for the new phone's first sync) at most every 5 s,
 //   - a push (2 s after own writes) and the pass at vault open run at once,
 //   - after a failure those passes wait out a back-off: 60 s doubling to 30 min when the relay is
 //     unreachable or refuses, 1 h when its quota is exhausted. Reads (list, read) and writes (append)
@@ -17,6 +18,10 @@ import type { TransportUnavailableReason } from "@cashu/sync";
 export const RELAY_PULL_INTERVAL_MS = 5 * 60_000;
 export const RELAY_MIN_PULL_GAP_MS = 60_000;
 export const RELAY_PUSH_DEBOUNCE_MS = 2_000;
+/** The pull spacing while a pairing of the vault waits for the new phone's first sync. */
+export const RELAY_WATCH_PULL_MS = 5_000;
+/** How long after the admission those fast pulls run at most; the normal schedule then takes over. */
+export const RELAY_WATCH_MAX_MS = 3 * 60_000;
 export const RELAY_BACKOFF_START_MS = 60_000;
 export const RELAY_BACKOFF_MAX_MS = 30 * 60_000;
 export const RELAY_QUOTA_BACKOFF_MS = 60 * 60_000;
@@ -24,7 +29,7 @@ export const RELAY_QUOTA_BACKOFF_MS = 60 * 60_000;
 export const RELAY_FINAL_PUSH_TIMEOUT_MS = 10_000;
 
 /** Why a pass is wanted. */
-export type RelayPassReason = "open" | "push" | "pull" | "final";
+export type RelayPassReason = "open" | "push" | "pull" | "watch" | "final";
 
 /** How a pass that did not reach the relay cleanly failed. */
 export type RelayFailure = "unavailable" | "quota";
@@ -47,6 +52,8 @@ export class RelayPolicy {
     let at = Math.max(now, this.#blockedUntil);
     if (reason === "pull" && this.#lastStartAt !== undefined)
       at = Math.max(at, this.#lastStartAt + RELAY_MIN_PULL_GAP_MS);
+    if (reason === "watch" && this.#lastStartAt !== undefined)
+      at = Math.max(at, this.#lastStartAt + RELAY_WATCH_PULL_MS);
     return at;
   }
 

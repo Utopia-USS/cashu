@@ -56,6 +56,12 @@ export const T = catalog({
     pl: "Ten telefon jest już dodany. Aby to cofnąć, usuń telefon z listy urządzeń poniżej.",
     en: "This phone is already added. To undo it, remove the phone in the device list below.",
   },
+  // Proposed (QA run 2 Obs. 6), for the designer: the phone closed its six-digit step before the
+  // phone was added; the card offers a new invitation.
+  phoneCancelled: {
+    pl: "Telefon przerwał łączenie. Utwórz nowe zaproszenie, aby spróbować ponownie.",
+    en: "The phone cancelled pairing. Create a new invitation to try again.",
+  },
   unavailable: { pl: "Łączenie jest teraz niedostępne.", en: "Pairing is unavailable now." },
   expired: { pl: "Zaproszenie wygasło.", en: "Invitation expired." },
   // #23.8 (a).

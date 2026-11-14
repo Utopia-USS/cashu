@@ -9,9 +9,11 @@
 // lock's switch checks the owner (Face ID / Touch ID / passcode) before it writes either way: the phone
 // must prove it can unlock before it locks, and only its owner turns the lock off.
 import type { ProfileRole } from "@cashu/domain/core/notifications";
+import { appClockLocale, formatCalendarDate } from "@cashu/i18n/values";
 import { pendingProposalsCount } from "@cashu/store/core/profile";
 import { setDeviceLock } from "@cashu/store/device";
 import { useCommand, useProfile, useQuery } from "@cashu/store-react";
+import { useUiEnv } from "@cashu/ui/native";
 import Constants from "expo-constants";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Alert } from "react-native";
@@ -20,11 +22,14 @@ import { relayConfig } from "../../platform/relayConfig";
 import { useServices } from "../../services/ServicesProvider";
 import type { LockCapability } from "../../shell/auth";
 import { S as L } from "../../shell/Lock.strings";
+import { useProfileNames } from "../../shell/profileNames";
 import { initialOf } from "../../shell/tabs";
 import { useIncognito } from "../../shell/useAppEnv";
 import { lockPrompt, useLockEnabled } from "../../shell/useAppLock";
 import { S as Sync } from "../../sync/Sync.strings";
 import { useVaultSyncStatus } from "../../sync/usePhoneSync";
+import { type SyncSlot, useSyncNotice } from "../../sync/useSyncNotice";
+import { localToday } from "../screenContext";
 import { S } from "./Profile.strings";
 import { useSwitchProfile } from "./switchProfile";
 
@@ -54,6 +59,11 @@ export type ProfileSheetState = {
   unavailable: { vault: string; text: string }[];
   /** "Remove this copy" of an unavailable profile failed. */
   removeFailed: boolean;
+  /**
+   * The current profile's sync, as Today's banner slot shows it: the paused / limit / stuck line, or the
+   * removed and sync-off notices (a profile that does not open is in `unavailable` instead).
+   */
+  sync: SyncSlot;
   onPair(): void;
   onRoleChanged(role: ProfileRole): void;
   onRemoveCopy(vault: string): void;
@@ -103,12 +113,22 @@ export function useProfileSheet(args: {
   readonly deviceName?: string;
 }): ProfileSheetState {
   const services = useServices();
+  const { locale } = useUiEnv();
   const { profiles } = services;
   const current = useProfile();
   const status = useVaultSyncStatus(current);
   const [removeFailed, setRemoveFailed] = useState(false);
   const paired = !services.isDemo;
   const currentRole = profiles.find((p) => p.vault === current)?.role ?? null;
+  const names = useProfileNames();
+  const nameOf = (vault: string, fallback: string) => names.get(vault) ?? fallback;
+  const currentName = nameOf(current, "");
+  const slot = useSyncNotice({
+    vault: current,
+    profile: currentName,
+    removeCopy: (vault) => args.removeCopy?.(vault) ?? Promise.resolve(),
+  });
+  const sync: SyncSlot = slot.notice?.kind === "needsRepair" ? { ...slot, notice: null } : slot;
   const self = status?.names?.self;
   const by = status?.names?.pairedBy?.name ?? null;
   const pending = useQuery(pendingProposalsCount);
@@ -129,8 +149,8 @@ export function useProfileSheet(args: {
     kind: "ready",
     profiles: profiles.map((p) => ({
       vault: p.vault,
-      name: p.name,
-      initial: initialOf(p.name),
+      name: nameOf(p.vault, p.name),
+      initial: initialOf(nameOf(p.vault, p.name)),
       current: p.vault === current,
       modules: p.modules.flatMap((id) => {
         const name = MODULE_NAMES[id];
@@ -145,7 +165,13 @@ export function useProfileSheet(args: {
     // A paired phone: its registry name and the day (and Mac) that added it; the demo says so.
     phone:
       paired && self !== undefined
-        ? { name: self.name, sub: S.paired(new Date(self.addedAt).toLocaleDateString(), by) }
+        ? {
+            name: self.name,
+            sub: S.paired(
+              formatCalendarDate(localToday(new Date(self.addedAt)), appClockLocale(locale)),
+              by,
+            ),
+          }
         : { name: args.deviceName ?? S.thisIphone, sub: paired ? "" : S.demoData },
     pairing:
       relayConfig() === undefined || args.openPairing === undefined ? null : { first: !paired },
@@ -154,6 +180,7 @@ export function useProfileSheet(args: {
       .unavailableVaults()
       .map((v) => ({ vault: v.vault, text: Sync.needsRepair(v.name) })),
     removeFailed,
+    sync,
     onPair: () => args.openPairing?.(),
     onRoleChanged: (role) => {
       if (role === currentRole) return;

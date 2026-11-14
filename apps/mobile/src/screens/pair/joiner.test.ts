@@ -279,6 +279,44 @@ describe("a re-pairing, a cancel the Mac hears and a wipe mid-pairing", () => {
     await invite.link.close();
   });
 
+  it("says the code is taken when this phone pastes a code it already used", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The Mac does not read the session until the phone has used the code twice.
+    const invite = await openInvite(mac, sodium, {
+      sleep: async (ms) => {
+        await gate;
+        await quick(ms);
+      },
+    });
+    const invitation = syncDevices.decodeInvite(invite.qr);
+    if (invitation === undefined) throw new Error("no invite");
+    const messages = `vaults/${mac.vault}/pairings/${pairingSessionId(invitation)}/messages/`;
+    const phone = await createPhone(fake);
+    const mac$ = invite.run();
+    // First use: the hello leaves, then the phone closes the step (QA: the X on the six digits).
+    const first = phone.pairing();
+    const first$ = first.start(invite.qr, NAME, { discardUnpushed: false });
+    expect(await until(async () => (await fake.documents(messages)).size >= 1)).toBe(true);
+    first.cancel();
+    await first$;
+    expect(await until(async () => (await fake.documents(messages)).size >= 2)).toBe(true);
+    // The same code again, same phone (same relay identity).
+    const failures: PairEvent[] = [];
+    await phone
+      .pairing((event) => {
+        if (event.type === "failed") failures.push(event);
+      })
+      .start(invite.qr, NAME, { discardUnpushed: false });
+    expect(failures).toEqual([{ type: "failed", reason: "taken" }]);
+    expect(phone.durable()).toEqual(NOTHING);
+    release();
+    await mac$;
+    await invite.link.close();
+  });
+
   it("stores nothing more once the phone is wiped, even after the Mac admitted it", async () => {
     const phone = await createPhone(fake);
     const invite = await openInvite(mac, sodium);

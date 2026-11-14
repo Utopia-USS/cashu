@@ -37,6 +37,8 @@ export type PairingViewState =
   | { kind: "completed"; onCreate(): Promise<void> }
   /** A cancel the host refused because the phone was already written into the vault. */
   | { kind: "already_added"; onCreate(): Promise<void> }
+  /** The phone left the pairing before it was added; a new invitation can start at once. */
+  | { kind: "phone_cancelled"; onCreate(): Promise<void> }
   | { kind: "refused" | "expired" | "sync_off"; onCreate(): Promise<void> };
 
 export function PairingView({
@@ -145,6 +147,7 @@ export function PairingView({
       {state.kind === "completed" && <p role="status">{T.complete}</p>}
       {state.kind === "refused" && <p role="alert">{T.refused}</p>}
       {state.kind === "already_added" && <p role="alert">{T.alreadyAdded}</p>}
+      {state.kind === "phone_cancelled" && <p role="status">{T.phoneCancelled}</p>}
       {state.kind === "expired" && (
         <div className="grid gap-2">
           <p role="alert">{T.expired}</p>
@@ -168,7 +171,8 @@ export function PairingView({
       {(state.kind === "idle" ||
         state.kind === "completed" ||
         state.kind === "refused" ||
-        state.kind === "already_added") && <Button onPress={state.onCreate}>{T.create}</Button>}
+        state.kind === "already_added" ||
+        state.kind === "phone_cancelled") && <Button onPress={state.onCreate}>{T.create}</Button>}
     </section>
   );
 }
