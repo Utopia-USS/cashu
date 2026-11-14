@@ -2,6 +2,7 @@
 // with its X (nothing saved) or by the summary's primary (the review saved). `?step=N` opens at card N
 // (dev and tests).
 import { lang } from "@cashu/i18n";
+import { PinnedProfile } from "@cashu/store-react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,9 +14,14 @@ import { useNow } from "../../src/shell/useNow";
 export { ErrorBoundary } from "expo-router";
 
 export default function ReviewRoute() {
-  // Pinned to the profile it opened with: nothing renders once the current profile is another one.
+  // Pinned to the profile it opened with: nothing renders once the current profile is another one, and
+  // everything under it reads that profile (`PinnedProfile`), never a later one.
   const vault = usePinnedVault();
-  return vault === null ? null : <ReviewDeck vault={vault} />;
+  return vault === null ? null : (
+    <PinnedProfile vault={vault}>
+      <ReviewDeck vault={vault} />
+    </PinnedProfile>
+  );
 }
 
 function ReviewDeck({ vault }: { vault: string }) {

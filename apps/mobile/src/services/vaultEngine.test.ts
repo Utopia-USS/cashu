@@ -550,6 +550,22 @@ function conflictingOwnAppends(remote: Transport, device: string): Transport {
   };
 }
 
+/** `remote` whose reads of `writer`'s segments come back with the last byte flipped while `on()`. */
+function corruptingReads(remote: Transport, writer: string, on: () => boolean): Transport {
+  return {
+    consistency: remote.consistency,
+    list: (vault) => remote.list(vault),
+    read: async (vault, device, seg, from) => {
+      const bytes = await remote.read(vault, device, seg, from);
+      if (device !== writer || !on() || bytes.length === 0) return bytes;
+      const copy = bytes.slice();
+      copy[copy.length - 1] = (copy[copy.length - 1] ?? 0) ^ 0xff;
+      return copy;
+    },
+    append: (vault, device, seg, at, bytes) => remote.append(vault, device, seg, at, bytes),
+  };
+}
+
 describe("a paired vault", () => {
   it("receives its first sync, then converges with the Mac over the relay both ways", async () => {
     const fake = createFakeFirebase();
@@ -598,6 +614,34 @@ describe("a paired vault", () => {
     await phone.pass("full");
     expect(profileName(store)).toBe("Ala z Maca");
     expect(phone.status().phase).toBe("ready");
+    await phone.close();
+    await mac.engine.close();
+  }, 60_000);
+
+  it("carries the engine's stuck writers, value-free and named from the registry, until they move", async () => {
+    const fake = createFakeFirebase();
+    const mac = await createMac(fake);
+    const paired = await pairPhone(fake, mac);
+    let corrupt = false;
+    const phone = paired.open(corruptingReads(paired.relay, mac.device, () => corrupt));
+    await phone.opened;
+    await phone.pass("full");
+    expect(phone.status().stuck).toBeUndefined();
+    await mac.write(renameProfile, { name: "Ala nieczytelna" });
+    await mac.engine.sync();
+    corrupt = true;
+    const before = Date.now();
+    await phone.pass("full");
+    const stuck = phone.status().stuck;
+    expect(stuck).toEqual([
+      { device: mac.device, name: "Mac", kind: "rejected", since: expect.any(Number) },
+    ]);
+    expect(stuck?.[0]?.since).toBeGreaterThanOrEqual(before);
+    expect(profileName(paired.store)).toBe("Ala");
+    corrupt = false;
+    await phone.pass("full");
+    expect(phone.status().stuck).toBeUndefined();
+    expect(profileName(paired.store)).toBe("Ala nieczytelna");
     await phone.close();
     await mac.engine.close();
   }, 60_000);

@@ -50,6 +50,8 @@ import {
   type InboundBatch,
   type LocalRecoveryResult,
   type RelayStatus,
+  type StuckKind,
+  type StuckRecord,
   type SyncEngine,
   type SyncResult,
   type Transport,
@@ -105,6 +107,21 @@ export interface VaultSyncStatus {
    * whenever the authority replays). The demo leaves it undefined: its registry holds only the phone.
    */
   readonly names?: VaultDeviceNames;
+  /**
+   * Writer streams held at a frame after the last pass (the engine's D7 stuck records), value-free: the
+   * writer's id and registry name, how it holds and since when. Absent when every stream moves.
+   */
+  readonly stuck?: readonly VaultStuckWriter[];
+}
+
+/** One writer whose frames this phone cannot read (yet). */
+interface VaultStuckWriter {
+  readonly device: string;
+  /** The writer's registry name; undefined when the registry does not know it (yet). */
+  readonly name?: string;
+  readonly kind: StuckKind;
+  /** When a pass first met the held frame (epoch ms). */
+  readonly since: number;
 }
 
 export interface VaultEngineDeps {
@@ -427,6 +444,23 @@ function ringFingerprint(ring: crypto.Keyring): string {
   return `${kids.join(",")}|${hex(recovery.boxPublicKey)}|${hex(recovery.signPublicKey)}`;
 }
 
+/** The engine's stuck records as the status carries them (no segment, offset or code). */
+function stuckWriters(
+  records: readonly StuckRecord[],
+  candidate: DeviceAuthorityCandidate,
+): VaultStuckWriter[] {
+  const known = candidate.devices.registry.devices;
+  return records.map((record) => {
+    const name = known.get(record.device)?.name;
+    return {
+      device: record.device,
+      ...(name === undefined ? {} : { name }),
+      kind: record.kind,
+      since: record.firstSeenAt,
+    };
+  });
+}
+
 /** This device is revoked in the vault (told apart from other authority refusals: `removed`). */
 function revoked(candidate: DeviceAuthorityCandidate): boolean {
   return candidate.devices.registry.revoked.has(candidate.deviceId);
@@ -702,15 +736,21 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
         !unpushed &&
         !result.pushPending &&
         !result.needsUpgrade;
+      const stuck = stuckWriters(result.stuck, current.candidate);
       set(
         {
           syncing: false,
           unpushed,
           ...(fresh ? { lastPullAt: startedAt } : {}),
           ...(reached ? {} : { failure: "relay_unreachable" }),
+          ...(stuck.length > 0 ? { stuck } : {}),
         },
         // A waiting vault keeps naming why it waits.
-        reached && status.phase !== "waiting" ? ["progress", "failure"] : ["progress"],
+        [
+          "progress",
+          ...(reached && status.phase !== "waiting" ? (["failure"] as const) : []),
+          ...(stuck.length > 0 ? [] : (["stuck"] as const)),
+        ],
       );
       return result;
     } catch (error) {

@@ -1,9 +1,10 @@
 // The profile sheet (formSheet from the profile pill of every tab header).
-import { useRouter } from "expo-router";
+import { type Href, useRouter } from "expo-router";
+import { defaultDeviceName } from "../../src/platform/deviceName";
 import { expoScheduler } from "../../src/platform/notifications";
 import { ProfileSheetView } from "../../src/screens/profile/ProfileSheetView";
 import { useProfileSheet } from "../../src/screens/profile/useProfileSheet";
-import { wipeThisPhone } from "../../src/services/services";
+import { forgetThisVault, setPairedVaultRole, wipeThisPhone } from "../../src/services/services";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -31,6 +32,14 @@ export default function ProfileSheetRoute() {
     // the sheet's hook alerts "Could not delete everything") only when the rebuilt app is shown although a
     // step failed; a wipe that ends in the root's fatal state resolves, since that screen already says so.
     removePhone: wipeThisPhone,
+    openPairing: () => {
+      router.back();
+      router.push("/modal/pair" as Href);
+    },
+    // Both reopen the services (the root remounts, the sheet with it).
+    saveRole: setPairedVaultRole,
+    removeCopy: forgetThisVault,
+    deviceName: defaultDeviceName(),
   });
   return <ProfileSheetView {...props} />;
 }

@@ -61,6 +61,23 @@ export const S = catalog({
     en: (version: string) => `cashU ${version}`,
   },
   thisIphone: { pl: "Ten iPhone", en: "This iPhone" },
+  // Pairing rows (#23.4, #23.8).
+  pairAnother: { pl: "Połącz kolejny profil", en: "Pair another profile" },
+  pairAnotherSub: {
+    pl: "Zeskanuj kod z Ustawień > Urządzenia na Macu",
+    en: "Scan the code from Settings > Devices on your Mac",
+  },
+  pairFirst: { pl: "Połącz z Makiem", en: "Pair with your Mac" },
+  roleTitle: { pl: "Czyj to telefon", en: "Whose phone" },
+  roleMine: { pl: "Ten telefon jest mój", en: "This phone is mine" },
+  rolePartner: { pl: "To telefon partnera lub partnerki", en: "This phone is my partner's" },
+  paired: {
+    pl: (day: string, by: string | null) =>
+      by === null ? `dodany ${day}` : `dodany ${day} · z urządzenia „${by}”`,
+    en: (day: string, by: string | null) =>
+      by === null ? `added ${day}` : `added ${day} by ${by}`,
+  },
+  unavailableTitle: { pl: "Nie otwiera się", en: "Doesn't open" },
   demoData: { pl: "dane demo", en: "demo data" },
   removePhone: { pl: "Usuń ten telefon", en: "Remove this phone" },
   removePhoneSub: { pl: "Usuwa kopię z tego telefonu", en: "Deletes the copy on this phone" },

@@ -1,0 +1,143 @@
+// The pairing modal's hook + View (one test per behaviour): camera denied -> paste is the way in, a pasted
+// text that is not a code, cancel closes and starts over, the six digits expire into "Scan again", and
+// the role step saves the role and moves on to the first sync. The protocol runs in joiner.test.ts.
+import { setLanguageForTests } from "@cashu/i18n";
+import { UiEnvProvider } from "@cashu/ui/native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import type { ReactNode } from "react";
+import { ServicesProvider } from "../../services/ServicesProvider";
+import type { Services } from "../../services/services";
+import type { PairingPorts } from "./joiner";
+import { PairView } from "./PairView";
+import * as pairStories from "./PairView.stories";
+import { pairFlow } from "./pairFlow";
+import { type PairScreenArgs, usePairScreen } from "./usePairScreen";
+
+jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
+
+let mockCameraGranted = true;
+jest.mock("expo-camera", () => ({
+  CameraView: () => null,
+  useCameraPermissions: () => [
+    {
+      granted: mockCameraGranted,
+      canAskAgain: false,
+      status: mockCameraGranted ? "granted" : "denied",
+    },
+    async () => undefined,
+  ],
+}));
+
+const services = {
+  vaults: { get: () => undefined, unavailable: () => undefined },
+} as unknown as Services;
+
+const ports = (): PairingPorts => ({
+  sodium: undefined as never,
+  relay: undefined,
+  now: () => Date.now(),
+  held: () => undefined,
+  pushHeld: async () => false,
+  store: async () => undefined,
+  add: async () => undefined,
+  placeholderName: "New profile",
+});
+
+function Screen(props: Partial<PairScreenArgs> & { close: () => void }) {
+  const state = usePairScreen({
+    defaultName: "iPhone 16 Pro",
+    ports,
+    saveRole: async () => undefined,
+    profileName: () => null,
+    ...props,
+  });
+  return <PairView {...state} />;
+}
+
+function wrap(children: ReactNode) {
+  return (
+    <ServicesProvider services={services}>
+      <UiEnvProvider locale="en-US" privacy={false}>
+        {children}
+      </UiEnvProvider>
+    </ServicesProvider>
+  );
+}
+
+beforeEach(() => {
+  setLanguageForTests("en");
+  mockCameraGranted = true;
+  pairFlow.reset();
+});
+
+it("makes paste the way in when the camera is denied", async () => {
+  mockCameraGranted = false;
+  await render(wrap(<Screen close={() => {}} />));
+  expect(screen.getByText(/cashU can't use the camera/)).toBeOnTheScreen();
+  expect(screen.getByLabelText("Code from your Mac")).toBeOnTheScreen();
+  expect(screen.queryByText("Scan with the camera")).toBeNull();
+});
+
+it("says when the pasted text is not a cashU code", async () => {
+  await render(wrap(<Screen close={() => {}} />));
+  await fireEvent.press(screen.getByLabelText("Paste the code"));
+  await fireEvent.changeText(screen.getByLabelText("Code from your Mac"), "hello");
+  await fireEvent.press(screen.getByLabelText("Connect"));
+  expect(await screen.findByText(/This is not a cashU code/)).toBeOnTheScreen();
+});
+
+it("closes on cancel and starts over the next time", async () => {
+  const close = jest.fn();
+  await render(wrap(<Screen close={close} />));
+  await fireEvent.changeText(screen.getByLabelText("This phone's name on your Mac"), "Mój");
+  await fireEvent.press(screen.getByLabelText("Cancel"));
+  expect(close).toHaveBeenCalledTimes(1);
+  // The next open starts over: the default name again, not the one typed before the cancel.
+  expect(pairFlow.peek()).toMatchObject({ kind: "scan", name: "iPhone 16 Pro" });
+});
+
+it("turns expired digits into Scan again", async () => {
+  jest.useFakeTimers();
+  try {
+    await render(wrap(<Screen close={() => {}} />));
+    await act(async () => {
+      pairFlow.dispatch({ type: "connecting" });
+      pairFlow.dispatch({ type: "sas", sas: "418207", expiresAt: Date.now() + 2000 });
+    });
+    expect(screen.getByLabelText("Code: 4 1 8 2 0 7")).toBeOnTheScreen();
+    await act(async () => jest.advanceTimersByTime(3000));
+    expect(screen.getByText(/The code expired/)).toBeOnTheScreen();
+    await fireEvent.press(screen.getByLabelText("Scan again"));
+    expect(screen.getByText("Scan the code on your Mac")).toBeOnTheScreen();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it("saves the role picked and moves on to the first sync", async () => {
+  const saveRole = jest.fn(async () => undefined);
+  await render(wrap(<Screen close={() => {}} saveRole={saveRole} />));
+  await act(async () => {
+    pairFlow.dispatch({ type: "connecting" });
+    pairFlow.dispatch({ type: "sas", sas: "418207", expiresAt: Date.now() + 60_000 });
+    pairFlow.dispatch({ type: "storing" });
+    pairFlow.dispatch({ type: "stored", vault: "v1" });
+  });
+  await fireEvent.press(screen.getByText("This phone is my partner's"));
+  await fireEvent.press(screen.getByLabelText("Continue"));
+  expect(saveRole).toHaveBeenCalledWith("v1", "partner");
+  expect(screen.getByText("Waiting for your data from your Mac...")).toBeOnTheScreen();
+  expect(screen.getByLabelText("Open cashU")).toBeDisabled();
+});
+
+describe("PairView stories", () => {
+  const named = Object.entries(pairStories).filter(([name]) => name !== "default") as [
+    string,
+    { args: object },
+  ][];
+  it.each(named)("%s renders", async (_name, story) => {
+    const props = { ...pairStories.default.args, ...story.args } as Parameters<typeof PairView>[0];
+    await render(wrap(<PairView {...props} />));
+    expect(screen.toJSON()).not.toBeNull();
+  });
+});

@@ -11,6 +11,7 @@ export type {
 } from "./client/index.js";
 export { isStale } from "./client/index.js";
 export { StoreBindingError, useStoreClient } from "./react/context.js";
+export { PinnedProfile } from "./react/PinnedProfile.js";
 export { ProfileProvider } from "./react/ProfileProvider.js";
 export { StoreProvider } from "./react/StoreProvider.js";
 export {

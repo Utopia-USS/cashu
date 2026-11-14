@@ -1,5 +1,6 @@
 // The payment sheet (formSheet from any Activity row, `/sheet/payment/<gid>`).
 import { lang } from "@cashu/i18n";
+import { PinnedProfile } from "@cashu/store-react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { PaymentSheetView } from "../../../src/screens/payment/PaymentSheetView";
 import { usePaymentSheet } from "../../../src/screens/payment/usePaymentSheet";
@@ -9,9 +10,14 @@ import { useNow } from "../../../src/shell/useNow";
 export { ErrorBoundary } from "expo-router";
 
 export default function PaymentSheetRoute() {
-  // Pinned to the profile it opened with: nothing renders once the current profile is another one.
+  // Pinned to the profile it opened with: nothing renders once the current profile is another one, and
+  // everything under it reads that profile (`PinnedProfile`), never a later one.
   const vault = usePinnedVault();
-  return vault === null ? null : <PaymentSheet vault={vault} />;
+  return vault === null ? null : (
+    <PinnedProfile vault={vault}>
+      <PaymentSheet vault={vault} />
+    </PinnedProfile>
+  );
 }
 
 function PaymentSheet({ vault }: { vault: string }) {

@@ -5,6 +5,7 @@
 // and the fatal state after a wipe that could not finish safely.
 import { Fragment, type ReactNode, useSyncExternalStore } from "react";
 import { getEpoch, getRootPhase, subscribeEpoch } from "../services/lifecycle";
+import { lastServicesFailure } from "../services/services";
 import { WipeStateView } from "./WipeStateView";
 
 export function RootPhaseGate({ children }: { children: ReactNode }) {
@@ -12,6 +13,13 @@ export function RootPhaseGate({ children }: { children: ReactNode }) {
   const phase = useSyncExternalStore(subscribeEpoch, getRootPhase, getRootPhase);
   // Opening lasts a fraction of a second (the paired vaults' keys): nothing over the native background.
   if (phase === "opening") return null;
-  if (phase !== "ready") return <WipeStateView phase={phase} />;
+  if (phase !== "ready") {
+    return (
+      <WipeStateView
+        phase={phase}
+        failure={phase === "failed" ? lastServicesFailure() : undefined}
+      />
+    );
+  }
   return <Fragment key={epoch}>{children}</Fragment>;
 }

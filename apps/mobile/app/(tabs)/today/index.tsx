@@ -2,7 +2,7 @@
 // the moment come from the shell's `useNow` (they move on at midnight and on return to the app);
 // navigation to triage (scoped to the month and currency Today counts), Spending, a closed month, the
 // profile sheet and a position row's alert sheet (or position page) stays here.
-import { useRouter } from "expo-router";
+import { type Href, useRouter } from "expo-router";
 import { TodayView } from "../../../src/screens/today/TodayView";
 import { useTodayScreen } from "../../../src/screens/today/useTodayScreen";
 import { useNow } from "../../../src/shell/useNow";
@@ -22,6 +22,8 @@ export default function TodayRoute() {
     openAlert: (gid) => router.push({ pathname: "/sheet/alert/[gid]", params: { gid } }),
     openPosition: (gid) =>
       router.push({ pathname: "/(tabs)/investments/position/[gid]", params: { gid } }),
+    // Typed as Href until the dev server regenerates the route types with the pairing modal.
+    openPairing: () => router.push("/modal/pair" as Href),
   });
   return <TodayView state={state} />;
 }

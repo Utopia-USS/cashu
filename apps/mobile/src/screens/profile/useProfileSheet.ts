@@ -8,6 +8,7 @@
 // navigator only after it is gone (expo-router drains navigation after the next commit). The app
 // lock's switch checks the owner (Face ID / Touch ID / passcode) before it writes either way: the phone
 // must prove it can unlock before it locks, and only its owner turns the lock off.
+import type { ProfileRole } from "@cashu/domain/core/notifications";
 import { pendingProposalsCount } from "@cashu/store/core/profile";
 import { setDeviceLock } from "@cashu/store/device";
 import { useCommand, useProfile, useQuery } from "@cashu/store-react";
@@ -15,12 +16,15 @@ import Constants from "expo-constants";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Alert } from "react-native";
 import type { NotificationPermission } from "../../notifications/scheduler";
+import { relayConfig } from "../../platform/relayConfig";
 import { useServices } from "../../services/ServicesProvider";
 import type { LockCapability } from "../../shell/auth";
 import { S as L } from "../../shell/Lock.strings";
 import { initialOf } from "../../shell/tabs";
 import { useIncognito } from "../../shell/useAppEnv";
 import { lockPrompt, useLockEnabled } from "../../shell/useAppLock";
+import { S as Sync } from "../../sync/Sync.strings";
+import { useVaultSyncStatus } from "../../sync/usePhoneSync";
 import { S } from "./Profile.strings";
 import { useSwitchProfile } from "./switchProfile";
 
@@ -42,6 +46,17 @@ export type ProfileSheetState = {
   notificationsOff: boolean;
   /** This phone's line above "Remove this phone". */
   phone: { name: string; sub: string };
+  /** "Pair another profile" (a build with sync set up); `first`: nothing paired yet. */
+  pairing: { first: boolean } | null;
+  /** Whose phone this is for the current profile (paired profiles only). */
+  role: ProfileRole | null;
+  /** Paired profiles this launch could not open, with the re-pair copy. */
+  unavailable: { vault: string; text: string }[];
+  /** "Remove this copy" of an unavailable profile failed. */
+  removeFailed: boolean;
+  onPair(): void;
+  onRoleChanged(role: ProfileRole): void;
+  onRemoveCopy(vault: string): void;
   version: string;
   dev: boolean;
   onProfilePicked(vault: string): void;
@@ -78,9 +93,24 @@ export function useProfileSheet(args: {
    * navigation before it: the wipe replaces the whole tree, the sheet included.
    */
   removePhone(): Promise<void>;
+  /** The pairing modal (no pairing row without it). */
+  openPairing?(): void;
+  /** Store whose phone this is for a paired profile (reopens the services: the sheet goes away). */
+  saveRole?(vault: string, role: ProfileRole): Promise<void>;
+  /** Remove one paired profile's copy (`forgetThisVault`). */
+  removeCopy?(vault: string): Promise<void>;
+  /** The default device name (the model), shown until the registry names this phone. */
+  readonly deviceName?: string;
 }): ProfileSheetState {
-  const { profiles } = useServices();
+  const services = useServices();
+  const { profiles } = services;
   const current = useProfile();
+  const status = useVaultSyncStatus(current);
+  const [removeFailed, setRemoveFailed] = useState(false);
+  const paired = !services.isDemo;
+  const currentRole = profiles.find((p) => p.vault === current)?.role ?? null;
+  const self = status?.names?.self;
+  const by = status?.names?.pairedBy?.name ?? null;
   const pending = useQuery(pendingProposalsCount);
   const incognito = useIncognito();
   const switchProfile = useSwitchProfile();
@@ -112,9 +142,27 @@ export function useProfileSheet(args: {
     switchFailed,
     waiting: pending > 0 ? { kind: "proposals", count: pending } : { kind: "nothing" },
     notificationsOff,
-    // TRANSITIONAL(S44): the phone has no device registry yet; a paired phone shows its name and the
-    // day it was added.
-    phone: { name: S.thisIphone, sub: S.demoData },
+    // A paired phone: its registry name and the day (and Mac) that added it; the demo says so.
+    phone:
+      paired && self !== undefined
+        ? { name: self.name, sub: S.paired(new Date(self.addedAt).toLocaleDateString(), by) }
+        : { name: args.deviceName ?? S.thisIphone, sub: paired ? "" : S.demoData },
+    pairing:
+      relayConfig() === undefined || args.openPairing === undefined ? null : { first: !paired },
+    role: paired ? currentRole : null,
+    unavailable: services.vaults
+      .unavailableVaults()
+      .map((v) => ({ vault: v.vault, text: Sync.needsRepair(v.name) })),
+    removeFailed,
+    onPair: () => args.openPairing?.(),
+    onRoleChanged: (role) => {
+      if (role === currentRole) return;
+      args.saveRole?.(current, role).catch(() => Alert.alert(S.couldNotSwitch));
+    },
+    onRemoveCopy: (vault) => {
+      setRemoveFailed(false);
+      args.removeCopy?.(vault).catch(() => setRemoveFailed(true));
+    },
     version: Constants.expoConfig?.version ?? "",
     dev: __DEV__,
     onProfilePicked: (vault) => {

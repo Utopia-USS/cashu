@@ -4,6 +4,7 @@
 import { Button, GroupSection, Icon, ListRow, NoteLine, ToggleRow } from "@cashu/ui/native";
 import { ScrollView, Text, View } from "react-native";
 import { ProfileAvatar } from "../../shell/ProfileAvatar";
+import { S as Sync } from "../../sync/Sync.strings";
 import { S } from "./Profile.strings";
 import type { ProfileSheetState } from "./useProfileSheet";
 
@@ -34,10 +35,76 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
           />
         ))}
       </GroupSection>
+      {props.unavailable.length > 0 && (
+        <GroupSection title={S.unavailableTitle}>
+          {props.unavailable.map((u, i) => (
+            <View
+              key={u.vault}
+              className={`gap-2 px-4 py-3 ${i === 0 ? "" : "border-t border-border"}`}
+            >
+              <Text className="text-body text-fg">{u.text}</Text>
+              <View className="flex-row gap-2">
+                {props.pairing !== null && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    label={Sync.pairAgain}
+                    onPress={props.onPair}
+                  >
+                    {Sync.pairAgain}
+                  </Button>
+                )}
+                <Button
+                  variant="danger"
+                  size="sm"
+                  label={Sync.removeCopy}
+                  onPress={() => props.onRemoveCopy(u.vault)}
+                >
+                  {Sync.removeCopy}
+                </Button>
+              </View>
+            </View>
+          ))}
+          {props.removeFailed && (
+            <Text accessibilityRole="alert" className="px-4 pb-3 text-caption text-negative">
+              {Sync.couldNotRemove}
+            </Text>
+          )}
+        </GroupSection>
+      )}
+      {props.pairing !== null && (
+        <GroupSection>
+          <ListRow
+            first
+            lead={<Icon name="laptop" size={20} className="text-fg-muted" />}
+            name={props.pairing.first ? S.pairFirst : S.pairAnother}
+            sub={S.pairAnotherSub}
+            value={<Icon name="chevron-right" className="text-fg-muted" />}
+            onPress={props.onPair}
+          />
+        </GroupSection>
+      )}
       {props.switchFailed && (
         <Text accessibilityRole="alert" className="-mt-3 px-1 text-caption text-negative">
           {S.couldNotSwitch}
         </Text>
+      )}
+      {props.role !== null && (
+        <GroupSection title={S.roleTitle}>
+          {(["owner", "partner"] as const).map((role, i) => (
+            <ListRow
+              key={role}
+              first={i === 0}
+              name={role === "owner" ? S.roleMine : S.rolePartner}
+              value={
+                props.role === role ? (
+                  <Icon name="check" size={20} className="text-accent" />
+                ) : undefined
+              }
+              onPress={() => props.onRoleChanged(role)}
+            />
+          ))}
+        </GroupSection>
       )}
       <GroupSection title={S.thisPhone}>
         <ListRow
@@ -87,7 +154,11 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
         </GroupSection>
       )}
       <GroupSection>
-        <ListRow first name={props.phone.name} sub={props.phone.sub} />
+        <ListRow
+          first
+          name={props.phone.name}
+          {...(props.phone.sub === "" ? {} : { sub: props.phone.sub })}
+        />
         <ListRow
           name={S.removePhone}
           sub={S.removePhoneSub}

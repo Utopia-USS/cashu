@@ -11,7 +11,9 @@ import { monthClosedSeen, setMonthClosedSeen } from "@cashu/store/device";
 import { useCommand, useProfile, useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
 import { useServices } from "../../services/ServicesProvider";
+import { forgetThisVault } from "../../services/services";
 import { useTabChrome } from "../../shell/useTabChrome";
+import { useSyncNotice } from "../../sync/useSyncNotice";
 import { categorySwatch } from "../categories";
 import { lastClosedMonth, useMonthClosedScreen } from "../monthClosed/useMonthClosedScreen";
 import { localToday } from "../screenContext";
@@ -54,6 +56,8 @@ export function useTodayScreen(args: {
   readonly openAlert?: (signal: string) => void;
   /** The position page of a position row without an open alert. */
   readonly openPosition?: (instrument: string) => void;
+  /** The pairing modal ("Pair again" of a profile that does not open). */
+  readonly openPairing?: () => void;
 }): TodayState {
   const ui = useUiEnv();
   const env: DisplayEnv = { locale: ui.locale, privacy: ui.privacy, bananas: ui.bananas ?? null };
@@ -71,6 +75,14 @@ export function useTodayScreen(args: {
     now: args.now,
   });
   const vault = useProfile();
+  // The status slot: the quiet line (replay, stuck writers #25.3 from the vault's status, limit, paused)
+  // or a notice that asks the owner something.
+  const sync = useSyncNotice({
+    vault,
+    profile: identity?.name ?? "",
+    removeCopy: forgetThisVault,
+    ...(args.openPairing === undefined ? {} : { pairAgain: args.openPairing }),
+  });
   const putAway = useQuery(monthClosedSeen, { vault });
   const putAwayCommand = useCommand(setMonthClosedSeen);
   const closedMonth = lastClosedMonth(args.today);
@@ -149,6 +161,7 @@ export function useTodayScreen(args: {
     title: monthName(month.month, ui.locale).title,
     banner,
     stale,
+    sync,
     hero: {
       label: S.onTrackToKeep,
       daysLeftLabel: S.daysToGo(month.daysLeft),

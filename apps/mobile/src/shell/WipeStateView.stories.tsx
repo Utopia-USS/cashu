@@ -9,3 +9,4 @@ export default meta;
 
 export const Wiping = { args: {} };
 export const Failed = { args: { phase: "failed" } };
+export const NoProfileOpens = { args: { phase: "failed", failure: "no_vault" } };

@@ -17,12 +17,15 @@ import { bumpEpoch, showWiping } from "../services/lifecycle";
 import { ServicesProvider } from "../services/ServicesProvider";
 import { wipeDevice } from "../services/wipe";
 import { RootPhaseGate } from "./RootPhaseGate";
-import wipeMeta, { Failed, Wiping } from "./WipeStateView.stories";
+import wipeMeta, { Failed, NoProfileOpens, Wiping } from "./WipeStateView.stories";
 
 jest.mock("@expo/ui", () => require("../screens/testing/expoUiMock").default);
 // The sheet route's `wipeThisPhone`, bound per test (the platform wipe needs the device's files).
 let mockWipe: () => Promise<void> = async () => {};
-jest.mock("../services/services", () => ({ wipeThisPhone: () => mockWipe() }));
+jest.mock("../services/services", () => ({
+  wipeThisPhone: () => mockWipe(),
+  lastServicesFailure: () => undefined,
+}));
 // No expo-notifications in Jest: the sheet reads an undetermined permission.
 jest.mock("../platform/notifications", () => ({
   expoScheduler: { permission: async () => "undetermined" },
@@ -41,9 +44,17 @@ afterEach(async () => {
 
 describe("wipe state stories", () => {
   const Component = wipeMeta.component as ComponentType<object>;
-  it.each(Object.entries({ Wiping, Failed }))("%s renders", async (_name, story) => {
-    await render(<Component {...wipeMeta.args} {...story.args} />);
-    expect(screen.getByTestId("wipe-state")).toBeOnTheScreen();
+  it.each(Object.entries({ Wiping, Failed, NoProfileOpens }))(
+    "%s renders",
+    async (_name, story) => {
+      await render(<Component {...wipeMeta.args} {...story.args} />);
+      expect(screen.getByTestId("wipe-state")).toBeOnTheScreen();
+    },
+  );
+
+  it("says no profile opens with the re-pair copy instead of the wipe's failure", async () => {
+    await render(<Component {...wipeMeta.args} {...NoProfileOpens.args} />);
+    expect(screen.getByText(/cashU can't open the profiles on this phone/)).toBeOnTheScreen();
   });
 });
 

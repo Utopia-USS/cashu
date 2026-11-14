@@ -4,6 +4,7 @@
 import type { IsoDate, Money } from "@cashu/domain";
 import type { IconName, SwatchColor } from "@cashu/ui/native";
 import type { TabHeaderProps } from "../../shell/TabHeader";
+import type { SyncSlot } from "../../sync/useSyncNotice";
 import type { MonthClosedViewProps } from "../monthClosed/monthClosed-contracts";
 
 /** One "Worth a look" row. */
@@ -52,6 +53,8 @@ export interface TodayReady {
   } | null;
   /** The bank data is stale: the hero tile fades. */
   readonly stale: boolean;
+  /** Sync's quiet line or the notice that asks the owner, in the banner slot (`useSyncNotice`). */
+  readonly sync: SyncSlot;
   readonly hero: {
     readonly label: string;
     readonly daysLeftLabel: string;

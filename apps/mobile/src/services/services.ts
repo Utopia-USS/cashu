@@ -17,6 +17,7 @@ import { enabledModules, profileIdentity } from "@cashu/store/core/profile";
 import {
   currentVault,
   type DeviceStore,
+  forgetPairedVault,
   type PairedVault,
   pairedVaults,
   savePairedVault,
@@ -90,10 +91,13 @@ import { phoneInvestmentSources } from "./investments";
 import { bumpEpoch, servicesCloser, showOpening, showWiping } from "./lifecycle";
 import { createMoneyQueries, type MoneyQueries } from "./moneyQueries";
 import {
+  forgetVault,
+  type JoinedVault,
   readPairedEntry,
   readVaultBootstrap,
   restorePairedVaults,
   savePairedEntry,
+  storeJoinedInQueue,
 } from "./vaultBootstrap";
 import { createVaultSession, type VaultSession, type VaultSyncStatus } from "./vaultEngine";
 import { beforeWipeTasks, onBeforeWipe, wipeDevice } from "./wipe";
@@ -182,6 +186,17 @@ const COMPANION_ROLES: Readonly<Record<"anna" | "home", ProfileRole>> = {
 
 let services: Services | undefined;
 
+/**
+ * Why the root is in its fatal state, value-free (`no_vault`, `paired_vaults_unlisted`, a wipe step's
+ * code, ...): the root shows re-pair copy for the codes a pairing repairs. Undefined while not failed.
+ */
+let servicesFailure: string | undefined;
+
+/** The code of the last services failure that put the root in its fatal state. */
+export function lastServicesFailure(): string | undefined {
+  return servicesFailure;
+}
+
 const now = () => performance.now();
 
 /**
@@ -191,7 +206,7 @@ const now = () => performance.now();
  * known answers leaves @noble bound (correct, only slower; the crypto self-test reports `nativeVerify`).
  */
 let sodiumInstance: crypto.Sodium | undefined;
-function phoneSodium(): crypto.Sodium {
+export function phoneSodium(): crypto.Sodium {
   if (sodiumInstance === undefined) {
     sodiumInstance = crypto.fromLibsodium(nativeLibsodium, { aead: "noble" });
     try {
@@ -406,7 +421,8 @@ export function startServices(): void {
     }
   } catch (error) {
     // No vault to show (`paired_vaults_unlisted`, `no_vault`): the fatal state instead of a crash.
-    appendBenchLog({ kind: "services_failed", reason: codeOf(error) });
+    servicesFailure = codeOf(error);
+    appendBenchLog({ kind: "services_failed", reason: servicesFailure });
     bumpEpoch("failed");
     return;
   }
@@ -418,7 +434,8 @@ export function startServices(): void {
     })
     .catch((error: unknown) => {
       // No usable vault (every paired vault's keys unreadable): the fatal "open it again" state.
-      appendBenchLog({ kind: "services_failed", reason: codeOf(error) });
+      servicesFailure = codeOf(error);
+      appendBenchLog({ kind: "services_failed", reason: servicesFailure });
       bumpEpoch("failed");
     });
 }
@@ -556,17 +573,49 @@ function closeOpened(opened: readonly OpenedVault[]): void {
   }
 }
 
-/** The relay transport of this build (one per phone, every paired vault), or none without a config. */
-function relayRemote(keyStore: crypto.KeyStore): FirestoreTransport | undefined {
+/** This build's relay client: one anonymous identity for the pairing and every paired vault's transport. */
+interface PhoneRelay {
+  readonly projectId: string;
+  readonly rest: FirestoreRest;
+  uid(): Promise<string>;
+}
+
+/** Built once per KeyStore instance (the wipe drops both): two clients would race the first sign-up. */
+let relayInstance: { readonly keyStore: crypto.KeyStore; readonly relay: PhoneRelay } | undefined;
+
+/** This build's relay client, or undefined without a sync config (every relay surface stays off). */
+export function phoneRelay(): PhoneRelay | undefined {
   const config = relayConfig();
   if (config === undefined) return undefined;
-  const auth = new AnonymousAuth({
-    endpoint: { apiKey: config.apiKey },
-    store: keyStoreAuthStore(keyStore),
-  });
-  const rest = new FirestoreRest({ endpoint: { projectId: config.projectId }, auth });
-  return new FirestoreTransport({ rest, uid: () => auth.uid() });
+  const keyStore = phoneKeyStore();
+  if (relayInstance?.keyStore !== keyStore) {
+    const auth = new AnonymousAuth({
+      endpoint: { apiKey: config.apiKey },
+      store: keyStoreAuthStore(keyStore),
+    });
+    const rest = new FirestoreRest({ endpoint: { projectId: config.projectId }, auth });
+    relayInstance = {
+      keyStore,
+      relay: { projectId: config.projectId, rest, uid: () => auth.uid() },
+    };
+  }
+  return relayInstance.relay;
 }
+
+/** The relay transport of this build (one per phone, every paired vault), or none without a config. */
+function relayRemote(): FirestoreTransport | undefined {
+  const relay = phoneRelay();
+  if (relay === undefined) return undefined;
+  return new FirestoreTransport({ rest: relay.rest, uid: () => relay.uid() });
+}
+
+/** What the pairing needs of the running services besides their public face (set by `bootServices`). */
+interface ServicesInternals {
+  readonly queue: ReturnType<typeof createVaultQueue>;
+  /** Each opened vault's log database. */
+  readonly logs: ReadonlyMap<string, SqlDriver>;
+}
+let internals: ServicesInternals | undefined;
 
 const nextFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -608,7 +657,7 @@ export function bootServices(): Services {
     device.run(setCurrentVault, { vault: fallback });
   }
   const keyStore = phoneKeyStore();
-  const relay = opened.some((v) => v.kind === "paired") ? relayRemote(keyStore) : undefined;
+  const relay = opened.some((v) => v.kind === "paired") ? relayRemote() : undefined;
   const queue = createVaultQueue();
   const sessions = new Map<string, VaultSession>(
     opened.map((v) => {
@@ -712,6 +761,7 @@ export function bootServices(): Services {
   const fallbackStore = fallback === null ? undefined : storeOf(fallback);
   // TRANSITIONAL(S44): no vault opened at all lands in the fatal state; the pairing screens take it.
   if (fallbackStore === undefined) throw new Error("no_vault");
+  internals = { queue, logs: new Map(opened.map((v) => [v.vault, v.log])) };
   services = {
     client,
     device,
@@ -756,6 +806,7 @@ onBeforeWipe(async () => {
 function dropServices(): void {
   const current = services;
   services = undefined;
+  internals = undefined;
   prepared = undefined;
   current?.close();
 }
@@ -782,31 +833,118 @@ async function reopenServices(): Promise<void> {
     bootServices();
     bumpEpoch("ready");
   } catch (error) {
+    servicesFailure = codeOf(error);
     bumpEpoch("failed");
     throw error;
   }
 }
 
 /**
- * Add a freshly paired vault to this phone (after `storeJoinedVault` resolved) and reopen the services
+ * Keep a pairing welcome (after the phone read its member document: the pairing is committed): the
+ * vault's open session, when this phone held the vault already, is closed and the store runs as one
+ * task of the vault's queue (`storeJoinedInQueue`). `discardUnpushed`: the owner agreed to remove own
+ * changes the relay never got. `addPairedVault` follows.
+ */
+export async function storeJoinedPairing(
+  joined: JoinedVault,
+  options: { readonly discardUnpushed: boolean },
+): Promise<void> {
+  const base = prepared?.base;
+  const running = internals;
+  if (base === undefined || running === undefined) throw new Error("services_not_prepared");
+  const vault = joined.ring.vaultId;
+  const held = running.logs.get(vault);
+  const driver = held ?? openVaultLog(vault, base.key);
+  try {
+    await storeJoinedInQueue(
+      {
+        queue: running.queue,
+        session: services?.vaults.get(vault),
+        keyStore: phoneKeyStore(),
+        driver,
+        now: () => Date.now(),
+      },
+      joined,
+      options,
+    );
+  } finally {
+    if (held === undefined) driver.close();
+  }
+}
+
+/**
+ * Add a freshly paired vault to this phone (after `storeJoinedPairing` resolved) and reopen the services
  * over it: the root remounts, `PhoneSync`'s start trigger waits for the vault's open and runs its first
  * sync (`syncRunner.ts`), and `useVaultSyncStatus(vault)` shows the progress (`receiving`) until the
- * profile has arrived (`ready`).
- * TRANSITIONAL(S44): unused and unexported until the pairing screens call it (exported with them).
+ * profile has arrived (`ready`). Also a role change (the same vault's entry replaced).
  */
-async function addPairedVault(entry: PairedVault): Promise<void> {
+export async function addPairedVault(entry: PairedVault): Promise<void> {
   const base = prepared?.base;
   if (base === undefined) throw new Error("services_not_prepared");
   // The log's copy first: a device store recreated later rebuilds the list from it.
-  const log = openVaultLog(entry.vaultId, base.key);
+  const held = internals?.logs.get(entry.vaultId);
+  const log = held ?? openVaultLog(entry.vaultId, base.key);
   try {
     savePairedEntry(log, entry);
   } finally {
-    log.close();
+    if (held === undefined) log.close();
   }
   const saved = base.device.run(savePairedVault, entry);
   if (!saved.ok) throw new Error(saved.reason);
   await reopenServices();
+}
+
+/** Change whose phone this is for one paired vault (the pairing's last step, the profile sheet). */
+export async function setPairedVaultRole(vault: string, role: ProfileRole): Promise<void> {
+  const base = prepared?.base;
+  if (base === undefined) throw new Error("services_not_prepared");
+  const entry = pairedOf(base.device).find((e) => e.vaultId === vault);
+  if (entry === undefined) throw new Error("vault_not_paired");
+  if (entry.role === role) return;
+  await addPairedVault({ ...entry, role });
+}
+
+/**
+ * Remove one paired vault's copy from this phone (the removed and sync-off states offer it, never
+ * automatically): every engine and database closes, then `forgetVault` deletes the vault's log FIRST
+ * (its copy of the list entry would otherwise restore it), its view, the list entry and its keys; the
+ * services open again over what is left (no paired vault left: the demo, and the pairing screen).
+ */
+export async function forgetThisVault(vault: string): Promise<void> {
+  showOpening();
+  try {
+    await services?.closeSessions();
+    const entry = prepared?.base === undefined ? undefined : pairedOf(prepared.base.device);
+    const device = entry?.find((e) => e.vaultId === vault)?.deviceId;
+    const others = entry?.filter((e) => e.vaultId !== vault) ?? [];
+    dropServices();
+    const base = openBase();
+    const keyStore = phoneKeyStore();
+    try {
+      await forgetVault({
+        deleteLog: () => deleteDatabaseFile(`log-${vault}.db`),
+        deleteView: () => deleteDatabaseFile(`vault-${vault}.db`),
+        forgetEntry: () => base.device.run(forgetPairedVault, { vaultId: vault }).ok,
+        deleteKeys: async () => {
+          await keyStore.delete(crypto.keyringName(vault));
+          // One identity per pairing; kept while another vault still names it.
+          if (device !== undefined && !others.some((e) => e.deviceId === device)) {
+            await keyStore.delete(crypto.deviceIdentityName(device));
+          }
+        },
+      });
+    } finally {
+      base.device.close();
+      base.prices.close();
+    }
+    await prepareServices();
+    bootServices();
+    bumpEpoch("ready");
+  } catch (error) {
+    servicesFailure = codeOf(error);
+    bumpEpoch("failed");
+    throw error;
+  }
 }
 
 /**

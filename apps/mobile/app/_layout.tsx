@@ -81,6 +81,14 @@ function AppRoot() {
                   name="modal/review"
                   options={{ presentation: "fullScreenModal", headerShown: false }}
                 />
+                <Stack.Screen
+                  name="modal/pair"
+                  options={{
+                    presentation: "fullScreenModal",
+                    headerShown: false,
+                    gestureEnabled: false,
+                  }}
+                />
                 <Stack.Protected guard={__DEV__}>
                   <Stack.Screen name="debug" options={{ title: Debug.title }} />
                   <Stack.Screen name="bench" options={{ title: Bench.title }} />

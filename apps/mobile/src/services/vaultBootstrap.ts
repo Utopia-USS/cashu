@@ -354,7 +354,8 @@ function joinedCertificates(
  * replaces the log (`createVaultLog`'s replacement rule), unless the old log holds own frames the relay
  * is not known to have: then nothing is replaced and it throws `unpushed_changes` (the pairing screen
  * runs a pass of the open vault and tries again, or tells the user); a crash between this and `addPairedVault`
- * leaves an unlisted file that the next pairing of the same vault replaces. One device id has one
+ * leaves an unlisted file that the next pairing of the same vault replaces. `discardUnpushed` skips the
+ * check (the owner agreed to lose them). One device id has one
  * identity (the KeyStore slot is per id): a phone that pairs a second vault under the same device id
  * passes the identity it already holds. A vault whose session is open is closed first
  * (`services.vaults.get(vault)?.close()`), so no engine writes into the file being replaced.
@@ -364,10 +365,15 @@ export async function storeJoinedVault(
   driver: SqlDriver,
   joined: JoinedVault,
   now: () => number,
+  options: { readonly discardUnpushed?: boolean } = {},
 ): Promise<void> {
   // Re-pairing replaces the log: own frames the relay never got would go with it (and with the keyring
-  // they are sealed under). Refused before anything is replaced; a pass pushes them first.
-  if (await heldUnpushed(driver, joined.ring.vaultId)) throw new Error("unpushed_changes");
+  // they are sealed under). Refused before anything is replaced; a pass pushes them first. A vault the
+  // relay no longer takes frames for (this phone was removed) can never push them: the owner's explicit
+  // "remove them and pair" (`discardUnpushed`) is the only way past.
+  if (!options.discardUnpushed && (await heldUnpushed(driver, joined.ring.vaultId))) {
+    throw new Error("unpushed_changes");
+  }
   await crypto.saveDeviceIdentity(keyStore, joined.identity);
   await crypto.saveKeyring(keyStore, joined.ring);
   createVaultLog(driver, {
@@ -381,4 +387,57 @@ export async function storeJoinedVault(
       devices.recordPairingProvenance(store, joined.ring, joined.inviter, now()),
     now,
   });
+}
+
+/** What `storeJoinedInQueue` needs of the running services. */
+export interface JoinedStorePorts {
+  /** The vault queue every command and pass of the vault runs through. */
+  readonly queue: { run<T>(vault: string, task: () => Promise<T>): Promise<T> };
+  /** The open session of the vault (a re-pairing), closed before anything is checked or replaced. */
+  readonly session: { close(): Promise<void> } | undefined;
+  readonly keyStore: crypto.KeyStore;
+  readonly driver: SqlDriver;
+  readonly now: () => number;
+}
+
+/**
+ * `storeJoinedVault` as the services run it: the vault's open session (a re-pairing of a vault this
+ * phone holds) is closed first, then the unpushed check and the replacement run as ONE task of the
+ * vault's queue, so no command of that session can append between the check and the drop.
+ */
+export async function storeJoinedInQueue(
+  ports: JoinedStorePorts,
+  joined: JoinedVault,
+  options: { readonly discardUnpushed?: boolean } = {},
+): Promise<void> {
+  await ports.session?.close();
+  await ports.queue.run(joined.ring.vaultId, () =>
+    storeJoinedVault(ports.keyStore, ports.driver, joined, ports.now, options),
+  );
+}
+
+/** The steps of forgetting one paired vault, each one IO the services provide. */
+export interface ForgetVaultPorts {
+  /** Delete `log-<vault>.db` (it holds the copy of the list entry). */
+  deleteLog(): void;
+  /** Delete `vault-<vault>.db`. */
+  deleteView(): void;
+  /** Drop the `pairedVaults` entry; false when the device store refused. */
+  forgetEntry(): boolean;
+  /** Delete the vault's keyring and this device's identity in it from the KeyStore. */
+  deleteKeys(): Promise<void>;
+}
+
+/**
+ * Forget one paired vault (the removed state's "remove this copy"). The log goes FIRST: it holds the
+ * copy of the list entry (`savePairedEntry`), and an empty list is rebuilt from those copies at the next
+ * launch (`restorePairedVaults`), so a kill after the list entry but before the log would bring the
+ * vault back. Then the view, the entry, the keys (a kill before the keys leaves sealed values nothing
+ * names; the phone wipe removes them).
+ */
+export async function forgetVault(ports: ForgetVaultPorts): Promise<void> {
+  ports.deleteLog();
+  ports.deleteView();
+  if (!ports.forgetEntry()) throw new Error("paired_vaults_corrupt");
+  await ports.deleteKeys();
 }

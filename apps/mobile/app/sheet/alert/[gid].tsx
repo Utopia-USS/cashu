@@ -1,6 +1,7 @@
 // The alert sheet (formSheet from Today's "worth a look", the Signals view and the position page,
 // `/sheet/alert/<signal gid>`).
 import { lang } from "@cashu/i18n";
+import { PinnedProfile } from "@cashu/store-react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertSheetView } from "../../../src/screens/alert/AlertSheetView";
 import { useAlertSheet } from "../../../src/screens/alert/useAlertSheet";
@@ -10,9 +11,14 @@ import { useNow } from "../../../src/shell/useNow";
 export { ErrorBoundary } from "expo-router";
 
 export default function AlertSheetRoute() {
-  // Pinned to the profile it opened with: nothing renders once the current profile is another one.
+  // Pinned to the profile it opened with: nothing renders once the current profile is another one, and
+  // everything under it reads that profile (`PinnedProfile`), never a later one.
   const vault = usePinnedVault();
-  return vault === null ? null : <AlertSheet vault={vault} />;
+  return vault === null ? null : (
+    <PinnedProfile vault={vault}>
+      <AlertSheet vault={vault} />
+    </PinnedProfile>
+  );
 }
 
 function AlertSheet({ vault }: { vault: string }) {

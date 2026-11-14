@@ -27,6 +27,13 @@ const base: ProfileSheetViewProps = {
   waiting: { kind: "nothing" },
   notificationsOff: false,
   phone: { name: "This iPhone", sub: "demo data" },
+  pairing: null,
+  role: null,
+  unavailable: [],
+  removeFailed: false,
+  onPair: () => {},
+  onRoleChanged: () => {},
+  onRemoveCopy: () => {},
   version: "0.0.0",
   dev: true,
   onProfilePicked: () => {},
@@ -68,4 +75,24 @@ export const LockTouchId = {
 };
 export const LockUnavailable = {
   args: { lock: { enabled: false, capability: "none", isPending: false } },
+};
+export const PairFirst = { args: { pairing: { first: true } } };
+export const PairedOwner = {
+  args: {
+    pairing: { first: false },
+    role: "owner" as const,
+    phone: { name: "iPhone 16 Pro", sub: "added 14.11.2026 by Anna's MacBook" },
+  },
+};
+export const PairedPartner = { args: { ...PairedOwner.args, role: "partner" as const } };
+export const ProfileDoesNotOpen = {
+  args: {
+    ...PairedOwner.args,
+    unavailable: [
+      {
+        vault: "ccccccccccccccccccccccccccccc003",
+        text: "cashU can't open Home on this phone. Pair it again with your Mac, or remove this copy.",
+      },
+    ],
+  },
 };

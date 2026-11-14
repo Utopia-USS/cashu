@@ -30,6 +30,7 @@ const owner: TodayReady = {
   title: "November",
   banner: null,
   stale: false,
+  sync: { line: null, notice: null },
   hero: {
     label: "On track to keep",
     daysLeftLabel: "18 days to go",
@@ -251,5 +252,102 @@ export const ClosedWithPlan = {
 export const ClosedWithoutInvesting = {
   args: {
     state: { kind: "closed", month: "2026-10", ...WithoutInvesting.args } satisfies TodayState,
+  },
+};
+
+// Sync in the banner slot (#25.2-4, the replay line, #23.7).
+const noop = () => {};
+export const SyncPaused = {
+  args: {
+    state: {
+      ...owner,
+      sync: {
+        line: { text: "Sync paused since 10:12 · cashU works as usual", tone: "muted" },
+        notice: null,
+      },
+    } satisfies TodayState,
+  },
+};
+export const SyncQuota = {
+  args: {
+    state: {
+      ...owner,
+      sync: {
+        line: { text: "Today's sync limit is used up, tries again after midnight", tone: "muted" },
+        notice: null,
+      },
+    } satisfies TodayState,
+  },
+};
+export const SyncStuckWaiting = {
+  args: {
+    state: {
+      ...owner,
+      sync: {
+        line: {
+          text: "Some changes from Anna's MacBook can't be read yet. Sync keeps trying.",
+          tone: "muted",
+        },
+        notice: null,
+      },
+    } satisfies TodayState,
+  },
+};
+export const SyncStuckFailed = {
+  args: {
+    state: {
+      ...owner,
+      sync: {
+        line: {
+          text: "Changes from Anna's MacBook can't be read. Check Devices on your Mac.",
+          tone: "warning",
+        },
+        notice: null,
+      },
+    } satisfies TodayState,
+  },
+};
+export const SyncReplay = {
+  args: {
+    state: {
+      ...owner,
+      sync: { line: { text: "Checking this phone's copy · 40%", tone: "muted" }, notice: null },
+    } satisfies TodayState,
+  },
+};
+export const SyncRemoved = {
+  args: {
+    state: {
+      ...owner,
+      sync: {
+        line: null,
+        notice: {
+          title: "This phone was removed from Anna on your Mac",
+          body: "The copy stays on this phone until you remove it.",
+          actions: [{ label: "Remove this copy", tone: "danger", onPress: noop }],
+          failed: false,
+        },
+      },
+    } satisfies TodayState,
+  },
+};
+export const SyncTurnedOff = {
+  args: {
+    state: {
+      ...owner,
+      sync: {
+        line: null,
+        notice: {
+          title:
+            "Sync for Anna was turned off on your Mac. The copy on this phone stays until you remove it.",
+          body: null,
+          actions: [
+            { label: "Remove this copy", tone: "danger", onPress: noop },
+            { label: "Keep for now", tone: "secondary", onPress: noop },
+          ],
+          failed: false,
+        },
+      },
+    } satisfies TodayState,
   },
 };
