@@ -1,7 +1,9 @@
-import { Button, Spinner } from "@cashu/ui";
+import { Button, Dialog, Spinner } from "@cashu/ui";
 import { T } from "./Devices.strings.js";
 import { LeaderAction } from "./LeaderAction.js";
+import { S } from "./Sync.strings.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
+import type { KeepFetchingState } from "./useKeepFetching.js";
 import type { LeaderActionState } from "./useLeaderAction.js";
 
 const control =
@@ -10,9 +12,21 @@ const control =
 export function DevicesView({
   state,
   leaderAction,
+  fetchPaused = null,
+  keepFetching = null,
+  onGoToSync,
 }: {
   state: DevicesScreenState;
   leaderAction: LeaderActionState;
+  /** Bank fetches paused by the 7-day offline bound (`fetchPausedLine`): which text to show. */
+  fetchPaused?: "outage" | "sync_off" | null;
+  /**
+   * The owner's override while paused. The pause means THIS Mac is the one that fetches, so it takes
+   * the place of the re-pin action there.
+   */
+  keepFetching?: KeepFetchingState;
+  /** Moves focus to the Sync row (absent: no Sync row). */
+  onGoToSync?: () => void;
 }) {
   if (state.list?.kind !== "ready") return <p>{T.unavailable}</p>;
   const list = state.list;
@@ -67,8 +81,50 @@ export function DevicesView({
             {T.leaderPending}: {deviceName(list.leader.pendingFrom)}
           </p>
         )}
+        {fetchPaused && (
+          <div className="grid gap-1">
+            <p role="alert">{fetchPaused === "outage" ? S.fetchPaused : S.fetchPausedSyncOff}</p>
+            <div className="flex flex-wrap gap-3">
+              {onGoToSync && (
+                <Button variant="link" onPress={onGoToSync}>
+                  {S.goToSync}
+                </Button>
+              )}
+              {keepFetching && (
+                <Button disabled={keepFetching.busy} onPress={keepFetching.onAsk}>
+                  {S.keepFetching}
+                </Button>
+              )}
+            </div>
+            {keepFetching?.busy && (
+              <p role="status" className="flex items-center gap-1.5">
+                <Spinner />
+                {S.working}
+              </p>
+            )}
+            {keepFetching?.failed && <p role="alert">{S.actionFailed}</p>}
+          </div>
+        )}
+        {keepFetching?.confirming && (
+          <Dialog
+            size="narrow"
+            title={S.keepFetching}
+            label={S.keepFetching}
+            onClose={keepFetching.onCancel}
+          >
+            <p>
+              {keepFetching.otherMac === null
+                ? S.keepFetchingConfirmUnnamed
+                : S.keepFetchingConfirm(keepFetching.otherMac)}
+            </p>
+            <div className="flex gap-2">
+              <Button onPress={keepFetching.onConfirm}>{S.keepFetchingYes}</Button>
+              <Button onPress={keepFetching.onCancel}>{S.keepFetchingCancel}</Button>
+            </div>
+          </Dialog>
+        )}
       </section>
-      {list.leader.warn && <LeaderAction state={leaderAction} />}
+      {list.leader.warn && !fetchPaused && <LeaderAction state={leaderAction} />}
       <section className="grid gap-1" aria-label={T.provenanceTitle}>
         <h3>{T.provenanceTitle}</h3>
         <p>{provenanceStatus}</p>

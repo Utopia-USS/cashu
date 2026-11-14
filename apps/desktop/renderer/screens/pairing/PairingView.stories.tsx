@@ -3,7 +3,7 @@ import { PairingView, type PairingViewState } from "./PairingView.js";
 const noop = async () => {};
 const invited: PairingViewState = {
   kind: "invited",
-  qr: "synthetic-invitation",
+  qr: "cashu-pair:synthetic-invitation-0123456789abcdef",
   expiresAt: "12:00",
   code: "",
   onCodeChange: noop,
@@ -28,3 +28,10 @@ export const Refused = {
   render: () => <PairingView state={{ kind: "refused", onCreate: noop }} />,
 };
 export const Unavailable = { render: () => <PairingView state={{ kind: "unavailable" }} /> };
+export const Expired = {
+  render: () => <PairingView state={{ kind: "expired", onCreate: noop }} />,
+};
+export const SyncOff = {
+  render: () => <PairingView state={{ kind: "sync_off", onCreate: noop }} onGoToSync={() => {}} />,
+};
+export const WaitingForPhone = { render: () => <PairingView state={{ kind: "waiting" }} /> };

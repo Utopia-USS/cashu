@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { setLanguageForTests } from "@cashu/i18n";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
@@ -435,6 +436,53 @@ it("shows the configured application and removes it only after a confirmation", 
     expect(container.textContent).toContain("The Enable Banking configuration was removed");
     expect(container.querySelector('[data-testid="banking-key-drop"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Enable Banking is configured");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("shows the paused bank fetch where the bank sync lives, with one link to Devices", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  setLanguageForTests("en");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const onOpenDevices = vi.fn();
+  const links = () =>
+    [...container.querySelectorAll("button")].filter((node) =>
+      node.textContent?.includes("Open Devices"),
+    );
+  try {
+    await act(async () =>
+      root.render(
+        <BankingScreen
+          vaultId="synthetic-a"
+          port={syntheticBankingPort(true)}
+          language="en"
+          fetchPaused="sync_off"
+          onOpenDevices={onOpenDevices}
+        />,
+      ),
+    );
+    expect(container.textContent).toContain("Bank fetch paused: sync is off");
+    expect(links()).toHaveLength(1);
+    // Devices keeps the actions: no override or re-pin here.
+    expect(container.textContent).not.toContain("Keep fetching on this Mac");
+    await act(async () => links()[0]?.click());
+    expect(onOpenDevices).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      root.render(
+        <BankingScreen
+          vaultId="synthetic-a"
+          port={syntheticBankingPort(true)}
+          language="en"
+          fetchPaused="outage"
+          onOpenDevices={onOpenDevices}
+        />,
+      ),
+    );
+    expect(container.textContent).toContain("hasn't heard from your other Mac for 7 days");
   } finally {
     await act(async () => root.unmount());
     container.remove();

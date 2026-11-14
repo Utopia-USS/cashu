@@ -7,6 +7,8 @@ export function BankingScreen(props: {
   readonly vaultId: string;
   readonly port: BankingUiPort | null;
   readonly language: "pl" | "en";
+  readonly fetchPaused?: "outage" | "sync_off" | null;
+  readonly onOpenDevices?: () => void;
 }) {
   return <ProfileBankingScreen key={props.vaultId} {...props} />;
 }
@@ -15,10 +17,14 @@ function ProfileBankingScreen({
   vaultId,
   port,
   language,
+  fetchPaused = null,
+  onOpenDevices,
 }: {
   readonly vaultId: string;
   readonly port: BankingUiPort | null;
   readonly language: "pl" | "en";
+  readonly fetchPaused?: "outage" | "sync_off" | null;
+  readonly onOpenDevices?: () => void;
 }) {
   const screen = useBankingScreen(port, vaultId);
   const [appId, setAppId] = useState("");
@@ -31,6 +37,8 @@ function ProfileBankingScreen({
   return (
     <BankingView
       language={language}
+      fetchPaused={fetchPaused}
+      {...(onOpenDevices ? { onOpenDevices } : {})}
       state={{
         screen,
         available: port !== null,

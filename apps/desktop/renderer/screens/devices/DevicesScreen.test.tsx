@@ -16,9 +16,18 @@ const bindings = vi.hoisted(() => ({
 vi.mock("@cashu/store-react", () => ({
   useProfile: () => bindings.vault,
   useConnection: () => bindings.connection,
-  useQuery: () =>
-    bindings.list === null ? { status: "unavailable" } : { status: "ready", list: bindings.list },
+  // One snapshot per pushed list, as the live query keeps its reference until the host pushes again.
+  useQuery: () => {
+    if (snapshot.list !== bindings.list)
+      snapshot.value =
+        bindings.list === null
+          ? { status: "unavailable" }
+          : { status: "ready", list: bindings.list };
+    snapshot.list = bindings.list;
+    return snapshot.value;
+  },
 }));
+const snapshot = vi.hoisted(() => ({ list: undefined as unknown, value: undefined as unknown }));
 vi.mock("../../devicesBridge.js", () => ({ devicesBridge: () => bindings.bridge }));
 
 const own = "b".repeat(32);
@@ -362,4 +371,39 @@ it("disables an expired leader preview before commit", async () => {
   expect(button("Confirm change")?.disabled).toBe(true);
   await click("Confirm change");
   expect(leaderCommit).not.toHaveBeenCalled();
+});
+
+it("while this Mac's fetch is paused, offers Keep fetching on this Mac instead of the re-pin, after a confirm", async () => {
+  const keepFetching = vi.fn(async () => ({ kind: "done" as const }));
+  vi.stubGlobal("cashuRelay", {
+    status: vi.fn(async () => ({
+      configured: true,
+      enabled: true,
+      devices: 2,
+      identityLost: false,
+      canReconnect: false,
+      pausedSince: Date.now() - 8 * 24 * 60 * 60_000,
+    })),
+    keepFetching,
+  });
+  bindings.list = deviceList({
+    leader: { ...leaderOk, paused: "offline_too_long", pausedPeer: target },
+    devices: [device(own, "This device"), device(target, "Mac mini")],
+  });
+  bindings.bridge = {};
+  await render();
+  const anywhere = (label: string) =>
+    [...document.body.querySelectorAll("button")].find((node) => node.textContent === label);
+  expect(container.textContent).toContain("Bank fetch paused");
+  expect(button("Make this Mac the one that fetches")).toBeUndefined();
+  expect(container.querySelector('section[aria-label="Change fetch leader"]')).toBeNull();
+  await click("Keep fetching on this Mac");
+  expect(document.body.textContent).toContain(
+    "Keep fetching on this Mac? Make sure your other Mac “Mac mini” doesn't fetch too. cashU asks again in 7 days.",
+  );
+  await act(async () => anywhere("Cancel")?.click());
+  expect(keepFetching).not.toHaveBeenCalled();
+  await click("Keep fetching on this Mac");
+  await act(async () => anywhere("Keep fetching")?.click());
+  expect(keepFetching).toHaveBeenCalledWith({ vault: bindings.vault });
 });

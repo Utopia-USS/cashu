@@ -28,7 +28,7 @@ export function LeaderAction({ state }: { state: LeaderActionState }) {
   } = state;
   if (!list || !available) return null;
   return (
-    <section className="grid gap-3" aria-label={T.repinTitle}>
+    <section id="leader-repin" className="grid gap-3" aria-label={T.repinTitle}>
       <h4>{T.repinTitle}</h4>
       <p>{T.repinHelp}</p>
       <label className="grid gap-1">

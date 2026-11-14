@@ -4,6 +4,7 @@ import type { UiActionResult } from "@cashu/store/ui-actions";
 import { useProfile, useUiAction } from "@cashu/store-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { useFetchPaused } from "../devices/useFetchPaused.js";
 import { BankingScreen } from "./BankingScreen.js";
 import type { BankingAction, BankingReply, BankingUiPort } from "./useBankingScreen.js";
 
@@ -64,8 +65,16 @@ function WriteChannel({ onRun }: { readonly onRun: (run: Run) => void }) {
 }
 
 /** Store UI actions and native main-process chooser, scoped to the currently selected vault. */
+/** Settings > Devices: scrolls the section into view and moves focus to its first control. */
+function openDevices(): void {
+  const section = document.getElementById("set-devices");
+  section?.scrollIntoView({ block: "start" });
+  section?.querySelector<HTMLElement>("button, select, input, summary")?.focus();
+}
+
 export function BankingSettingsPanel() {
   const vaultId = useProfile();
+  const fetchPaused = useFetchPaused();
   const read = useUiAction(bankingSettings);
   const readRun = useRef(read.run);
   const writeRun = useRef<Run | null>(null);
@@ -114,7 +123,13 @@ export function BankingSettingsPanel() {
           writeRun.current = run;
         }}
       />
-      <BankingScreen vaultId={vaultId} port={bridge() ? port : null} language={lang()} />
+      <BankingScreen
+        vaultId={vaultId}
+        port={bridge() ? port : null}
+        language={lang()}
+        fetchPaused={fetchPaused}
+        onOpenDevices={openDevices}
+      />
     </>
   );
 }

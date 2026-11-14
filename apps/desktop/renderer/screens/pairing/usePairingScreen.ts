@@ -1,4 +1,5 @@
-import { useConnection, useProfile } from "@cashu/store-react";
+import { deviceListState } from "@cashu/store/core/desktop-settings";
+import { useConnection, useProfile, useQuery } from "@cashu/store-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PairingViewState } from "./PairingView.js";
 import { pairingBridge } from "./pairingBridge.js";
@@ -11,13 +12,20 @@ type Phase =
   | "checking"
   | "unknown"
   | "completed"
+  /** The phone is admitted; this Mac has not seen its first sync yet (re-inspected on each push). */
+  | "waiting"
   | "refused"
-  | "expired";
+  | "expired"
+  /** The invite was refused because this profile's sync is off (or this build has none). */
+  | "sync_off";
 
 export function usePairingScreen(): PairingViewState {
   const vault = useProfile();
   const connection = useConnection();
   const bridge = pairingBridge();
+  // Only a trigger while waiting for the phone: the host pushes the device list again after every
+  // sync pass and device change, which is when the phone's first sync can have arrived. No timer.
+  const changed = useQuery(deviceListState, { privacy: false });
   const [scope, setScope] = useState({ vault, bridge, connection });
   const active =
     scope.vault === vault && scope.bridge === bridge && scope.connection === connection;
@@ -31,6 +39,9 @@ export function usePairingScreen(): PairingViewState {
   const inviteRef = useRef<Invite | null>(null);
   const inspectOnScope = useEffectEvent(() => {
     void inspectCurrent();
+  });
+  const inspectWhileWaiting = useEffectEvent(() => {
+    void inspectCurrent(true);
   });
   const expireOnTimer = useEffectEvent((value: Invite) => {
     void expireInvite(value);
@@ -59,6 +70,10 @@ export function usePairingScreen(): PairingViewState {
         void bridge.cancel({ vault, operationId: pending.operationId }).catch(() => {});
     };
   }, [vault, bridge, connection]);
+
+  useEffect(() => {
+    if (phase === "waiting" && changed) inspectWhileWaiting();
+  }, [phase, changed]);
 
   useEffect(() => {
     if (!invite || phase !== "invited") return;
@@ -92,12 +107,13 @@ export function usePairingScreen(): PairingViewState {
     }
   }
 
-  async function inspectCurrent(): Promise<void> {
+  /** `quiet`: a re-check while waiting for the phone keeps the waiting card instead of "checking". */
+  async function inspectCurrent(quiet = false): Promise<void> {
     const attempt = currentAttempt.current;
     if (!bridge || !attempt || attempt.vault !== vault || busy.current) return;
     busy.current = true;
     const generation = epoch.current;
-    setPhase("checking");
+    if (!quiet) setPhase("checking");
     try {
       const result = await bridge.inspect({ vault, operationId: attempt.operationId });
       if (generation !== epoch.current) return;
@@ -106,6 +122,10 @@ export function usePairingScreen(): PairingViewState {
         setInvite(null);
         inviteRef.current = null;
         setPhase("completed");
+      } else if (result.kind === "waiting_for_phone") {
+        setInvite(null);
+        inviteRef.current = null;
+        setPhase("waiting");
       } else if (result.kind === "not_started") {
         currentAttempt.current = null;
         setInvite(null);
@@ -115,7 +135,8 @@ export function usePairingScreen(): PairingViewState {
         setPhase("unknown");
       }
     } catch {
-      if (generation === epoch.current) setPhase("unknown");
+      // A quiet re-check that cannot reach the host keeps waiting: the next push asks again.
+      if (generation === epoch.current && !quiet) setPhase("unknown");
     } finally {
       busy.current = false;
     }
@@ -145,7 +166,10 @@ export function usePairingScreen(): PairingViewState {
         setInvite(result);
         inviteRef.current = result;
         setPhase("invited");
-      } else setPhase("refused");
+      } else
+        setPhase(
+          result.code === "relay_off" || result.code === "no_config" ? "sync_off" : "refused",
+        );
     } catch {
       if (generation === epoch.current) setPhase("refused");
     } finally {
@@ -174,6 +198,11 @@ export function usePairingScreen(): PairingViewState {
         setInvite(null);
         inviteRef.current = null;
         setPhase("completed");
+      } else if (result.kind === "waiting_for_phone") {
+        // Admitted: keep the attempt so each push re-inspects it until the phone's first sync lands.
+        setInvite(null);
+        inviteRef.current = null;
+        setPhase("waiting");
       } else if (result.kind === "outcome_unknown") {
         setInvite(null);
         inviteRef.current = null;
@@ -245,11 +274,13 @@ export function usePairingScreen(): PairingViewState {
       },
       submitting,
     };
-  if (phase === "unknown") return { kind: "unknown", onInspect: inspectCurrent };
+  if (phase === "unknown") return { kind: "unknown", onInspect: () => inspectCurrent() };
+  if (phase === "waiting") return { kind: "waiting" };
   if (phase === "creating") return { kind: "creating" };
   if (phase === "checking") return { kind: "checking" };
   if (phase === "completed") return { kind: "completed", onCreate: create };
   if (phase === "refused") return { kind: "refused", onCreate: create };
   if (phase === "expired") return { kind: "expired", onCreate: create };
+  if (phase === "sync_off") return { kind: "sync_off", onCreate: create };
   return { kind: "idle", onCreate: create };
 }

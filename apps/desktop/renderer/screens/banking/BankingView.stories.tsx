@@ -109,3 +109,27 @@ export const NotConfigured = {
 export const Unavailable = {
   render: () => <BankingScreen vaultId="synthetic-profile" port={null} language="pl" />,
 };
+/** The 7-day offline bound pauses this Mac's bank fetch (sync on); Devices keeps the actions. */
+export const FetchPaused = {
+  render: () => (
+    <BankingScreen
+      vaultId="synthetic-profile"
+      port={port}
+      language="en"
+      fetchPaused="outage"
+      onOpenDevices={() => {}}
+    />
+  ),
+};
+/** The same with sync switched off. */
+export const FetchPausedSyncOff = {
+  render: () => (
+    <BankingScreen
+      vaultId="synthetic-profile"
+      port={port}
+      language="en"
+      fetchPaused="sync_off"
+      onOpenDevices={() => {}}
+    />
+  ),
+};

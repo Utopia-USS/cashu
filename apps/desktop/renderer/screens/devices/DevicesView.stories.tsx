@@ -140,3 +140,64 @@ export const LeaderWarning = {
     />
   ),
 };
+const pausedList = {
+  ...baseReady,
+  leader: { ...baseReady.leader, paused: "offline_too_long" as const },
+  leaderOperations: [],
+};
+const keepFetching = {
+  otherMac: "Mac mini",
+  confirming: false,
+  busy: false,
+  failed: false,
+  onAsk: () => {},
+  onCancel: () => {},
+  onConfirm: () => {},
+};
+/** The 7-day offline bound refuses this Mac while sync is on (designer addendum 2026-11-14). */
+export const FetchPaused = {
+  render: () => (
+    <DevicesView
+      state={{ ...base, list: pausedList } as DevicesScreenState}
+      leaderAction={{ ...leaderAction, list: pausedList }}
+      fetchPaused="outage"
+      onGoToSync={() => {}}
+      keepFetching={keepFetching}
+    />
+  ),
+};
+/** The same with sync switched off (two Macs). */
+export const FetchPausedSyncOff = {
+  render: () => (
+    <DevicesView
+      state={{ ...base, list: pausedList } as DevicesScreenState}
+      leaderAction={{ ...leaderAction, list: pausedList }}
+      fetchPaused="sync_off"
+      onGoToSync={() => {}}
+      keepFetching={keepFetching}
+    />
+  ),
+};
+/** The owner's override asks first (W3-7 item 2). */
+export const KeepFetchingConfirm = {
+  render: () => (
+    <DevicesView
+      state={{ ...base, list: pausedList } as DevicesScreenState}
+      leaderAction={{ ...leaderAction, list: pausedList }}
+      fetchPaused="outage"
+      keepFetching={{ ...keepFetching, confirming: true }}
+      onGoToSync={() => {}}
+    />
+  ),
+};
+/** The same when the device list cannot name the other Mac. */
+export const KeepFetchingConfirmUnnamed = {
+  render: () => (
+    <DevicesView
+      state={{ ...base, list: pausedList } as DevicesScreenState}
+      leaderAction={{ ...leaderAction, list: pausedList }}
+      fetchPaused="sync_off"
+      keepFetching={{ ...keepFetching, otherMac: null, confirming: true }}
+    />
+  ),
+};

@@ -78,6 +78,23 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     cancel: (input: unknown): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:pairing-cancel", input),
   });
+  // Settings > Devices > Sync: the vault's sync switch and status (main checks params and results).
+  electron.contextBridge.exposeInMainWorld("cashuRelay", {
+    status: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-status", input),
+    enable: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-enable", input),
+    disable: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-disable", input),
+    purge: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-purge", input),
+    reconnect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-reconnect", input),
+    keepFetching: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-keepFetching", input),
+    syncNow: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-syncNow", input),
+  });
   // Start-up recovery: main holds the report, builds the prompt and owns the clipboard, the data
   // folder and the start sequence. The page sends only the prompt language.
   electron.contextBridge.exposeInMainWorld("cashuRecovery", {

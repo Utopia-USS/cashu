@@ -1,4 +1,5 @@
 import { Button, Select, Spinner } from "@cashu/ui";
+import { S } from "../devices/Sync.strings.js";
 import { B } from "./Banking.strings.js";
 import type { useBankingScreen } from "./useBankingScreen.js";
 
@@ -28,9 +29,14 @@ export interface BankingScreenState {
 export function BankingView({
   state,
   language,
+  fetchPaused = null,
+  onOpenDevices,
 }: {
   readonly state: BankingScreenState;
   readonly language: "pl" | "en";
+  /** Bank fetches paused by the 7-day offline bound: which text (Devices keeps detail and actions). */
+  readonly fetchPaused?: "outage" | "sync_off" | null;
+  readonly onOpenDevices?: () => void;
 }) {
   const { screen, appId, setAppId, setAspsp, callbackUrl, setCallbackUrl } = state;
   const { dragging, setDragging, chosen, confirmRemove, setConfirmRemove } = state;
@@ -168,6 +174,18 @@ export function BankingView({
                 </Button>
               </div>
             ))}
+            {fetchPaused && (
+              <div className="grid justify-items-start gap-1">
+                <p role="alert">
+                  {fetchPaused === "outage" ? S.fetchPaused : S.fetchPausedSyncOff}
+                </p>
+                {onOpenDevices && (
+                  <Button type="button" variant="link" onPress={onOpenDevices}>
+                    {S.openDevices}
+                  </Button>
+                )}
+              </div>
+            )}
             <Button
               type="button"
               disabled={

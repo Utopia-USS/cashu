@@ -19,11 +19,20 @@ export type PairingViewState =
       submitting: boolean;
     }
   | { kind: "checking" }
+  /** The phone is admitted; its first sync has not reached this Mac yet. */
+  | { kind: "waiting" }
   | { kind: "unknown"; onInspect(): Promise<void> }
   | { kind: "completed"; onCreate(): Promise<void> }
-  | { kind: "refused" | "expired"; onCreate(): Promise<void> };
+  | { kind: "refused" | "expired" | "sync_off"; onCreate(): Promise<void> };
 
-export function PairingView({ state }: { state: PairingViewState }) {
+export function PairingView({
+  state,
+  onGoToSync,
+}: {
+  state: PairingViewState;
+  /** Moves focus to the Sync row; absent when there is no Sync row (no sync config). */
+  onGoToSync?: () => void;
+}) {
   return (
     <section className="grid gap-4" aria-labelledby="pairing-title">
       <h2 id="pairing-title" className="text-title font-strong">
@@ -43,9 +52,17 @@ export function PairingView({ state }: { state: PairingViewState }) {
             <QRCodeSVG value={state.qr} size={232} level="M" title={T.qrLabel} />
           </div>
           <p>{T.pasteHint}</p>
-          <Button disabled={!state.canCopy} onPress={state.onCopy}>
-            {T.copy}
-          </Button>
+          <div className="grid gap-1">
+            <span className="text-sm text-fg-muted">{T.codeLabel}</span>
+            <code className="select-all break-all rounded-control border border-border bg-chip px-3 py-1.5 font-mono text-xs-plus">
+              {state.qr}
+            </code>
+          </div>
+          <div>
+            <Button disabled={!state.canCopy} onPress={state.onCopy}>
+              {T.copy}
+            </Button>
+          </div>
           <p>
             {T.expiry} {state.expiresAt}
           </p>
@@ -91,13 +108,37 @@ export function PairingView({ state }: { state: PairingViewState }) {
           <Button onPress={state.onInspect}>{T.inspect}</Button>
         </div>
       )}
+      {state.kind === "waiting" && (
+        <p role="status" className="flex items-center gap-1.5">
+          <Spinner />
+          {T.waitingForPhone}
+        </p>
+      )}
       {state.kind === "completed" && <p role="status">{T.complete}</p>}
       {state.kind === "refused" && <p role="alert">{T.refused}</p>}
-      {state.kind === "expired" && <p role="alert">{T.expired}</p>}
-      {(state.kind === "idle" ||
-        state.kind === "completed" ||
-        state.kind === "refused" ||
-        state.kind === "expired") && <Button onPress={state.onCreate}>{T.create}</Button>}
+      {state.kind === "expired" && (
+        <div className="grid gap-2">
+          <p role="alert">{T.expired}</p>
+          <div>
+            <Button onPress={state.onCreate}>{T.newCode}</Button>
+          </div>
+        </div>
+      )}
+      {state.kind === "sync_off" && (
+        <div className="grid gap-2">
+          <p role="alert">{T.syncOff}</p>
+          {onGoToSync && (
+            <div>
+              <Button variant="link" onPress={onGoToSync}>
+                {T.goToSync}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+      {(state.kind === "idle" || state.kind === "completed" || state.kind === "refused") && (
+        <Button onPress={state.onCreate}>{T.create}</Button>
+      )}
     </section>
   );
 }

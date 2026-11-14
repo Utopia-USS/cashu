@@ -62,3 +62,23 @@ export function hmLocal(iso: string | null | undefined): string {
     ? `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`
     : "";
 }
+
+const dayMonthFormats = new Map<string, Intl.DateTimeFormat>();
+/** "12 Nov" / "12 lis" (local calendar day and short month of an instant, no year). */
+export function dayMonthShort(at: Date, locale: string): string {
+  let format = dayMonthFormats.get(locale);
+  if (!format) {
+    format = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" });
+    dayMonthFormats.set(locale, format);
+  }
+  return format.format(at);
+}
+
+/** Which local calendar day an instant falls on, seen from `now`: today, yesterday or earlier. */
+export function relativeDay(at: Date, now: Date): "today" | "yesterday" | "earlier" {
+  const day = localIsoDate(at);
+  const today = localIsoDate(now);
+  // An instant ahead of this clock (another device's, or a clock that went back) still reads as today.
+  if (day >= today) return "today";
+  return day === addDays(today, -1) ? "yesterday" : "earlier";
+}

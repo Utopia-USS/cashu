@@ -38,6 +38,10 @@ import {
   pairingInspectResultSchema,
   pairingInviteParamsSchema,
   pairingInviteResultSchema,
+  relayActionParamsSchema,
+  relayActionResultSchema,
+  relayStatusParamsSchema,
+  relayStatusResultSchema,
   revokeCancelParamsSchema,
   revokeCancelResultSchema,
   revokeCommitParamsSchema,
@@ -50,6 +54,7 @@ import {
   uiCreationAllowed,
   uiDevicesAllowed,
   uiPairingAllowed,
+  uiRelayAllowed,
 } from "@cashu/host-protocol";
 import { recoveryCommand } from "@cashu/host-protocol/startup-failure";
 import {
@@ -715,7 +720,7 @@ async function drainForUpdate(targetVersion: string): Promise<
  * codes `<ns>_unavailable`, `<ns>_invalid_params` and `<ns>_invalid_result`.
  */
 function nativeIpc(
-  ns: "creation" | "devices" | "pairing",
+  ns: "creation" | "devices" | "pairing" | "relay",
   allowed: (method: string, minor: number, features: readonly string[]) => boolean,
   methods: Record<string, readonly [params: z.ZodType, result: z.ZodType]>,
 ) {
@@ -883,6 +888,18 @@ nativeIpc("pairing", uiPairingAllowed, {
   confirm: [pairingConfirmParamsSchema, pairingConfirmResultSchema],
   inspect: [pairingInspectParamsSchema, pairingInspectResultSchema],
   cancel: [pairingCancelParamsSchema, pairingCancelResultSchema],
+});
+
+// Settings > Devices > Sync: the vault's sync switch, its status line, the purge, the reconnect, "Try
+// now" for a failing removal, and the owner's "Keep fetching on this Mac" (Devices, fetch paused).
+nativeIpc("relay", uiRelayAllowed, {
+  status: [relayStatusParamsSchema, relayStatusResultSchema],
+  enable: [relayActionParamsSchema, relayActionResultSchema],
+  disable: [relayActionParamsSchema, relayActionResultSchema],
+  purge: [relayActionParamsSchema, relayActionResultSchema],
+  reconnect: [relayActionParamsSchema, relayActionResultSchema],
+  keepFetching: [relayActionParamsSchema, relayActionResultSchema],
+  syncNow: [relayActionParamsSchema, relayActionResultSchema],
 });
 
 function launchBase() {
