@@ -11,6 +11,7 @@ import { pairingPorts } from "../../src/screens/pair/pairingPorts";
 import { usePairScreen } from "../../src/screens/pair/usePairScreen";
 import { useServices } from "../../src/services/ServicesProvider";
 import { setPairedVaultRole } from "../../src/services/services";
+import { usePairingModalPresented } from "../../src/shell/PairingHold";
 import { useLockAfterPairing } from "../../src/shell/useAppLock";
 import { useTransitionEnded } from "../../src/shell/useTransitionEnded";
 
@@ -21,6 +22,8 @@ export default function PairRoute() {
   const services = useServices();
   const insets = useSafeAreaInsets();
   const presented = useTransitionEnded();
+  // The pairing's hold over the services' reopen lifts once this modal is on screen again.
+  usePairingModalPresented(presented);
   const lockAfter = useLockAfterPairing();
   const props = usePairScreen({
     presented,

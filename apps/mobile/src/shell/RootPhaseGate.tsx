@@ -6,13 +6,15 @@
 import { Fragment, type ReactNode, useSyncExternalStore } from "react";
 import { getEpoch, getRootPhase, subscribeEpoch } from "../services/lifecycle";
 import { lastServicesFailure } from "../services/services";
+import { PairingHold } from "./PairingHold";
 import { WipeStateView } from "./WipeStateView";
 
 export function RootPhaseGate({ children }: { children: ReactNode }) {
   const epoch = useSyncExternalStore(subscribeEpoch, getEpoch, getEpoch);
   const phase = useSyncExternalStore(subscribeEpoch, getRootPhase, getRootPhase);
-  // Opening lasts a fraction of a second (the paired vaults' keys): nothing over the native background.
-  if (phase === "opening") return null;
+  // Opening lasts a fraction of a second (the paired vaults' keys): nothing over the native background,
+  // except a pairing's "Saving on this phone..." step when the reopen is the pairing's (`PairingHold`).
+  if (phase === "opening") return <PairingHold inWindow={false} />;
   if (phase !== "ready") {
     return (
       <WipeStateView

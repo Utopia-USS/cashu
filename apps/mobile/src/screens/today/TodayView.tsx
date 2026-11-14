@@ -184,7 +184,10 @@ function WhereItWent({ state }: { state: TodayReady }) {
 
 function Ready({ state }: { state: TodayReady }) {
   return (
-    <ScrollView className="flex-1 bg-surface">
+    // Set here, not left to the tab: the tab insets only the scroll view it found when it appeared, so
+    // this one (mounted when the closed month gives way, e.g. to the sync-off notice) would draw its
+    // header under the status bar.
+    <ScrollView className="flex-1 bg-surface" contentInsetAdjustmentBehavior="automatic">
       <TabHeader {...state.header} title={state.title} />
       <View className="gap-3 p-4">
         <SyncSlotView slot={state.sync} />

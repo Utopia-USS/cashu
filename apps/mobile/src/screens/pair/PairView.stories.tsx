@@ -101,6 +101,8 @@ const failed = (reason: string, canScanAgain = true) => ({
 });
 export const Expired = failed("expired");
 export const Taken = failed("taken");
+/** The code was already used by this same phone (an earlier run claimed it). */
+export const TakenHere = failed("taken_here");
 export const OtherProject = failed("other_project", false);
 export const Offline = failed("offline");
 export const NoSync = failed("no_sync", false);

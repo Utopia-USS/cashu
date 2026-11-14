@@ -169,7 +169,12 @@ function MonthClosedContent(props: MonthClosedViewProps) {
 export function MonthClosedView(props: MonthClosedViewProps) {
   const { chrome } = props;
   return (
-    <ScrollView className="flex-1 bg-surface" keyboardShouldPersistTaps="handled">
+    // The safe area is set here for the same reason as Today's: either scroll root may mount after the tab appeared.
+    <ScrollView
+      className="flex-1 bg-surface"
+      contentInsetAdjustmentBehavior="automatic"
+      keyboardShouldPersistTaps="handled"
+    >
       {chrome.kind === "tab" ? (
         <TabHeader {...chrome.header} title={props.title} />
       ) : (

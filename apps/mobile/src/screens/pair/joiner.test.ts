@@ -279,7 +279,7 @@ describe("a re-pairing, a cancel the Mac hears and a wipe mid-pairing", () => {
     await invite.link.close();
   });
 
-  it("says the code is taken when this phone pastes a code it already used", async () => {
+  it("says this phone used the code already when it pastes a code it used", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -310,7 +310,8 @@ describe("a re-pairing, a cancel the Mac hears and a wipe mid-pairing", () => {
         if (event.type === "failed") failures.push(event);
       })
       .start(invite.qr, NAME, { discardUnpushed: false });
-    expect(failures).toEqual([{ type: "failed", reason: "taken" }]);
+    // QA run 3: it said "Another device already used this code".
+    expect(failures).toEqual([{ type: "failed", reason: "taken_here" }]);
     expect(phone.durable()).toEqual(NOTHING);
     release();
     await mac$;

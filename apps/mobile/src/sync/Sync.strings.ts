@@ -65,6 +65,18 @@ export const S = catalog({
   },
   removeCopy: { pl: "Usuń tę kopię", en: "Remove this copy" },
   keepForNow: { pl: "Na razie zostaw", en: "Keep for now" },
+  // The native confirm of "Remove this copy" (one profile; lead's wording, for the designer's pass).
+  removeCopyTitle: {
+    pl: (profile: string) => `Usunąć profil ${profile} z tego telefonu?`,
+    en: (profile: string) => `Remove ${profile} from this phone?`,
+  },
+  removeCopyBody: {
+    pl: (profile: string) =>
+      `Kopia profilu ${profile} na tym telefonie zostanie usunięta. Na Twoim Macu wszystko zostaje.`,
+    en: (profile: string) =>
+      `The copy of ${profile} on this phone is deleted. Your Mac keeps everything.`,
+  },
+  removeCopyConfirm: { pl: "Usuń", en: "Remove" },
   // Proposed: a paired profile whose files or keys did not open this launch.
   needsRepair: {
     pl: (profile: string) =>

@@ -606,6 +606,31 @@ describe("the month-closed state over the real store", () => {
   });
 });
 
+describe("Today's scroll root", () => {
+  // QA run 3: the closed month gave way to the sync-off notice and the running month's header sat under
+  // the status bar (the tab adjusts only the scroll view it found when it appeared, not a later one).
+  it("adjusts for the safe area itself when the closed month turns into the running month", async () => {
+    // The host scroll view at the root of the tab (what iOS insets).
+    const insets = () => {
+      expect(screen.root?.type).toBe("RCTScrollView");
+      return screen.root?.props.contentInsetAdjustmentBehavior;
+    };
+    await render(
+      <UiEnvProvider locale="en-US" privacy={false}>
+        <TodayView state={todayStories.ClosedWithPlan.args.state} />
+      </UiEnvProvider>,
+    );
+    expect(insets()).toBe("automatic");
+    await screen.rerender(
+      <UiEnvProvider locale="en-US" privacy={false}>
+        <TodayView state={todayStories.SyncTurnedOff.args.state} />
+      </UiEnvProvider>,
+    );
+    expect(screen.getByText("Remove this copy")).toBeOnTheScreen();
+    expect(insets()).toBe("automatic");
+  });
+});
+
 // Every story of both Views by name: a new story must be added here (CSF named exports).
 const STORIES: [string, ComponentType<never>, object, Record<string, unknown>][] = [
   ["TodayView", todayMeta.component, todayMeta.args, todayStories],

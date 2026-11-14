@@ -132,6 +132,7 @@ export const S = catalog({
       reason:
         | "expired"
         | "taken"
+        | "taken_here"
         | "other_project"
         | "offline"
         | "no_sync"
@@ -144,6 +145,8 @@ export const S = catalog({
           return "Kod wygasł. Na Macu wybierz „Pokaż nowy kod” i zeskanuj go ponownie.";
         case "taken":
           return "Ten kod został już użyty przez inne urządzenie. Pokaż nowy kod na Macu.";
+        case "taken_here":
+          return "Ten kod został już użyty na tym telefonie. Utwórz nowy na Macu.";
         case "other_project":
           return "Ten kod pochodzi z innej wersji cashU niż ten telefon.";
         case "offline":
@@ -162,6 +165,7 @@ export const S = catalog({
       reason:
         | "expired"
         | "taken"
+        | "taken_here"
         | "other_project"
         | "offline"
         | "no_sync"
@@ -174,6 +178,8 @@ export const S = catalog({
           return "The code expired. On the Mac, choose “Show a new code” and scan it again.";
         case "taken":
           return "Another device already used this code. Show a new code on your Mac.";
+        case "taken_here":
+          return "This code was already used on this phone. Create a new one on your Mac.";
         case "other_project":
           return "This code comes from a different cashU build than this phone.";
         case "offline":

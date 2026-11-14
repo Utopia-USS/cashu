@@ -14,7 +14,8 @@ export type CameraAccess = "unknown" | "granted" | "denied";
 
 /**
  * Why a pairing stopped (value-free). `expired`: the QR or the six digits ran out ("Scan again").
- * `taken`: another device claimed this code first. `other_project`: the QR belongs to another sync
+ * `taken`: another device claimed this code first. `taken_here`: this phone used the code already (an
+ * earlier run claimed it and sent its hello). `other_project`: the QR belongs to another sync
  * project than this build's. `offline`: sync could not be reached. `no_sync`: this build has no sync set
  * up. `refused`: the Mac stopped it (code refused or cancelled there). `unpushed`: changes of this phone
  * appeared after the question. `failed`: anything else.
@@ -22,6 +23,7 @@ export type CameraAccess = "unknown" | "granted" | "denied";
 export type PairFailure =
   | "expired"
   | "taken"
+  | "taken_here"
   | "other_project"
   | "offline"
   | "no_sync"

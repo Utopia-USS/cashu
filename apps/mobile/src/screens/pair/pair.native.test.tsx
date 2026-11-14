@@ -84,6 +84,18 @@ it("makes paste the way in when the camera is denied", async () => {
   expect(screen.queryByText("Scan with the camera")).toBeNull();
 });
 
+// QA run 3: opened from the profile sheet with the camera already denied, the scan step kept an empty
+// camera box; the flow there had not taken the platform's answer. The screen's own answer decides too.
+it("shows the denied paste path even when the flow starts over without the camera's answer", async () => {
+  mockCameraGranted = false;
+  await render(wrap(<Screen close={() => {}} />));
+  // A fresh flow under the open screen: the platform answered once and does not answer again.
+  await act(async () => pairFlow.reset());
+  expect(screen.getByText(/cashU can't use the camera/)).toBeOnTheScreen();
+  expect(screen.getByLabelText("Code from your Mac")).toBeOnTheScreen();
+  expect(screen.queryByLabelText("Camera for scanning the code")).toBeNull();
+});
+
 it("says when the pasted text is not a cashU code", async () => {
   await render(wrap(<Screen close={() => {}} />));
   await fireEvent.press(screen.getByLabelText("Paste the code"));

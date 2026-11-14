@@ -1,8 +1,9 @@
 // Today's sync slot from a hand-driven vault status: the replay line only after ~1 s, the removed state
-// offers "Remove this copy" and never runs it by itself, "Keep for now" puts the sync-off notice aside.
+// offers "Remove this copy" and runs it only after its confirm, "Keep for now" puts the sync-off notice aside.
 import { setLanguageForTests } from "@cashu/i18n";
 import { act, renderHook } from "@testing-library/react-native";
 import type { ReactNode } from "react";
+import { Alert } from "react-native";
 import { ServicesProvider } from "../services/ServicesProvider";
 import type { Services } from "../services/services";
 import type { VaultSession, VaultSyncStatus } from "../services/vaultEngine";
@@ -77,8 +78,19 @@ it("offers the removal of a removed phone's copy and runs it only on the owner's
   );
   expect(result.current.notice?.title).toBe("This phone was removed from Anna on your Mac");
   expect(removeCopy).not.toHaveBeenCalled();
+  // QA run 3: it removed at once. The native confirm comes first and names the one profile.
+  const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
   await act(async () => result.current.notice?.actions[0]?.onPress());
+  expect(removeCopy).not.toHaveBeenCalled();
+  const [title, body, buttons] = alert.mock.calls[0] ?? [];
+  expect(title).toBe("Remove Anna from this phone?");
+  expect(body).toBe("The copy of Anna on this phone is deleted. Your Mac keeps everything.");
+  expect(buttons?.map((b) => b.text)).toEqual(["Cancel", "Remove"]);
+  await act(async () => buttons?.[0]?.onPress?.());
+  expect(removeCopy).not.toHaveBeenCalled();
+  await act(async () => buttons?.[1]?.onPress?.());
   expect(removeCopy).toHaveBeenCalledWith(VAULT);
+  alert.mockRestore();
 });
 
 it("puts the sync-off notice aside with Keep for now", async () => {

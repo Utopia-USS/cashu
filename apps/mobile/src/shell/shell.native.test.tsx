@@ -34,6 +34,7 @@ import { ServicesProvider } from "../services/ServicesProvider";
 import { AppEnv } from "./AppEnv";
 import { bankFresh } from "./fresh";
 import { PrivacyCover } from "./PrivacyCover";
+import { systemPrompt } from "./systemPrompt";
 import { TabHeader } from "./TabHeader";
 import headerMeta, {
   Incognito,
@@ -221,6 +222,28 @@ describe("app-switcher cover", () => {
       await act(() => enter("active"));
       expect(screen.queryByTestId("privacy-cover", hidden)).toBeNull();
     } finally {
+      restore();
+    }
+  });
+
+  // QA run 3: the camera prompt made the app inactive and the cover blanked the scan step behind it.
+  it("stays away under the app's own permission prompt, but covers a real app switch", async () => {
+    const { enter, restore } = appState();
+    const answered = systemPrompt.expect();
+    try {
+      enter("active");
+      await render(<PrivacyCover />);
+      await act(() => enter("inactive"));
+      expect(screen.queryByTestId("privacy-cover", hidden)).toBeNull();
+      await act(() => enter("background"));
+      expect(screen.getByTestId("privacy-cover", hidden)).toBeOnTheScreen();
+      await act(() => enter("inactive"));
+      expect(screen.queryByTestId("privacy-cover", hidden)).toBeNull();
+      // Answered: inactive is the switcher again.
+      await act(() => answered());
+      expect(screen.getByTestId("privacy-cover", hidden)).toBeOnTheScreen();
+    } finally {
+      answered();
       restore();
     }
   });

@@ -372,9 +372,9 @@ export class PhonePairing {
           .catch((error: unknown) => {
             // The hello's slot already holds another message of this phone (only the claimant may write
             // there, and the claim found this phone's uid already in it): an earlier run of this phone
-            // used the code, so it is taken, not a broken session.
+            // used the code, so it is taken here, not a broken session (and not by another device).
             if (!received && error instanceof PairingLinkError && error.code === "malformed")
-              throw new PairingStopped("taken");
+              throw new PairingStopped("taken_here");
             throw error;
           });
         this.#sending = sent;

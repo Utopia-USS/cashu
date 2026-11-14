@@ -26,6 +26,7 @@ import { useProfileNames } from "../../shell/profileNames";
 import { initialOf } from "../../shell/tabs";
 import { useIncognito } from "../../shell/useAppEnv";
 import { lockPrompt, useLockEnabled } from "../../shell/useAppLock";
+import { confirmRemoveCopy } from "../../sync/confirmRemoveCopy";
 import { S as Sync } from "../../sync/Sync.strings";
 import { useVaultSyncStatus } from "../../sync/usePhoneSync";
 import { type SyncSlot, useSyncNotice } from "../../sync/useSyncNotice";
@@ -186,10 +187,11 @@ export function useProfileSheet(args: {
       if (role === currentRole) return;
       args.saveRole?.(current, role).catch(() => Alert.alert(S.couldNotSwitch));
     },
-    onRemoveCopy: (vault) => {
-      setRemoveFailed(false);
-      args.removeCopy?.(vault).catch(() => setRemoveFailed(true));
-    },
+    onRemoveCopy: (vault) =>
+      confirmRemoveCopy(nameOf(vault, profiles.find((p) => p.vault === vault)?.name ?? ""), () => {
+        setRemoveFailed(false);
+        args.removeCopy?.(vault).catch(() => setRemoveFailed(true));
+      }),
     version: Constants.expoConfig?.version ?? "",
     dev: __DEV__,
     onProfilePicked: (vault) => {

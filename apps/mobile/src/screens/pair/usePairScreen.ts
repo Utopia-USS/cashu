@@ -150,11 +150,15 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
   const cancel = () => pairFlow.cancel();
 
   switch (state.kind) {
-    case "scan":
+    case "scan": {
+      // One denied state for every entry: the flow's answer, else the platform's as this screen heard it
+      // (an answer can reach the screen before or without the flow, e.g. opened from the profile sheet
+      // with the camera already denied); denied always means the paste path with its copy.
+      const access = state.camera === "unknown" ? camera : state.camera;
       return {
         kind: "scan",
-        input: state.input,
-        camera: state.camera,
+        input: access === "denied" ? "paste" : state.input,
+        camera: access,
         name: state.name,
         notACode: state.notACode,
         pasted,
@@ -172,6 +176,7 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
         },
         onCancel: cancel,
       };
+    }
     case "discard":
       return {
         kind: "discard",

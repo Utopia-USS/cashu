@@ -1,8 +1,10 @@
 // One vault's sync as Today shows it in its banner slot: a quiet status line (paused, today's limit,
 // changes that can't be read, the replay check after ~1 s) or a notice that asks the owner (removed,
 // sync turned off on the Mac, a profile that does not open) with "Remove this copy" offered, never run
-// by itself. "Keep for now" hides the sync-off notice until the next launch.
+// by itself, and confirmed first (`confirmRemoveCopy`). "Keep for now" hides the sync-off notice until
+// the next launch.
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { confirmRemoveCopy } from "./confirmRemoveCopy";
 import { S } from "./Sync.strings";
 import { REPLAY_LINE_AFTER_MS, syncLineOf, vaultNoticeOf } from "./syncStatusCopy";
 import { useVaultSyncStatus } from "./usePhoneSync";
@@ -67,10 +69,11 @@ export function useSyncNotice(args: {
   const remove: SyncNoticeAction = {
     label: S.removeCopy,
     tone: "danger",
-    onPress: () => {
-      setFailed(false);
-      args.removeCopy(args.vault).catch(() => setFailed(true));
-    },
+    onPress: () =>
+      confirmRemoveCopy(args.profile, () => {
+        setFailed(false);
+        args.removeCopy(args.vault).catch(() => setFailed(true));
+      }),
   };
   const notice = vaultNoticeOf(status);
   if (notice !== null) {

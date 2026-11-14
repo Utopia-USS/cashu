@@ -9,7 +9,7 @@ import { ProfileProvider, StoreProvider } from "@cashu/store-react";
 import { act, cleanup, screen, waitFor } from "@testing-library/react-native";
 import { Slot } from "expo-router";
 import { renderRouter } from "expo-router/testing-library";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { AppState, Text } from "react-native";
 import { pairFlow } from "../screens/pair/pairFlow";
 import { moneyStore } from "../screens/testing/moneyStore";
@@ -17,6 +17,7 @@ import { ServicesProvider } from "../services/ServicesProvider";
 import type { Services } from "../services/services";
 import type { AuthResult } from "./auth";
 import { LockGate } from "./LockGate";
+import { PairingHold, usePairingModalPresented } from "./PairingHold";
 import { usePairingRoute } from "./pairingRoute";
 import { memoryAuthenticator } from "./testing/auth";
 
@@ -27,6 +28,7 @@ const closers: (() => void)[] = [];
 let restoreAppState: () => void = () => {};
 
 beforeEach(() => {
+  mockTransitionEnded = true;
   setLanguageForTests("en");
   pairFlow.reset();
   // The app is in the foreground (the React Native preset mocks AppState without a status).
@@ -72,6 +74,7 @@ function Shell({ services, children }: { services: Services; children: ReactNode
         <ProfileProvider>
           <PairingRoute />
           <LockGate>{children}</LockGate>
+          <PairingHold />
         </ProfileProvider>
       </StoreProvider>
     </ServicesProvider>
@@ -81,6 +84,20 @@ function Shell({ services, children }: { services: Services; children: ReactNode
 function PairingRoute() {
   usePairingRoute();
   return null;
+}
+
+/** The modal's route: on screen once its presentation ended (driven by the test). */
+let mockTransitionEnded = false;
+const transition = new Set<() => void>();
+function PairModal() {
+  const [ended, setEnded] = useState(mockTransitionEnded);
+  useEffect(() => {
+    const end = () => setEnded(true);
+    transition.add(end);
+    return () => void transition.delete(end);
+  }, []);
+  usePairingModalPresented(ended);
+  return <Text>Pairing modal</Text>;
 }
 
 /** The root as the reopen remounts it: the start route goes on to Today. */
@@ -94,7 +111,7 @@ async function renderRemounted(services: Services) {
       ),
       index: () => <Text>Start</Text>,
       today: () => <Text>Synthetic today</Text>,
-      "modal/pair": () => <Text>Pairing modal</Text>,
+      "modal/pair": PairModal,
     },
     { initialUrl: "/today" },
   );
@@ -142,5 +159,27 @@ it("with the lock turned on, brings the modal back on the flow's step right afte
   await act(async () => answer("ok"));
   await waitFor(() => expect(lockScreen()).toBeNull());
   await waitFor(() => expect(modal()).toBeOnTheScreen());
+  expect(pairFlow.peek()?.kind).toBe("role");
+});
+
+// QA run 3: between "Saving on this phone..." and the role step the new profile's empty Today showed for
+// ~0.8 s while the modal was presented again.
+it("keeps the storing step drawn over the remounted app until the modal is on screen again", async () => {
+  mockTransitionEnded = false;
+  flowAtStoring();
+  await renderRemounted(setup());
+  const hold = () => screen.queryByTestId("pairing-hold", { includeHiddenElements: true });
+  expect(hold()).toBeOnTheScreen();
+  expect(
+    screen.getByText("Saving on this phone...", { includeHiddenElements: true }),
+  ).toBeOnTheScreen();
+  await act(async () => pairFlow.dispatch({ type: "stored", vault: VAULT }));
+  await waitFor(() => expect(modal()).toBeOnTheScreen());
+  // Presented but still sliding in: the hold stays above it.
+  expect(hold()).toBeOnTheScreen();
+  await act(async () => {
+    for (const end of transition) end();
+  });
+  expect(hold()).toBeNull();
   expect(pairFlow.peek()?.kind).toBe("role");
 });
