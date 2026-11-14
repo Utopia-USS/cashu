@@ -10,6 +10,7 @@ import { addDays, type IsoDate } from "../dates.js";
 import { D, type Decimal, ZERO } from "../decimal.js";
 import type { UiLang } from "./i18n.js";
 import {
+  bookAccounts,
   componentOrder,
   type NetWorthBook,
   netWorthBreakdown,
@@ -106,10 +107,13 @@ export function convertedHero(
   return { currency: facts.currency, net, assets, liabilities, liquid, parts, rateDate };
 }
 
-/** The currencies of the accounts the history counts (removed ones never count). */
+/**
+ * The currencies of the accounts the history counts (removed ones never count), derived ones
+ * included (`bookAccounts`: a cash pool's part in another currency).
+ */
 function bookCurrencies(book: NetWorthBook): string[] {
   const out = new Set<string>();
-  for (const a of book.accounts) if (a.removedAt === null) out.add(a.currency);
+  for (const a of bookAccounts(book)) if (a.removedAt === null) out.add(a.currency);
   return [...out].sort();
 }
 

@@ -1,5 +1,5 @@
 // Read-only S55b Overview facts from one vault. Display and navigation stay in the screen layer.
-import { assets, core, D, type Decimal, type IsoDate } from "@cashu/domain";
+import { assets, budget, core, D, type Decimal, type IsoDate } from "@cashu/domain";
 import type { Read } from "../query.js";
 
 export { type CashWalletView, cashWallet, overviewCashWallet } from "./cash.js";
@@ -27,7 +27,8 @@ export function overviewAccounts(read: Read, book: core.NetWorthBook): OverviewA
     }>("SELECT gid, name, bank, iban FROM accounts ORDER BY id").map((row) => [row.gid, row]),
   );
   return core.netWorth(book).lines.map((line) => {
-    const meta = metadata.get(line.account.id);
+    // a cash pool's part in another currency is named after its pool (`budget.netWorthLineMeta`)
+    const meta = budget.netWorthLineMeta(line.account.id, (gid) => metadata.get(gid));
     return {
       gid: line.account.id,
       name: meta?.name ?? "",

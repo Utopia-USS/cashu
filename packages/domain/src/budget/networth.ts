@@ -8,6 +8,7 @@
 import {
   type BalanceSnapshot,
   BalanceValuation,
+  type DerivedNetWorthAccount,
   type LatestEntry,
   type NetWorthAccount,
   type NetWorthContributor,
@@ -25,6 +26,66 @@ export interface CashPoolTxn {
   readonly account: string;
   readonly bookingDate: IsoDate;
   readonly amount: Decimal;
+  /**
+   * The row's own currency. Absent: the account's currency (a caller whose rows cannot carry
+   * another one). The store always passes it: a pool row in another currency is a foreign or
+   * malformed event, never a command of this app.
+   */
+  readonly currency?: string;
+}
+
+/**
+ * The id of the part of pool `poolId` held in `currency`, when that is not the pool's own currency:
+ * net worth counts it as an account of that currency beside the pool (`cashContributor`).
+ */
+export function cashPoolPartId(poolId: string, currency: string): string {
+  return `${poolId}#${currency}`;
+}
+
+/** The pool and currency of a `cashPoolPartId`; null for any other id (a gid never holds `#`). */
+export function cashPoolPartOf(
+  id: string,
+): { readonly pool: string; readonly currency: string } | null {
+  const at = id.lastIndexOf("#");
+  if (at <= 0 || at === id.length - 1) return null;
+  return { pool: id.slice(0, at), currency: id.slice(at + 1) };
+}
+
+/**
+ * The stored account behind net-worth line `id` (a pool part: its pool) with the name to show: a
+ * part is named after its pool plus the currency code ("Cash (EUR)"), every other line keeps its
+ * own. `undefined` when `metaOf` knows neither. The one place a part's name is composed.
+ */
+export function netWorthLineMeta<M extends { readonly name: string }>(
+  id: string,
+  metaOf: (gid: string) => M | undefined,
+): M | undefined {
+  const own = metaOf(id);
+  if (own !== undefined) return own;
+  const part = cashPoolPartOf(id);
+  if (part === null) return undefined;
+  const pool = metaOf(part.pool);
+  return pool === undefined ? undefined : { ...pool, name: `${pool.name} (${part.currency})` };
+}
+
+/** Budget's cash contributor: the pools by their own currency and their parts in other currencies. */
+export interface CashPoolContributor extends NetWorthContributor {
+  /** The parts of the stored pools in another currency, each after its pool (`DerivedNetWorthAccount`). */
+  derivedAccounts(stored: readonly NetWorthAccount[]): DerivedNetWorthAccount[];
+}
+
+/** `[booking date, running sum]` of `rows`, sorted stably by booking date, last value per date. */
+function runningSum(rows: readonly CashPoolTxn[]): RunningValuation {
+  const sorted = [...rows].sort((a, b) =>
+    a.bookingDate < b.bookingDate ? -1 : a.bookingDate > b.bookingDate ? 1 : 0,
+  );
+  const byDate = new Map<IsoDate, Decimal>();
+  let run = ZERO_00;
+  for (const t of sorted) {
+    run = run.add(t.amount);
+    byDate.set(t.bookingDate, run);
+  }
+  return new RunningValuation([...byDate.entries()]);
 }
 
 /**
@@ -33,33 +94,79 @@ export interface CashPoolTxn {
  * booking date, so input order breaks ties like Python's `(booking_date, id)`; the running sum starts at
  * `Decimal("0.00")` and the last value of each date is the point. Every cash account gets a valuation,
  * an empty one when it has no rows.
+ *
+ * A pool is worth the running sum of its rows in its own currency only. Its rows in another currency
+ * (a foreign or malformed event: the app's own commands route a cash row to the pool of its currency)
+ * are never added to it (data-safety rule 5): they form a part of the pool in that currency
+ * (`derivedAccounts`, id `cashPoolPartId`), counted in that currency's net worth like any account of
+ * it, the way the phone's `accountBalances` reports them.
  */
-export function cashContributor(txns: readonly CashPoolTxn[]): NetWorthContributor {
-  const byAccount = new Map<string, CashPoolTxn[]>();
+export function cashContributor(txns: readonly CashPoolTxn[]): CashPoolContributor {
+  // per account, per row currency (`null`: the account's own); input order kept
+  const byAccount = new Map<string, Map<string | null, CashPoolTxn[]>>();
+  // part id -> the pool's rows in that currency
+  const partRows = new Map<string, CashPoolTxn[]>();
   for (const t of txns) {
-    const list = byAccount.get(t.account);
-    if (list === undefined) byAccount.set(t.account, [t]);
+    let byCurrency = byAccount.get(t.account);
+    if (byCurrency === undefined) {
+      byCurrency = new Map();
+      byAccount.set(t.account, byCurrency);
+    }
+    const key = t.currency ?? null;
+    const list = byCurrency.get(key);
+    if (list === undefined) byCurrency.set(key, [t]);
     else list.push(t);
+    if (key !== null) {
+      const id = cashPoolPartId(t.account, key);
+      const part = partRows.get(id);
+      if (part === undefined) partRows.set(id, [t]);
+      else part.push(t);
+    }
   }
   return {
+    derivedAccounts(stored: readonly NetWorthAccount[]): DerivedNetWorthAccount[] {
+      return stored.flatMap((pool) => {
+        if (pool.type !== CASH_ACCOUNT_TYPE) return [];
+        const others = [...(byAccount.get(pool.id)?.keys() ?? [])]
+          .filter((c): c is string => c !== null && c !== pool.currency)
+          .sort();
+        return others.map((currency) => ({
+          of: pool.id,
+          account: { ...pool, id: cashPoolPartId(pool.id, currency), currency },
+        }));
+      });
+    },
     valuations(accounts: ReadonlyMap<string, NetWorthAccount>): ReadonlyMap<string, Valuation> {
       const out = new Map<string, Valuation>();
       for (const account of accounts.values()) {
         if (account.type !== CASH_ACCOUNT_TYPE) continue;
-        const rows = [...(byAccount.get(account.id) ?? [])].sort((a, b) =>
-          a.bookingDate < b.bookingDate ? -1 : a.bookingDate > b.bookingDate ? 1 : 0,
-        );
-        const byDate = new Map<IsoDate, Decimal>();
-        let run = ZERO_00;
-        for (const t of rows) {
-          run = run.add(t.amount);
-          byDate.set(t.bookingDate, run);
+        const part = byAccount.has(account.id) ? undefined : partRows.get(account.id);
+        if (part !== undefined) {
+          // a part of a pool in another currency (`derivedAccounts`)
+          out.set(account.id, runningSum(part));
+          continue;
         }
-        out.set(account.id, new RunningValuation([...byDate.entries()]));
+        // a stored pool: its rows in its own currency; a row without a currency is its own
+        const own = byAccount.get(account.id);
+        const explicit = own?.get(account.currency) ?? [];
+        const implicit = own?.get(null) ?? [];
+        const rows =
+          implicit.length === 0
+            ? explicit
+            : explicit.length === 0
+              ? implicit
+              : inInputOrder(txns, [...explicit, ...implicit]);
+        out.set(account.id, runningSum(rows));
       }
       return out;
     },
   };
+}
+
+/** `rows` (a subset of `txns`) back in the order of `txns`: equal booking dates keep input order. */
+function inInputOrder(txns: readonly CashPoolTxn[], rows: readonly CashPoolTxn[]): CashPoolTxn[] {
+  const keep = new Set(rows);
+  return txns.filter((t) => keep.has(t));
 }
 
 /** The bank account types whose history walks back from the first balance (budget's own types). */
@@ -150,7 +257,10 @@ export class BackfilledBalanceValuation implements Valuation {
 /**
  * Bank accounts (`BANK_BALANCE_TYPES`) with at least one balance snapshot, valued by
  * `BackfilledBalanceValuation` over their own transactions. Accounts without a snapshot are left out
- * (nothing anchors the walk back).
+ * (nothing anchors the walk back). The walk back uses the rows in the account's currency only (a row
+ * without one is the account's): a row in another currency (a foreign or malformed event) is never
+ * subtracted from a balance in this one (data-safety rule 5), and nothing anchors a balance in its
+ * own currency, so it counts in no history.
  */
 export function bankBalanceContributor(
   txns: readonly CashPoolTxn[],
@@ -174,7 +284,9 @@ export function bankBalanceContributor(
           account.id,
           new BackfilledBalanceValuation(
             rows,
-            byAccount.get(account.id) ?? [],
+            (byAccount.get(account.id) ?? []).filter(
+              (t) => t.currency === undefined || t.currency === account.currency,
+            ),
             windowStarts.get(account.id) ?? null,
           ),
         );
@@ -189,10 +301,11 @@ export function budgetContributor(
   txns: readonly CashPoolTxn[],
   balances: ReadonlyMap<string, readonly BalanceSnapshot[]>,
   windowStarts: ReadonlyMap<string, IsoDate> = new Map(),
-): NetWorthContributor {
+): CashPoolContributor {
   const cash = cashContributor(txns);
   const bank = bankBalanceContributor(txns, balances, windowStarts);
   return {
+    derivedAccounts: (stored) => cash.derivedAccounts(stored),
     valuations(accounts: ReadonlyMap<string, NetWorthAccount>): ReadonlyMap<string, Valuation> {
       return new Map([...cash.valuations(accounts), ...bank.valuations(accounts)]);
     },

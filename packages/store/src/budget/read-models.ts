@@ -10,19 +10,26 @@ import type { Read } from "../query.js";
 import type { NetWorthSource, SetupSource } from "../registry.js";
 
 /**
- * The cash pool valued by its running transaction sum (`CashContributor`) and the bank accounts by
+ * The cash pool valued by its running transaction sum in its own currency (`CashContributor`; a row
+ * in another currency, from a foreign or malformed event, counts in that currency's net worth as a
+ * part of the pool, never added to the pool's own sum: data-safety rule 5) and the bank accounts by
  * their balance snapshots, walked back over their transactions before the first one and, for a first
  * Open Banking fetch, back to the day it asked from (`budgetContributor`).
  */
 export const budgetNetWorth: NetWorthSource = (read) =>
   budget.budgetContributor(
-    read<{ account: string; bookingDate: IsoDate; amount: string }>(
-      `SELECT a.gid AS account, t.booking_date AS bookingDate, t.amount
+    read<{ account: string; bookingDate: IsoDate; amount: string; currency: string }>(
+      `SELECT a.gid AS account, t.booking_date AS bookingDate, t.amount, t.currency
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        WHERE a.type IN (?, ?, ?, ?) ORDER BY t.id`,
       budget.CASH_ACCOUNT_TYPE,
       ...budget.BANK_BALANCE_TYPES,
-    ).map((t) => ({ account: t.account, bookingDate: t.bookingDate, amount: D(t.amount) })),
+    ).map((t) => ({
+      account: t.account,
+      bookingDate: t.bookingDate,
+      amount: D(t.amount),
+      currency: t.currency,
+    })),
     netWorthBalances(read),
     budget.openBankingWindowStarts(
       read<{ account: string; bank: string; day: IsoDate; first: IsoDate | null }>(

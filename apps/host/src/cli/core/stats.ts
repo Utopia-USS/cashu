@@ -53,13 +53,17 @@ export function statsCommand(deps: Deps): PortedCommand {
           "SELECT gid, bank, name FROM accounts",
         ).map((a) => [a.gid, a]),
       );
-      const netRows = worth.lines.map((line) => [
-        `${names.get(line.account.id)?.bank ?? ""} · ${names.get(line.account.id)?.name ?? ""}`,
-        line.account.type,
-        line.account.currency,
-        line.asOf ?? "-",
-        line.contribution === null ? "-" : cashMoney(line.contribution, line.account.currency),
-      ]);
+      const netRows = worth.lines.map((line) => {
+        // a cash pool's part in another currency is named after its pool
+        const meta = budget.netWorthLineMeta(line.account.id, (gid) => names.get(gid));
+        return [
+          `${meta?.bank ?? ""} · ${meta?.name ?? ""}`,
+          line.account.type,
+          line.account.currency,
+          line.asOf ?? "-",
+          line.contribution === null ? "-" : cashMoney(line.contribution, line.account.currency),
+        ];
+      });
       for (const [currency, total] of [...worth.totals].sort(([a], [b]) => a.localeCompare(b)))
         netRows.push([io.t.tr(C.total)(currency), "", "", "", cashMoney(total, currency)]);
       const book = budgetBook(read);

@@ -1,4 +1,4 @@
-import { addDays, D, type Decimal } from "@cashu/domain";
+import { addDays, budget, D, type Decimal } from "@cashu/domain";
 import { type NetWorthLine, netWorth, netWorthComponentSeries } from "@cashu/domain/core";
 import { mcpAccounts } from "@cashu/store/core";
 import { vaultNetWorthBook } from "@cashu/store/overview";
@@ -67,7 +67,8 @@ export function networthBreakdown(ctx: ToolContext<NativeToolStore>): L.Labelled
         liabilities: L.amount(liabilities),
         net: L.amount(assets.sub(liabilities)),
         accounts: rows.map((row) => {
-          const account = accounts.get(row.account.id);
+          // a cash pool's part in another currency: its pool's label, named "<pool> (<currency>)"
+          const account = budget.netWorthLineMeta(row.account.id, (gid) => accounts.get(gid));
           return {
             account: L.account(account ? (ctx.accountLabels.get(account.id) ?? null) : null),
             name: L.identifier(account?.name ?? null),

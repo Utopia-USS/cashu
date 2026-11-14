@@ -25,7 +25,9 @@ export interface CashWalletView {
 
 /**
  * The cash drawer's own native rows, newest first; actions address their opaque gids. Direct SQL over
- * the cash pool account of the currency (the base currency by default), never the whole book.
+ * the cash pool account of the currency (the base currency by default), never the whole book. Only the
+ * pool's rows in that currency: a row in another currency (a foreign or malformed event) is never added
+ * to its balance (data-safety rule 5); net worth counts it in its own currency (`budgetNetWorth`).
  */
 export function cashWallet(read: Read, currency?: string | null): CashWalletView {
   const selected = currency || budget.budgetBaseCurrency(profileOf(read)?.baseCurrency);
@@ -49,8 +51,10 @@ export function cashWallet(read: Read, currency?: string | null): CashWalletView
         }>(
           `SELECT gid, booking_date AS date, amount, reference, description,
              counterparty_name AS name, category
-           FROM transactions WHERE account_id = ? ORDER BY booking_date DESC, id DESC`,
+           FROM transactions WHERE account_id = ? AND currency = ?
+           ORDER BY booking_date DESC, id DESC`,
           account.id,
+          selected,
         ).map((row): CashWalletRow => {
           const amount = D(row.amount);
           return {

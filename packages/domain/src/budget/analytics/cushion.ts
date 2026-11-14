@@ -101,9 +101,15 @@ function monthEndOf(year: number, month: number): IsoDate {
   return `${monthLabel(year, month)}-${String(daysInMonth(year, month)).padStart(2, "0")}`;
 }
 
+/**
+ * Each account's rows in its own currency: a row in another currency (a foreign or malformed event)
+ * never moves a balance in this one (data-safety rule 5).
+ */
 function rowsByAccount(book: BudgetBook): Map<string, BudgetTxn[]> {
+  const currencyOf = new Map(book.accounts.map((a) => [a.id, a.currency]));
   const out = new Map<string, BudgetTxn[]>();
   for (const t of book.transactions) {
+    if (t.currency !== currencyOf.get(t.account)) continue;
     const list = out.get(t.account);
     if (list === undefined) out.set(t.account, [t]);
     else list.push(t);

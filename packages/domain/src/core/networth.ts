@@ -106,8 +106,44 @@ export function componentLabels(types: AccountTypeRegistry, lang: UiLang): Map<s
 
 // --------------------------------------------------------------------------- net worth now
 
+/**
+ * An account a module values beside the stored ones, placed right after the stored account `of`
+ * (budget: the part of a cash pool in another currency, `budget/networth.ts`). It counts in its own
+ * currency like a stored account: one currency is never added into another.
+ */
+export interface DerivedNetWorthAccount {
+  readonly of: string;
+  readonly account: NetWorthAccount;
+}
+
+/** A contributor that also supplies derived accounts (`DerivedNetWorthAccount`). */
+interface DerivingContributor extends NetWorthContributor {
+  derivedAccounts(stored: readonly NetWorthAccount[]): readonly DerivedNetWorthAccount[];
+}
+
+const derives = (c: NetWorthContributor): c is DerivingContributor =>
+  typeof (c as Partial<DerivingContributor>).derivedAccounts === "function";
+
+/**
+ * The accounts net worth counts: the stored ones in storage order, each followed by the accounts
+ * contributors derive from it (contributor order). Removed ones included; `visibleAccounts` drops them.
+ */
+export function bookAccounts(book: NetWorthBook): NetWorthAccount[] {
+  const derived = new Map<string, NetWorthAccount[]>();
+  for (const c of book.contributors) {
+    if (!derives(c)) continue;
+    for (const { of, account } of c.derivedAccounts(book.accounts)) {
+      const list = derived.get(of);
+      if (list === undefined) derived.set(of, [account]);
+      else list.push(account);
+    }
+  }
+  if (derived.size === 0) return [...book.accounts];
+  return book.accounts.flatMap((a) => [a, ...(derived.get(a.id) ?? [])]);
+}
+
 function visibleAccounts(book: NetWorthBook): NetWorthAccount[] {
-  return book.accounts.filter((a) => a.removedAt === null);
+  return bookAccounts(book).filter((a) => a.removedAt === null);
 }
 
 function valuationsFor(
