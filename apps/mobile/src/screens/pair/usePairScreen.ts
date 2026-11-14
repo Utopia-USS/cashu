@@ -7,7 +7,7 @@ import { useCameraAccess } from "../../platform/camera";
 import { useVaultSyncStatus } from "../../sync/usePhoneSync";
 import type { PairingPorts } from "./joiner";
 import { pairFlow } from "./pairFlow";
-import type { CameraAccess, PairFailure } from "./pairState";
+import { type CameraAccess, type PairFailure, scanAgainHelps } from "./pairState";
 
 export type PairScreenState =
   | {
@@ -23,6 +23,8 @@ export type PairScreenState =
       onUsePaste(): void;
       onUseCamera(): void;
       onNameChanged(name: string): void;
+      /** The step's title and hint are laid out: the camera prompt may come after their frame. */
+      onShown(): void;
       onCancel(): void;
     }
   | {
@@ -65,6 +67,8 @@ export type PairScreenState =
   | {
       readonly kind: "failed";
       readonly reason: PairFailure;
+      /** A new scan can help (not a build without sync or another build's code): else only Close. */
+      readonly canScanAgain: boolean;
       onScanAgain(): void;
       onCancel(): void;
     };
@@ -92,11 +96,18 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
   const vault = state.kind === "firstSync" ? state.vault : "";
   const status = useVaultSyncStatus(vault);
 
+  // The permission as last answered: the platform hook answers once per change, so a new scan after
+  // a failure starts from it (a denied camera goes straight to the paste path).
+  // The system prompt is asked for only once the scan step drew its title and hint (one frame after
+  // their layout): asked earlier, iOS covers a modal that shows nothing yet.
+  const [camera, setCamera] = useState<CameraAccess>("unknown");
+  const [shown, setShown] = useState(false);
   useCameraAccess((access) => {
+    setCamera(access);
     if (state.kind === "scan" && state.camera !== access) {
       pairFlow.dispatch({ type: "camera", access });
     }
-  });
+  }, shown);
 
   // The six digits' countdown; at zero the run stops and the flow says "Scan again".
   const tick = useEffectEvent(() => {
@@ -135,11 +146,17 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
         notACode: state.notACode,
         pasted,
         onScanned: (text) => start(text, false, state.name.trim() || args.defaultName),
-        onPastedChanged: setPasted,
+        onPastedChanged: (text) => {
+          setPasted(text);
+          pairFlow.dispatch({ type: "edited" });
+        },
         onPasteSubmitted: () => start(pasted, false, state.name.trim() || args.defaultName),
         onUsePaste: () => pairFlow.dispatch({ type: "input", input: "paste" }),
         onUseCamera: () => pairFlow.dispatch({ type: "input", input: "camera" }),
         onNameChanged: (name) => pairFlow.dispatch({ type: "name", name }),
+        onShown: () => {
+          if (!shown) requestAnimationFrame(() => setShown(true));
+        },
         onCancel: cancel,
       };
     case "discard":
@@ -192,9 +209,10 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
       return {
         kind: "failed",
         reason: state.reason,
+        canScanAgain: scanAgainHelps(state.reason),
         onScanAgain: () => {
           setPasted("");
-          pairFlow.scanAgain();
+          pairFlow.scanAgain(camera);
         },
         onCancel: cancel,
       };

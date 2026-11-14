@@ -17,6 +17,7 @@ const scan: PairViewProps = {
   onUsePaste: noop,
   onUseCamera: noop,
   onNameChanged: noop,
+  onShown: noop,
   onCancel: noop,
 };
 
@@ -26,6 +27,13 @@ export default meta;
 export const Scan = { args: {} };
 export const CameraDenied = { args: { input: "paste", camera: "denied" } };
 export const Paste = { args: { input: "paste", pasted: "cashu-pair:{...}" } };
+/** A long pasted code: shown from its first character, the field grows with it. */
+export const PasteLong = {
+  args: {
+    input: "paste",
+    pasted: `cashu-pair:{"eph":"${"0a".repeat(32)}","vault":"${"1b".repeat(32)}"}`,
+  },
+};
 export const NotACode = { args: { input: "paste", pasted: "hello", notACode: true } };
 export const Discard = {
   args: { kind: "discard", profile: "Ala", onDiscard: noop, onCancel: noop },
@@ -82,13 +90,13 @@ export const Done = {
     onOpen: noop,
   },
 };
-const failed = (reason: string) => ({
-  args: { kind: "failed", reason, onScanAgain: noop, onCancel: noop },
+const failed = (reason: string, canScanAgain = true) => ({
+  args: { kind: "failed", reason, canScanAgain, onScanAgain: noop, onCancel: noop },
 });
 export const Expired = failed("expired");
 export const Taken = failed("taken");
-export const OtherProject = failed("other_project");
+export const OtherProject = failed("other_project", false);
 export const Offline = failed("offline");
-export const NoSync = failed("no_sync");
+export const NoSync = failed("no_sync", false);
 export const Refused = failed("refused");
 export const Failed = failed("failed");

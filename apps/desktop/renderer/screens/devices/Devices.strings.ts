@@ -65,10 +65,6 @@ export const T = catalog({
   },
   issuerTitle: { pl: "Pochodzenie urządzeń", en: "Device origins" },
   issuerRecovery: { pl: "słowa odzyskiwania", en: "recovery words" },
-  issuerAt: {
-    pl: (segment: number, offset: number) => `segment ${segment}, pozycja ${offset}`,
-    en: (segment: number, offset: number) => `segment ${segment}, position ${offset}`,
-  },
   issuerBy: { pl: "Dodane przez", en: "Added by" },
   leaderTitle: { pl: "Urządzenie pobierające", en: "Fetch leader" },
   leaderAuto: { pl: "Automatyczny wybór", en: "Automatic selection" },
@@ -87,7 +83,6 @@ export const T = catalog({
   provenanceWrap: { pl: "Przekazany przez zaufane urządzenie", en: "Wrapped by a trusted device" },
   provenancePairing: { pl: "Otrzymany podczas parowania", en: "Received during pairing" },
   provenanceUnknown: { pl: "Brak potwierdzonego pochodzenia", en: "Origin is unavailable" },
-  forkAgreed: { pl: "Ostatni zgodny punkt", en: "Last agreed position" },
   repinTitle: { pl: "Zmień urządzenie pobierające", en: "Change fetch leader" },
   repinHelp: {
     pl: "Po ponad 36 godzinach bez potwierdzonego pobrania możesz wskazać urządzenie, które ma pobierać dane.",

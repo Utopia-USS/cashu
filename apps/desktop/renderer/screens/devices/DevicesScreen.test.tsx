@@ -407,3 +407,39 @@ it("while this Mac's fetch is paused, offers Keep fetching on this Mac instead o
   await act(async () => anywhere("Keep fetching")?.click());
   expect(keepFetching).toHaveBeenCalledWith({ vault: bindings.vault });
 });
+
+it("names who added each device and never shows its log position", async () => {
+  bindings.list = deviceList({
+    devices: [
+      device(own, "This device"),
+      {
+        ...device(target, "Target"),
+        pairedAt: { seg: 1, offset: 765 },
+        forked: true,
+        forkAgreed: { seg: 1, offset: 700 },
+      },
+    ],
+  });
+  await render();
+  expect(container.textContent).toContain("Target: Added by This device");
+  expect(container.textContent).not.toMatch(/segment|position|765|700/);
+});
+
+it("adds the day a device was added when the host knows it, in both languages", async () => {
+  bindings.list = deviceList({
+    devices: [device(own, "This device"), { ...device(target, "Target"), pairedOn: "2026-11-12" }],
+  });
+  await render();
+  const origins = () =>
+    [...container.querySelectorAll("section[aria-label] li")].map((node) => node.textContent);
+  expect(origins()).toContain("This device: Added by This device");
+  expect(origins()).toContainEqual(
+    expect.stringMatching(/^Target: Added by This device · (Nov 12, 2026|12 Nov 2026)$/),
+  );
+  setLanguageForTests("pl");
+  bindings.list = deviceList({
+    devices: [device(own, "This device"), { ...device(target, "Target"), pairedOn: "2026-11-12" }],
+  });
+  await render();
+  expect(origins()).toContain("Target: Dodane przez This device · 12 lis 2026");
+});

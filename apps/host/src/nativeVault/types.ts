@@ -133,6 +133,12 @@ export interface NativeVaultSession {
   /** Fires after anything the device list shows may have changed: a sync pass settled (or the session closed), a
    * revocation or leader pin committed or was inspected, a pairing appended. */
   onDevicesChanged(listener: () => void): () => void;
+  /**
+   * A pairing transition the device list cannot see on its own (a phone connected, an invitation
+   * ended, an admission settled, the phone's first sync arrived): bumps the list's `pairingRevision`
+   * and fires `onDevicesChanged`, so the pushed list changes and a pairing screen asks again.
+   */
+  pairingChanged(): void;
   /** Fires after every committed local append of this device (the relay schedules its push). */
   onLocalWrite(listener: () => void): () => void;
   /** Serialize inbound fold and push with UI commands on this vault. */

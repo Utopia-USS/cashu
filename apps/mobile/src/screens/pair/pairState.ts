@@ -76,13 +76,26 @@ export type PairEvent =
   | { readonly type: "role"; readonly role: ProfileRole }
   | { readonly type: "roleSaved" }
   | { readonly type: "failed"; readonly reason: PairFailure }
-  | { readonly type: "scanAgain" }
+  /** The pasted text changed: a "not a cashU code" from before no longer applies. */
+  | { readonly type: "edited" }
+  /** A new scan; `camera` is the permission as last answered (the hook does not hear it again). */
+  | { readonly type: "scanAgain"; readonly camera: CameraAccess }
   | { readonly type: "cancel" }
   | { readonly type: "finish" };
 
 /** The first state: the camera, this phone's default name. */
-export function initialPairState(name: string): PairState {
-  return { kind: "scan", input: "camera", camera: "unknown", name, notACode: false };
+export function initialPairState(name: string, camera: CameraAccess = "unknown"): PairState {
+  // A denied camera makes "Paste the code" the way in from the start (a new scan after a failure).
+  const input = camera === "denied" ? "paste" : "camera";
+  return { kind: "scan", input, camera, name, notACode: false };
+}
+
+/**
+ * Whether a new scan can help after this failure. A build without sync, or a code of another build's
+ * sync project, fails the same way on every code: those offer Close only.
+ */
+export function scanAgainHelps(reason: PairFailure): boolean {
+  return reason !== "no_sync" && reason !== "other_project";
 }
 
 /** The states before the commit point: each carries the name this phone offered. */
@@ -126,6 +139,9 @@ export function pairReducer(state: PairState, event: PairEvent): PairState {
     case "notACode":
       if (state.kind !== "scan") return state;
       return { ...state, notACode: true };
+    case "edited":
+      if (state.kind !== "scan" || !state.notACode) return state;
+      return { ...state, notACode: false };
     case "discardAsked":
       if (state.kind !== "scan") return state;
       return { kind: "discard", name: state.name, profile: event.profile, qr: event.qr };
@@ -159,7 +175,7 @@ export function pairReducer(state: PairState, event: PairEvent): PairState {
       return { kind: "failed", name: state.name, reason: event.reason };
     case "scanAgain":
       if (state.kind !== "failed" && state.kind !== "discard") return state;
-      return initialPairState(state.name);
+      return initialPairState(state.name, event.camera);
     case "cancel":
       return isCancellable(state) ? { kind: "closed" } : state;
     case "finish":

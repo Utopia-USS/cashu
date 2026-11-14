@@ -6,6 +6,7 @@ import {
   type PairEvent,
   type PairState,
   pairReducer,
+  scanAgainHelps,
 } from "./pairState";
 
 const run = (events: readonly PairEvent[], from: PairState = initialPairState("iPhone")) =>
@@ -95,7 +96,43 @@ describe("pairReducer", () => {
       { type: "connecting" },
       { type: "failed", reason: "expired" },
     ]);
-    expect(pairReducer(failed, { type: "scanAgain" })).toEqual(initialPairState("Mój iPhone"));
+    expect(pairReducer(failed, { type: "scanAgain", camera: "granted" })).toEqual({
+      kind: "scan",
+      input: "camera",
+      camera: "granted",
+      name: "Mój iPhone",
+      notACode: false,
+    });
+    // A camera denied before: the new scan opens on the paste path, not an empty camera frame.
+    expect(pairReducer(failed, { type: "scanAgain", camera: "denied" })).toMatchObject({
+      kind: "scan",
+      input: "paste",
+      camera: "denied",
+    });
+  });
+
+  it("clears 'not a cashU code' once the pasted text changes", () => {
+    const wrong = run([{ type: "input", input: "paste" }, { type: "notACode" }]);
+    expect(wrong).toMatchObject({ notACode: true });
+    expect(pairReducer(wrong, { type: "edited" })).toMatchObject({ kind: "scan", notACode: false });
+    const clean = run([{ type: "input", input: "paste" }]);
+    expect(pairReducer(clean, { type: "edited" })).toBe(clean);
+  });
+
+  it("offers a new scan only for failures a new code can fix", () => {
+    const helps = (
+      [
+        "expired",
+        "taken",
+        "other_project",
+        "offline",
+        "no_sync",
+        "refused",
+        "unpushed",
+        "failed",
+      ] as const
+    ).filter(scanAgainHelps);
+    expect(helps).toEqual(["expired", "taken", "offline", "refused", "unpushed", "failed"]);
   });
 
   it("edits the name only while scanning: the hello signs it", () => {

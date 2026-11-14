@@ -234,7 +234,8 @@ export async function openNativeVault(
     const bindings = sessionBindings(context, guards);
     const syncOps = syncControl(context, guards, leaseReports);
     const fetchPull = fetchAuthorityRefresh(context, guards, syncOps);
-    const deviceOps = deviceReads(context, guards);
+    let pairingRevision = 0;
+    const deviceOps = deviceReads(context, guards, () => pairingRevision);
     const revoke = revocation(context, guards);
     const pairing = pairingWrites(context, guards, prunePairing);
     // An admission whose membership exists owes its append: retried before the session is exposed.
@@ -281,6 +282,10 @@ export async function openNativeVault(
       onDevicesChanged(listener) {
         deviceListeners.add(listener);
         return () => deviceListeners.delete(listener);
+      },
+      pairingChanged() {
+        pairingRevision += 1;
+        devicesChanged();
       },
       onLocalWrite(listener) {
         writeListeners.add(listener);

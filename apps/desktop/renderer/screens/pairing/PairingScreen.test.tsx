@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { setLanguageForTests } from "@cashu/i18n";
+import { replaceEqual } from "@cashu/store-react/client";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -47,7 +48,11 @@ it("requires typed six digits and inspects the same unknown invite", async () =>
     kind: "outcome_unknown" as const,
     operationId: "0".repeat(26),
   }));
-  const inspect = vi.fn(async () => ({ kind: "completed" as const, operationId: "0".repeat(26) }));
+  const inspect = vi
+    .fn()
+    // The read on entering the invitation: the phone connected, the six-digit field shows.
+    .mockResolvedValueOnce({ kind: "pending", operationId: "0".repeat(26), phoneConnected: true })
+    .mockResolvedValueOnce({ kind: "completed", operationId: "0".repeat(26) });
   bindings.bridge = {
     invite: vi.fn(async () => ({
       kind: "ready" as const,
@@ -151,6 +156,11 @@ async function created(bridge: unknown) {
       bindings.pushed = { status: "ready" };
       await act(async () => root.render(<Harness />));
     },
+    /** Re-renders with `next` as the renderer client would hand it over (equal parts keep identity). */
+    async pushShared(next: object) {
+      bindings.pushed = replaceEqual(bindings.pushed, next);
+      await act(async () => root.render(<Harness />));
+    },
     async close() {
       await act(async () => root.unmount());
       container.remove();
@@ -195,6 +205,13 @@ it("shows the code as text under the QR and copies exactly that text", async () 
     expect(view.container.querySelector("code")?.textContent).toBe("synthetic-code-text");
     await act(async () => view.button("Copy code")?.click());
     expect(writeText).toHaveBeenCalledWith("synthetic-code-text");
+    // Confirmed until the next host push, with no timer.
+    expect(view.button("Copied")).toBeDefined();
+    await act(async () => new Promise((done) => setTimeout(done, 20)));
+    expect(view.button("Copied")).toBeDefined();
+    await view.push();
+    expect(view.button("Copied")).toBeUndefined();
+    expect(view.button("Copy code")).toBeDefined();
   } finally {
     await view.close();
   }
@@ -227,6 +244,7 @@ it("waits for the phone's first sync and asks inspect again on each host push un
   const device = "d".repeat(32);
   const inspect = vi
     .fn()
+    .mockResolvedValueOnce({ kind: "pending", operationId, phoneConnected: true })
     .mockResolvedValueOnce({ kind: "waiting_for_phone", operationId })
     .mockResolvedValueOnce({ kind: "completed", operationId });
   const view = await created({
@@ -253,16 +271,172 @@ it("waits for the phone's first sync and asks inspect again on each host push un
     expect(view.container.textContent).toContain("Waiting for its first sync");
     expect(view.container.textContent).not.toContain("Phone paired.");
     expect(view.container.querySelector("code")).toBeNull();
-    // Entering the waiting state reads once; the phone has not synced yet.
-    expect(inspect).toHaveBeenCalledTimes(1);
+    // The invitation read once on entry; entering the waiting state reads once more; the phone has
+    // not synced yet.
+    expect(inspect).toHaveBeenCalledTimes(2);
     expect(view.container.textContent).toContain("Waiting for its first sync");
     // No timer: nothing more without a push.
     await act(async () => new Promise((done) => setTimeout(done, 20)));
-    expect(inspect).toHaveBeenCalledTimes(1);
-    await view.push();
     expect(inspect).toHaveBeenCalledTimes(2);
+    await view.push();
+    expect(inspect).toHaveBeenCalledTimes(3);
     expect(inspect).toHaveBeenLastCalledWith({ vault: bindings.vault, operationId });
     expect(view.container.textContent).toContain("Phone paired.");
+  } finally {
+    await view.close();
+  }
+});
+
+const OP = "0".repeat(26);
+const LONG = `cashu-pair:{"eph":"${"ab".repeat(32)}","vault":"${"cd".repeat(16)}"}`;
+/** A fixed clock time still ahead (tomorrow), so the invitation does not expire during a test. */
+function tomorrowAt(hours: number, minutes: number, seconds: number): number {
+  const at = new Date();
+  at.setDate(at.getDate() + 1);
+  at.setHours(hours, minutes, seconds, 0);
+  return at.getTime();
+}
+function readyBridge(extra: Record<string, unknown>) {
+  return {
+    invite: vi.fn(async () => ({
+      kind: "ready" as const,
+      operationId: OP,
+      qr: LONG,
+      expiresAt: tomorrowAt(18, 56, 44),
+    })),
+    confirm: vi.fn(),
+    inspect: vi.fn(async () => ({
+      kind: "pending" as const,
+      operationId: OP,
+      phoneConnected: true,
+    })),
+    cancel: vi.fn(async () => ({ kind: "cancelled" as const })),
+    ...extra,
+  };
+}
+
+it("shows a long code as one start…end line, copies the whole code and writes a 24 h expiry", async () => {
+  const writeText = vi.fn(async () => {});
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  const view = await created(readyBridge({}));
+  try {
+    const shown = view.container.querySelector("code")?.textContent ?? "";
+    expect(shown).toBe(`cashu-pair:{"eph":…cdcdcd"}`);
+    expect(view.container.textContent).not.toContain(LONG);
+    await act(async () => view.button("Copy code")?.click());
+    expect(writeText).toHaveBeenCalledWith(LONG);
+    expect(view.container.textContent).toContain("Invitation expires at 18:56");
+    expect(view.container.textContent).not.toContain("18:56:44");
+  } finally {
+    await view.close();
+  }
+});
+
+it("hides the six digits until the host says a phone connected, then offers them", async () => {
+  const inspect = vi
+    .fn()
+    .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: false })
+    .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: true });
+  const view = await created(readyBridge({ inspect }));
+  try {
+    expect(view.container.textContent).toContain("Waiting for the phone to scan the code.");
+    expect(view.container.querySelector('input[inputmode="numeric"]')).toBeNull();
+    expect(view.button("Confirm code")).toBeUndefined();
+    expect(view.button("Cancel invitation")).toBeDefined();
+    await view.push();
+    expect(view.container.textContent).not.toContain("Waiting for the phone to scan");
+    expect(view.container.querySelector('input[inputmode="numeric"]')).not.toBeNull();
+    expect(view.button("Confirm code")).toBeDefined();
+  } finally {
+    await view.close();
+  }
+});
+
+it("offers Cancel while checking a confirm the host holds, and cancels that attempt", async () => {
+  const held = deferred<never>();
+  const cancel = vi.fn(async () => ({ kind: "cancelled" as const }));
+  const view = await created(readyBridge({ confirm: vi.fn(() => held.promise), cancel }));
+  try {
+    const input = view.container.querySelector('input[inputmode="numeric"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        input,
+        "123456",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => view.button("Confirm code")?.click());
+    expect(view.container.textContent).toContain("Checking this operation...");
+    await act(async () => view.button("Cancel invitation")?.click());
+    expect(cancel).toHaveBeenCalledWith({ vault: bindings.vault, operationId: OP });
+    expect(view.container.textContent).not.toContain("Checking this operation...");
+    expect(view.button("Create invitation")).toBeDefined();
+  } finally {
+    await view.close();
+  }
+});
+
+it("reports the outcome as unknown when the host refuses that cancel", async () => {
+  const held = deferred<never>();
+  const view = await created(
+    readyBridge({
+      confirm: vi.fn(() => held.promise),
+      cancel: vi.fn(async () => ({ kind: "refused" as const })),
+    }),
+  );
+  try {
+    const input = view.container.querySelector('input[inputmode="numeric"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        input,
+        "123456",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => view.button("Confirm code")?.click());
+    await act(async () => view.button("Cancel invitation")?.click());
+    expect(view.container.textContent).toContain("The outcome is unknown");
+  } finally {
+    await view.close();
+  }
+});
+
+it("re-inspects on a push that only changes the list's pairingRevision, not on an equal push", async () => {
+  const list = (pairingRevision: number) => ({
+    status: "ready",
+    list: { kind: "ready", devices: [{ id: "b".repeat(32), name: "This Mac" }], pairingRevision },
+  });
+  bindings.pushed = list(1);
+  const inspect = vi
+    .fn()
+    .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: false })
+    .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: true });
+  const view = await created(readyBridge({ inspect }));
+  try {
+    expect(view.container.textContent).toContain("Waiting for the phone to scan the code.");
+    await view.pushShared(list(1));
+    expect(inspect).toHaveBeenCalledTimes(1);
+    // The phone connected: the host bumps the revision and nothing else in the list changes.
+    await view.pushShared(list(2));
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(view.container.querySelector('input[inputmode="numeric"]')).not.toBeNull();
+    expect(view.button("Confirm code")).toBeDefined();
+  } finally {
+    await view.close();
+  }
+});
+
+it("says the phone is already added when the host refuses the cancel with already_added", async () => {
+  const cancel = vi.fn(async () => ({ kind: "refused" as const, code: "already_added" as const }));
+  const view = await created(readyBridge({ cancel }));
+  try {
+    await act(async () => view.button("Cancel invitation")?.click());
+    expect(cancel).toHaveBeenCalledWith({ vault: bindings.vault, operationId: OP });
+    expect(view.container.textContent).toContain(
+      "This phone is already added. To undo it, remove the phone in the device list below.",
+    );
+    expect(view.container.textContent).not.toContain("The outcome is unknown");
+    expect(view.button("Create invitation")).toBeDefined();
   } finally {
     await view.close();
   }

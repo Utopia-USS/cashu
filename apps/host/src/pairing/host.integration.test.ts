@@ -324,6 +324,13 @@ function settingMembers(paired: Paired) {
   return setting?.memberUids ?? {};
 }
 
+/** The device list's pairing revision (0 while absent). */
+async function pairingRevision(paired: Paired): Promise<number> {
+  const list = await paired.host.stores.vaults.get(paired.env.vault)?.native?.deviceList();
+  if (list?.kind !== "ready") throw new Error("device list unavailable");
+  return list.pairingRevision ?? 0;
+}
+
 async function deviceList(paired: Paired) {
   const session = paired.host.stores.vaults.get(paired.env.vault)?.native;
   if (session === undefined) throw new Error("vault not open");
@@ -391,11 +398,19 @@ describe("pairing over the relay", () => {
       const bound = settingMembers(paired)[joiner.identity.deviceId];
       expect(bound === undefined ? undefined : relayMemberUid(bound)).toBe(joiner.uid);
       expect(bound === undefined ? undefined : relayMemberRole(bound)).toBe("member");
-      // The vault lists it, and its device.added reached the relay.
-      expect(
-        (await deviceList(paired)).find((device) => device.id === joiner.identity.deviceId)
-          ?.trusted,
-      ).toBe(true);
+      // The vault lists it, added today (this Mac's calendar day), and its device.added reached the relay.
+      const listed = (await deviceList(paired)).find(
+        (device) => device.id === joiner.identity.deviceId,
+      );
+      expect(listed?.trusted).toBe(true);
+      const today = new Date(paired.clock.now());
+      expect(listed?.pairedOn).toBe(
+        [
+          today.getFullYear(),
+          String(today.getMonth() + 1).padStart(2, "0"),
+          String(today.getDate()).padStart(2, "0"),
+        ].join("-"),
+      );
       expect(relayBytes(paired.env.fake, paired.env.vault)).toBeGreaterThan(before);
       // "Paired" only once the phone's first signed frame reached this Mac through the relay.
       expect((await inspect(paired, operationId)).kind).toBe("waiting_for_phone");
@@ -479,9 +494,12 @@ describe("pairing over the relay", () => {
         })
         .catch((error: unknown) => error);
       await until(() => shown);
+      const before = await pairingRevision(paired);
       // The 2-minute code window and its grace pass; the next action prunes the invite.
       paired.clock.advance(devices.SAS_TTL_MS + 2 * MINUTE);
       expect((await invite(paired)).kind).toBe("ready");
+      // The expiry changed the pushed list (the card asks again and shows the end).
+      expect(await pairingRevision(paired)).toBeGreaterThan(before);
       const ended = await run;
       expect(ended instanceof Error || (ended as { ok?: boolean }).ok === false).toBe(true);
       await until(
@@ -563,19 +581,114 @@ describe("pairing over the relay", () => {
       expect(ended instanceof Error || (ended as { ok?: boolean }).ok === false).toBe(true);
       await expectClean(paired, joiner.uid);
       expect((await inspect(paired, second.operationId)).kind).toBe("not_started");
+    },
+    TIMEOUT,
+  );
 
-      // Once the code was typed the commit may run: cancel is refused, the pairing completes.
-      const third = await ready(paired);
-      const last = await phone(paired, third.qr);
-      let late: Promise<{ kind: string }> | undefined;
-      let confirmed: Promise<{ kind: string }> | undefined;
-      const result = await last.run((sas) => {
-        confirmed = confirm(paired, third.operationId, sas);
-        late = cancel(paired, third.operationId);
+  it(
+    "cancels after the six digits but before the member write: nothing admitted on either side",
+    async () => {
+      const paired = await syncedHost();
+      let cancelled: Promise<{ kind: string; code?: string }> | undefined;
+      let memberWrites = 0;
+      const { joiner, reply, operationId } = await pairThrough(paired, (uid, id) => (url, init) => {
+        if (writesMember(url, init, uid)) memberWrites += 1;
+        // The admission's preflight (the member list) runs after the welcome went out, right
+        // before the membership write: the owner cancels there, and the relay answers after.
+        if (
+          cancelled === undefined &&
+          url.endsWith(":runQuery") &&
+          (init.body ?? "").includes('"members"')
+        ) {
+          const answered = cancel(paired, id);
+          cancelled = answered;
+          return answered.then(() => paired.env.fake.fetch(url, init));
+        }
+        return undefined;
       });
-      expect((await late)?.kind).toBe("refused");
-      expect(result.ok).toBe(true);
+      expect(await cancelled).toEqual({ kind: "cancelled" });
+      expect(reply).toEqual({ kind: "refused", code: "invalid" });
+      expect(memberWrites).toBe(0);
+      await expectClean(paired, joiner.uid);
+      expect(await trusted(paired, joiner.identity.deviceId)).toBe(false);
+      expect((await inspect(paired, operationId)).kind).toBe("not_started");
+      // Nothing blocks the vault: the next pairing goes through.
+      expect((await pairPhone(paired)).confirmed.kind).toBe("waiting_for_phone");
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "answers a cancel once the member write started with already_added, not an unknown outcome",
+    async () => {
+      const paired = await syncedHost();
+      let cancelled: Promise<{ kind: string; code?: string }> | undefined;
+      const { joiner, reply, operationId } = await pairThrough(paired, (uid, id) => (url, init) => {
+        if (cancelled === undefined && writesMember(url, init, uid)) {
+          // The owner cancels while the member write is on its way (it lands a moment later).
+          cancelled = cancel(paired, id);
+          return new Promise<void>((resolve) => setTimeout(resolve, 250)).then(() =>
+            paired.env.fake.fetch(url, init),
+          );
+        }
+        return undefined;
+      });
+      expect(await cancelled).toEqual({ kind: "refused", code: "already_added" });
+      expect(reply.kind).toBe("waiting_for_phone");
+      expect(memberDoc(paired, joiner.uid)?.fields.role).toEqual({ stringValue: "member" });
+      expect(await trusted(paired, joiner.identity.deviceId)).toBe(true);
+      // Later too, until the invitation is retired and after (from the journal).
+      expect(await cancel(paired, operationId)).toEqual({ kind: "refused", code: "already_added" });
+      paired.clock.advance(11 * MINUTE);
+      expect((await invite(paired)).kind).toBe("ready");
+      expect(await cancel(paired, operationId)).toEqual({ kind: "refused", code: "already_added" });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "pushes the device list when the phone connects and when its first sync arrives",
+    async () => {
+      const paired = await syncedHost();
+      const session = paired.host.stores.vaults.get(paired.env.vault)?.native;
+      if (session === undefined) throw new Error("vault not open");
+      let pushes = 0;
+      const stop = session.onDevicesChanged(() => {
+        pushes += 1;
+      });
+      const { qr, operationId } = await ready(paired);
+      expect(await inspect(paired, operationId)).toEqual({
+        kind: "pending",
+        operationId,
+        phoneConnected: false,
+      });
+      const before = { pushes, revision: await pairingRevision(paired) };
+      const joiner = await phone(paired, qr);
+      let atCode: { pushes: number; revision: number; reply: unknown } | undefined;
+      let confirmed: Promise<{ kind: string }> | undefined;
+      const result = await joiner.run((sas) => {
+        void (async () => {
+          atCode = {
+            pushes,
+            revision: await pairingRevision(paired),
+            reply: await inspect(paired, operationId),
+          };
+          confirmed = confirm(paired, operationId, sas);
+        })();
+      });
+      if (atCode === undefined) throw new Error("no code shown");
+      // The hello pushed a changed list; the card then reads that the phone connected.
+      expect(atCode.pushes).toBeGreaterThan(before.pushes);
+      expect(atCode.revision).toBeGreaterThan(before.revision);
+      expect(atCode.reply).toEqual({ kind: "pending", operationId, phoneConnected: true });
       expect((await confirmed)?.kind).toBe("waiting_for_phone");
+      if (!result.ok) throw new Error("joiner failed");
+      // Its first sync: relay passes alone (nobody inspects) change the list once it arrived.
+      const waiting = await pairingRevision(paired);
+      await joiner.firstSync(result.value);
+      await passesUntil(paired, async () => (await pairingRevision(paired)) > waiting);
+      expect((await inspect(paired, operationId)).kind).toBe("completed");
+      stop();
     },
     TIMEOUT,
   );
@@ -702,10 +815,13 @@ const trusted = async (paired: Paired, device: string) =>
   (await deviceList(paired)).some((entry) => entry.id === device && entry.trusted);
 
 /** Runs a pairing up to the owner's confirm; `hook` sees the host's relay requests meanwhile. */
-async function pairThrough(paired: Paired, hook: (joinerUid: string) => RelayFetchHook) {
+async function pairThrough(
+  paired: Paired,
+  hook: (joinerUid: string, operationId: string) => RelayFetchHook,
+) {
   const { qr, operationId } = await ready(paired);
   const joiner = await phone(paired, qr);
-  paired.intercept(hook(joiner.uid));
+  paired.intercept(hook(joiner.uid, operationId));
   let confirmed: Promise<{ kind: string; code?: string; device?: string }> | undefined;
   const result = await joiner
     .run((sas) => {

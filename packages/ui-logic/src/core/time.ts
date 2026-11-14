@@ -4,6 +4,8 @@
 // as UTC and trims fractions to milliseconds (WebKit is strict about longer fractions). A bare calendar
 // date ("2026-10-05") is a local calendar day, not an instant in UTC. Pure; tested in frontend/tests/time.test.mjs.
 
+import { formatClockTime } from "@cashu/i18n/values";
+
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DATE_TIME =
   /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)(?:[.,](\d+))?\s*(Z|[+-]\d{2}(?::?\d{2})?)?$/i;
@@ -81,4 +83,12 @@ export function relativeDay(at: Date, now: Date): "today" | "yesterday" | "earli
   // An instant ahead of this clock (another device's, or a clock that went back) still reads as today.
   if (day >= today) return "today";
   return day === addDays(today, -1) ? "yesterday" : "earlier";
+}
+
+/**
+ * The one wall-clock format of the desktop's Settings (the Sync row, the pairing card): "18:51" in both
+ * languages, 24 h, no seconds, in the device timezone.
+ */
+export function clockTime(at: number, language: "pl" | "en"): string {
+  return formatClockTime(new Date(at), language === "pl" ? "pl-PL" : "en-GB");
 }

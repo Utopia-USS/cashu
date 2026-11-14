@@ -75,6 +75,15 @@ interface LiveInvite {
   outcome?: PairingConfirmResult;
   /** The membership may have been written (the commit point may have passed). */
   committed?: boolean;
+  /**
+   * The owner cancelled before the commit point: the membership write is never started. Set and read
+   * in one synchronous step each (cancel, the admission's `admit`), so exactly one of them wins.
+   */
+  cancelled?: boolean;
+  /** The run (protocol, commit, settle); a cancel during the commit waits for it. */
+  done?: Promise<void>;
+  /** Stops watching for the phone's first sync (`waiting_for_phone` until `completed`). */
+  stopWatch?: () => void;
   /** When the session is closed at the relay and the invite forgotten. */
   retireAt?: number;
   closing?: Promise<void>;
@@ -135,6 +144,18 @@ export function createPairingService(input: PairingServiceInput): PairingService
     return live.closing;
   };
 
+  /**
+   * Pushes the vault's device list again with a new pairing revision, so a pairing screen asks
+   * `inspect` again (the push the Devices screen already listens to; no timer on the desktop).
+   */
+  const changed = (live: LiveInvite) => {
+    try {
+      input.vault(live.vault)?.pairingChanged();
+    } catch (error) {
+      warn("pairing.push-failed", error);
+    }
+  };
+
   /** Ends an invite that is still running (cancel, expiry): no commit happened, nothing is kept. */
   const abandon = (live: LiveInvite, code: "expired" | "invalid"): Promise<void> => {
     live.outcome = { kind: "refused", code };
@@ -143,7 +164,45 @@ export function createPairingService(input: PairingServiceInput): PairingService
     live.code = undefined;
     live.codeResult?.(live.outcome);
     live.codeResult = undefined;
+    changed(live);
     return closeLink(live);
+  };
+
+  /**
+   * After `waiting_for_phone`: each device change (a sync pass settled) checks whether the phone's
+   * first signed head arrived, and pushes once it did. Ends with `completed`, retirement or close.
+   */
+  const watchFirstSync = (live: LiveInvite, vault: NativeVaultSession) => {
+    let checking = false;
+    const check = () => {
+      if (checking || live.outcome?.kind !== "waiting_for_phone") return;
+      checking = true;
+      void vault
+        .pairingOperation(live.operationId)
+        .then(
+          (persisted) => {
+            if (
+              persisted?.phase !== "completed" ||
+              !persisted.joinerSeen ||
+              live.outcome?.kind !== "waiting_for_phone"
+            )
+              return;
+            live.outcome = {
+              kind: "completed",
+              operationId: live.operationId,
+              device: persisted.device,
+            };
+            live.stopWatch?.();
+            live.stopWatch = undefined;
+            vault.pairingChanged();
+          },
+          (error: unknown) => warn("pairing.outcome-unread", error),
+        )
+        .finally(() => {
+          checking = false;
+        });
+    };
+    live.stopWatch = vault.onDevicesChanged(check);
   };
 
   const prune = () => {
@@ -162,6 +221,8 @@ export function createPairingService(input: PairingServiceInput): PairingService
         continue;
       }
       if (live.retireAt !== undefined && at >= live.retireAt) {
+        live.stopWatch?.();
+        live.stopWatch = undefined;
         void closeLink(live);
         invites.delete(operationId);
       }
@@ -185,6 +246,7 @@ export function createPairingService(input: PairingServiceInput): PairingService
     const uid = live.joinerUid;
     const device = welcome.device.deviceId;
     if (uid === undefined || device !== live.joinerDevice) throw new Error("pairing_unbound");
+    if (live.cancelled) throw new Error("pairing_cancelled");
     const admitted = await vault.pairingAdmit(
       { session, operationId: live.operationId, welcome, authority, qr, uid },
       {
@@ -192,6 +254,9 @@ export function createPairingService(input: PairingServiceInput): PairingService
           await relay.listMembers(live.vault);
         },
         admit: async () => {
+          // The owner's cancel won the race: the commit point is never passed, `pairingAdmit` marks
+          // the attempt not_started. Checked in the same synchronous step that passes it.
+          if (live.cancelled) return "absent";
           // An earlier pairing of the same phone (same uid, older device) is overwritten in place:
           // the member document is keyed by the uid, the relay drops the stale setting entry.
           live.committed = true;
@@ -264,12 +329,14 @@ export function createPairingService(input: PairingServiceInput): PairingService
             };
     live.codeResult?.(live.outcome);
     live.codeResult = undefined;
+    changed(live);
     if (
       (live.outcome.kind === "completed" || live.outcome.kind === "waiting_for_phone") &&
       result?.ok === true
     ) {
       // The joiner may still be reading the pages: the session stays until it could not take more.
       live.retireAt = live.sessionExpiresAt + RETIRE_GRACE_MS;
+      if (live.outcome.kind === "waiting_for_phone") watchFirstSync(live, vault);
       return;
     }
     live.retireAt = now();
@@ -298,6 +365,7 @@ export function createPairingService(input: PairingServiceInput): PairingService
           live.joinerUid = uid;
           live.joinerDevice = joiner.deviceId;
           live.helloAt = now();
+          changed(live);
         },
         enterCode: (attemptsLeft) =>
           new Promise((resolve) => {
@@ -410,7 +478,9 @@ export function createPairingService(input: PairingServiceInput): PairingService
           sessionExpiresAt,
         };
         invites.set(operationId, live);
-        void run(live, vault, inviter, authority, qr);
+        live.done = run(live, vault, inviter, authority, qr).catch((error: unknown) =>
+          warn("pairing.run-failed", error),
+        );
         return { kind: "ready", operationId, qr, expiresAt: qrExpiresAt };
       } finally {
         starting = false;
@@ -456,15 +526,40 @@ export function createPairingService(input: PairingServiceInput): PairingService
         return { kind: live.outcome.kind, operationId };
       if (live.outcome?.kind === "outcome_unknown") return { kind: "outcome_unknown", operationId };
       if (live.outcome?.kind === "refused") return { kind: "not_started", operationId };
-      return { kind: "pending", operationId };
+      return { kind: "pending", operationId, phoneConnected: live.helloAt !== undefined };
     },
 
     async cancel(vaultId, operationId) {
       const live = invites.get(operationId);
-      if (!live || live.vault !== vaultId) return { kind: "refused" };
-      if (live.outcome || live.dispatched || live.committed) return { kind: "refused" };
-      await abandon(live, "invalid");
-      return { kind: "cancelled" };
+      if (live !== undefined && live.vault !== vaultId) return { kind: "refused" };
+      if (live === undefined) {
+        // Retired from memory: only the journal can still say the phone was added.
+        let persisted: Awaited<ReturnType<NativeVaultSession["pairingOperation"]>>;
+        try {
+          persisted = await input.vault(vaultId)?.pairingOperation(operationId);
+        } catch (error) {
+          warn("pairing.outcome-unread", error);
+          persisted = undefined;
+        }
+        return persisted?.phase === "completed"
+          ? { kind: "refused", code: "already_added" }
+          : { kind: "refused" };
+      }
+      if (live.outcome === undefined && !live.committed) {
+        // Before the commit point, the six digits typed or not: the membership write is never
+        // started (`admit` reads `cancelled`), the session is deleted, the phone keeps nothing.
+        live.cancelled = true;
+        await abandon(live, "invalid");
+        return { kind: "cancelled" };
+      }
+      // The membership write is under way: the answer is its outcome.
+      if (live.outcome === undefined) await live.done;
+      const outcome: PairingConfirmResult | undefined = live.outcome;
+      if (outcome?.kind === "completed" || outcome?.kind === "waiting_for_phone")
+        return { kind: "refused", code: "already_added" };
+      // The admission refused after all (no membership written): nothing was kept on either side.
+      if (outcome?.kind === "refused" && !live.committed) return { kind: "cancelled" };
+      return { kind: "refused" };
     },
 
     async close() {
@@ -472,6 +567,8 @@ export function createPairingService(input: PairingServiceInput): PairingService
       stopPruning();
       const closing: Promise<void>[] = [];
       for (const live of invites.values()) {
+        live.stopWatch?.();
+        live.stopWatch = undefined;
         if (active(live)) {
           live.outcome = { kind: "refused", code: "unavailable" };
           live.code?.(undefined);

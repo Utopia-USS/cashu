@@ -16,16 +16,15 @@ import { type PairScreenArgs, usePairScreen } from "./usePairScreen";
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
 
 let mockCameraGranted = true;
+// Like expo-camera, the same permission object (and request function) until the answer changes:
+// the platform hook answers once per change, not on every render.
+const mockPermissions = {
+  granted: [{ granted: true, canAskAgain: false, status: "granted" }, async () => undefined],
+  denied: [{ granted: false, canAskAgain: false, status: "denied" }, async () => undefined],
+};
 jest.mock("expo-camera", () => ({
   CameraView: () => null,
-  useCameraPermissions: () => [
-    {
-      granted: mockCameraGranted,
-      canAskAgain: false,
-      status: mockCameraGranted ? "granted" : "denied",
-    },
-    async () => undefined,
-  ],
+  useCameraPermissions: () => mockPermissions[mockCameraGranted ? "granted" : "denied"],
 }));
 
 const services = {
@@ -84,6 +83,54 @@ it("says when the pasted text is not a cashU code", async () => {
   await fireEvent.changeText(screen.getByLabelText("Code from your Mac"), "hello");
   await fireEvent.press(screen.getByLabelText("Connect"));
   expect(await screen.findByText(/This is not a cashU code/)).toBeOnTheScreen();
+});
+
+it("takes a pasted code as typed and clears 'not a cashU code' when the text changes", async () => {
+  await render(wrap(<Screen close={() => {}} />));
+  await fireEvent.press(screen.getByLabelText("Paste the code"));
+  const field = screen.getByLabelText("Code from your Mac");
+  expect(field.props).toMatchObject({
+    autoCapitalize: "none",
+    autoCorrect: false,
+    spellCheck: false,
+    scrollEnabled: false,
+  });
+  await fireEvent.changeText(field, "hello");
+  await fireEvent.press(screen.getByLabelText("Connect"));
+  expect(await screen.findByText(/This is not a cashU code/)).toBeOnTheScreen();
+  await fireEvent.changeText(screen.getByLabelText("Code from your Mac"), "hello2");
+  expect(screen.queryByText(/This is not a cashU code/)).toBeNull();
+});
+
+it("goes back to the paste path on Scan again when the camera is denied", async () => {
+  mockCameraGranted = false;
+  await render(wrap(<Screen close={() => {}} />));
+  await act(async () => {
+    pairFlow.dispatch({ type: "connecting" });
+    pairFlow.dispatch({ type: "failed", reason: "offline" });
+  });
+  await fireEvent.press(screen.getByLabelText("Scan again"));
+  expect(screen.getByText(/cashU can't use the camera/)).toBeOnTheScreen();
+  expect(screen.getByLabelText("Code from your Mac")).toBeOnTheScreen();
+  expect(screen.queryByLabelText("Camera for scanning the code")).toBeNull();
+});
+
+it("offers Close, not Scan again, when a new scan cannot help", async () => {
+  const close = jest.fn();
+  await render(wrap(<Screen close={close} />));
+  await act(async () => {
+    pairFlow.dispatch({ type: "connecting" });
+    pairFlow.dispatch({ type: "failed", reason: "no_sync" });
+  });
+  expect(screen.getByText("This version of cashU has no sync set up.")).toBeOnTheScreen();
+  expect(screen.queryByLabelText("Scan again")).toBeNull();
+  await fireEvent.press(screen.getByText("Close"));
+  expect(close).toHaveBeenCalledTimes(1);
+});
+
+it("names the Mac's own labels in the scan instruction", async () => {
+  await render(wrap(<Screen close={() => {}} />));
+  expect(screen.getByText("On your Mac: Settings > Devices > Pair a phone")).toBeOnTheScreen();
 });
 
 it("closes on cancel and starts over the next time", async () => {

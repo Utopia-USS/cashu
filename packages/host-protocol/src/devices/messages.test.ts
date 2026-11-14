@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { roleAllows } from "../roles.js";
 import {
+  deviceListResultSchema,
   NATIVE_DEVICES_FEATURE,
   NATIVE_DEVICES_METHODS,
   revokeCommitParamsSchema,
@@ -58,5 +59,56 @@ describe("native.devices.v1 wire", () => {
         recoveryPhrase: "x".repeat(50),
       }).success,
     ).toBe(false);
+  });
+
+  it("carries the pairing day as a local calendar day, optional, and the pairing revision", () => {
+    const a = "a".repeat(32);
+    const device = {
+      id: a,
+      name: "Synthetic phone",
+      trusted: true,
+      revoked: false,
+      behind: false,
+      forked: false,
+      forkAgreed: null,
+      pairedBy: a,
+      pairedAt: { seg: 1, offset: 0 },
+    };
+    const list = (devices: unknown[], extra: object = {}) => ({
+      kind: "ready",
+      vault: a,
+      ownDevice: a,
+      operations: [],
+      leaderOperations: [],
+      evidence: {
+        historyPending: false,
+        overflow: false,
+        authorityUncertain: false,
+        writeAdmission: "ready",
+      },
+      leader: {
+        mode: "auto",
+        state: "auto",
+        device: null,
+        pendingFrom: null,
+        lastActivityAt: null,
+        silentForMs: 0,
+        warn: false,
+      },
+      keyProvenance: { source: "own", sender: null, recipientsKnown: false },
+      devices,
+      ...extra,
+    });
+    expect(deviceListResultSchema.safeParse(list([device])).success).toBe(true);
+    expect(
+      deviceListResultSchema.safeParse(
+        list([{ ...device, pairedOn: "2026-11-14" }], { pairingRevision: 3 }),
+      ).success,
+    ).toBe(true);
+    for (const pairedOn of ["2026-11-14T10:00:00Z", "14.11.2026", ""])
+      expect(deviceListResultSchema.safeParse(list([{ ...device, pairedOn }])).success).toBe(false);
+    expect(deviceListResultSchema.safeParse(list([device], { pairingRevision: -1 })).success).toBe(
+      false,
+    );
   });
 });

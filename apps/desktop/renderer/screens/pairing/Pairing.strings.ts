@@ -1,4 +1,5 @@
 import { catalog } from "@cashu/i18n";
+import { clockTime } from "@cashu/ui-logic/core/time";
 
 export const T = catalog({
   title: { pl: "Połącz telefon", en: "Pair a phone" },
@@ -16,7 +17,17 @@ export const T = catalog({
   // Designer addendum 2 (2026-11-14): the code as text under the QR, for the phone's paste path.
   copy: { pl: "Kopiuj kod", en: "Copy code" },
   codeLabel: { pl: "Kod do wklejenia na telefonie", en: "Code to paste on the phone" },
-  expiry: { pl: "Zaproszenie wygasa o", en: "Invitation expires at" },
+  // QA Obs. 7: the confirmation on "Copy code", until the next host push or action.
+  copied: { pl: "Skopiowano", en: "Copied" },
+  expiry: {
+    pl: (at: number) => `Zaproszenie wygasa o ${clockTime(at, "pl")}`,
+    en: (at: number) => `Invitation expires at ${clockTime(at, "en")}`,
+  },
+  // Proposed (QA Obs. 7), for the designer: the invitation is out, no phone has connected yet.
+  waitingForScan: {
+    pl: "Czekamy, aż telefon zeskanuje kod.",
+    en: "Waiting for the phone to scan the code.",
+  },
   sasInstruction: {
     pl: "Wpisz sześć cyfr wyświetlonych na telefonie.",
     en: "Type the six digits shown on your phone.",
@@ -39,6 +50,11 @@ export const T = catalog({
   refused: {
     pl: "Nie udało się połączyć telefonu. Sprawdź stan urządzeń, zanim spróbujesz ponownie.",
     en: "The phone could not be paired. Check device status before trying again.",
+  },
+  // Lead's wording (f52 W3 QA), for the designer: a cancel after the phone was already written in.
+  alreadyAdded: {
+    pl: "Ten telefon jest już dodany. Aby to cofnąć, usuń telefon z listy urządzeń poniżej.",
+    en: "This phone is already added. To undo it, remove the phone in the device list below.",
   },
   unavailable: { pl: "Łączenie jest teraz niedostępne.", en: "Pairing is unavailable now." },
   expired: { pl: "Zaproszenie wygasło.", en: "Invitation expired." },

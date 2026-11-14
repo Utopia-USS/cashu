@@ -590,10 +590,10 @@ export function phoneRelay(): PhoneRelay | undefined {
   const keyStore = phoneKeyStore();
   if (relayInstance?.keyStore !== keyStore) {
     const auth = new AnonymousAuth({
-      endpoint: { apiKey: config.apiKey },
+      endpoint: config.identity,
       store: keyStoreAuthStore(keyStore),
     });
-    const rest = new FirestoreRest({ endpoint: { projectId: config.projectId }, auth });
+    const rest = new FirestoreRest({ endpoint: config.firestore, auth });
     relayInstance = {
       keyStore,
       relay: { projectId: config.projectId, rest, uid: () => auth.uid() },

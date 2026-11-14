@@ -1,6 +1,7 @@
 // The device list of a vault (registry, gate evidence, leader liveness, key provenance) and the
 // preparation of a leader pin. The pin itself is a lease attempt (devices/leaseAttempts).
 import { devices } from "@cashu/sync";
+import { parseHlc } from "@cashu/sync/hlc";
 import { LEADER_PIN_COMMAND } from "../devices/leaseAttempts.js";
 import type { NativeVaultContext } from "./context.js";
 import type { SessionGuards } from "./guards.js";
@@ -8,6 +9,20 @@ import { REVOKE_COMMAND } from "./revokeIntent.js";
 import type { NativeVaultSession } from "./types.js";
 
 type DeviceReads = Pick<NativeVaultSession, "deviceList" | "leaderPrepare">;
+
+/** The local calendar day of a `device.added` clock stamp; undefined when the stamp says nothing. */
+function pairedOn(hlc: string): string | undefined {
+  let wall: number;
+  try {
+    wall = parseHlc(hlc).wall;
+  } catch {
+    return undefined;
+  }
+  if (!Number.isSafeInteger(wall) || wall <= 0) return undefined;
+  const day = new Date(wall);
+  if (Number.isNaN(day.getTime())) return undefined;
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+}
 
 export function deviceReads(
   context: NativeVaultContext,
@@ -19,6 +34,8 @@ export function deviceReads(
     | "offlineTooLong"
     | "peerThatCouldLead"
   >,
+  /** The session's pairing transitions so far (`NativeVaultSession.pairingChanged`). */
+  pairingRevision: () => number = () => 0,
 ): DeviceReads {
   const { entry, engine, candidate, attempts, provenance, queue, state, now } = context;
   const deviceList: DeviceReads["deviceList"] = () =>
@@ -69,17 +86,22 @@ export function deviceReads(
           recipientsKnown:
             activeProvenance?.recipients !== null && activeProvenance?.recipients !== undefined,
         },
-        devices: records.map((record) => ({
-          id: record.deviceId,
-          name: record.name,
-          trusted: candidate.devices.registry.isTrusted(record.deviceId),
-          revoked: candidate.devices.registry.revoked.has(record.deviceId),
-          behind: behind.has(record.deviceId),
-          forked: forked.has(record.deviceId),
-          forkAgreed: forked.get(record.deviceId) ?? null,
-          pairedBy: record.pairedBy,
-          pairedAt: record.pairedAt.position,
-        })),
+        devices: records.map((record) => {
+          const day = pairedOn(record.pairedAt.hlc);
+          return {
+            id: record.deviceId,
+            name: record.name,
+            trusted: candidate.devices.registry.isTrusted(record.deviceId),
+            revoked: candidate.devices.registry.revoked.has(record.deviceId),
+            behind: behind.has(record.deviceId),
+            forked: forked.has(record.deviceId),
+            forkAgreed: forked.get(record.deviceId) ?? null,
+            pairedBy: record.pairedBy,
+            pairedAt: record.pairedAt.position,
+            ...(day === undefined ? {} : { pairedOn: day }),
+          };
+        }),
+        ...(pairingRevision() > 0 ? { pairingRevision: pairingRevision() } : {}),
       } as const;
     });
   const leaderPrepare: DeviceReads["leaderPrepare"] = (leader, force) =>

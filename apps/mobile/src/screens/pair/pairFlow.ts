@@ -6,7 +6,13 @@
 import { onBeforeWipe } from "../../services/wipe";
 import type { PairingPorts } from "./joiner";
 import { PhonePairing } from "./joiner";
-import { initialPairState, type PairEvent, type PairState, pairReducer } from "./pairState";
+import {
+  type CameraAccess,
+  initialPairState,
+  type PairEvent,
+  type PairState,
+  pairReducer,
+} from "./pairState";
 
 let state: PairState | undefined;
 let running: PhonePairing | undefined;
@@ -67,11 +73,11 @@ export const pairFlow = {
     running = undefined;
     pairFlow.dispatch({ type: "failed", reason: "expired" });
   },
-  /** A new scan after a failure or the discard question. */
-  scanAgain(): void {
+  /** A new scan after a failure or the discard question, with the camera permission as last answered. */
+  scanAgain(camera: CameraAccess): void {
     running?.abandon();
     running = undefined;
-    pairFlow.dispatch({ type: "scanAgain" });
+    pairFlow.dispatch({ type: "scanAgain", camera });
   },
   /** The flow ended (closed): the next open starts over. */
   reset(): void {

@@ -1,10 +1,11 @@
 // The pairing modal (prototype `pair` steps, dev-feedback #23.8): scan the Mac's code or paste it, the
 // six digits to type on the Mac with their countdown, receiving, whose phone this is, the first sync with
-// "Open cashU", and every way it can stop with "Scan again". Cancel on every step before storing.
+// "Open cashU", and every way it can stop: "Scan again" when a new scan can help, else Close. Cancel on
+// every step before storing.
 import { Button, GroupSection, Icon, ListRow, Meter, NoteLine, TextField } from "@cashu/ui/native";
 import { CameraView } from "expo-camera";
 import type { ReactNode } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { QR_ONLY } from "../../platform/camera";
 import { S } from "./Pair.strings";
 import type { PairScreenState } from "./usePairScreen";
@@ -66,6 +67,33 @@ function Waiting({ line, sub }: { line: string; sub?: string }) {
   );
 }
 
+/**
+ * The pasted code: a long machine string, so no capitals, autocorrect or spellcheck, and a field that
+ * grows with the text (no inner scrolling) so a paste shows from its first character.
+ */
+function CodeField(props: { value: string; onChange: (text: string) => void; invalid: boolean }) {
+  return (
+    <View className="gap-1">
+      <Text className="text-body text-fg">{S.pasteLabel}</Text>
+      <TextInput
+        value={props.value}
+        onChangeText={props.onChange}
+        accessibilityLabel={S.pasteLabel}
+        aria-invalid={props.invalid}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        autoComplete="off"
+        multiline
+        scrollEnabled={false}
+        textAlignVertical="top"
+        testID="pair-paste"
+        className={`min-h-24 rounded-sm border bg-surface px-3 py-2 text-caption text-fg ${props.invalid ? "border-negative" : "border-border"}`}
+      />
+    </View>
+  );
+}
+
 export function PairView(props: PairViewProps) {
   switch (props.kind) {
     case "scan":
@@ -84,8 +112,10 @@ export function PairView(props: PairViewProps) {
             ) : undefined
           }
         >
-          <Title>{S.scanTitle}</Title>
-          <Body>{S.scanWhere}</Body>
+          <View className="gap-4" onLayout={props.onShown}>
+            <Title>{S.scanTitle}</Title>
+            <Body>{S.scanWhere}</Body>
+          </View>
           {props.input === "camera" ? (
             <View
               accessibilityLabel={S.scannerLabel}
@@ -103,14 +133,10 @@ export function PairView(props: PairViewProps) {
           ) : (
             <View className="gap-3">
               {props.camera === "denied" && <Body>{S.cameraDenied}</Body>}
-              <TextField
-                label={S.pasteLabel}
+              <CodeField
                 value={props.pasted}
                 onChange={props.onPastedChanged}
-                multiline
-                rows={3}
                 invalid={props.notACode}
-                testID="pair-paste"
               />
               <Text className="text-caption text-fg-muted">{S.pasteHint}</Text>
               <Button
@@ -276,9 +302,15 @@ export function PairView(props: PairViewProps) {
         <Frame
           onCancel={props.onCancel}
           actions={
-            <Button variant="primary" block label={S.scanAgain} onPress={props.onScanAgain}>
-              {S.scanAgain}
-            </Button>
+            props.canScanAgain ? (
+              <Button variant="primary" block label={S.scanAgain} onPress={props.onScanAgain}>
+                {S.scanAgain}
+              </Button>
+            ) : (
+              <Button variant="secondary" block label={S.close} onPress={props.onCancel}>
+                {S.close}
+              </Button>
+            )
           }
         >
           <Title>{S.failedTitle}</Title>

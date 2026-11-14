@@ -22,7 +22,7 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Tap / click to visual response | <= 100 ms |
 | Scrolling the 60k list | no dropped frames > 1% in a 10 s fling at 60 Hz (120 Hz on ProMotion) |
 | Mobile memory, steady state with 60k transactions | <= 250 MB |
-| Bundles | mobile JS (Hermes bytecode) <= 10.00 MB ceiling (M3 companion budget, see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
+| Bundles | mobile JS (Hermes bytecode) <= 10.25 MB ceiling (M4 pairing budget, see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
 | Render regressions on key screens (Reassure) | <= 10% more renders or render time than the baseline |
 
 Mobile bundle note (lead, 2026-11-01, from S41b measurements): the first 4 MB budget was a guess. React Native +
@@ -51,6 +51,10 @@ the reference device, memory and list performance. The ceiling is therefore set 
 measurement plus real headroom: M1 8.30 MB, M2 9.30 MB, M3 9.60 MB. Within a milestone it stays a ratchet
 (a regression guard: it may only be lowered); each milestone commit lists the top bundle owners from
 `bundle-size.mjs --report` and its cold-start measurement.
+M4 pairing (2026-11-14): the owner pre-approved up to 12.00 MB for the pairing milestone; the M3 10.00 MB
+ceiling had 2 kB left; measured after the raise: iOS 9,998,263 B, Android 9,975,941 B. The ceiling is 10.25 MB, still a ratchet.
+Top owners (kB of minified JS, iOS `--report`): react-native-reanimated 615, react-native 594,
+packages/domain/investments 523, expo-router 482, apps/mobile/screens 324, packages/store/investments 289, zod 228.
 
 M3 measurements (lead, 2026-11-13; the 60k workload of `packages/store/src/budget/companion-queries.perf.test.ts`
 and `src/perf.test.ts` on the M-series Mac, other sessions running): the phone's hot reads moved to derived tables

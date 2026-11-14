@@ -3,11 +3,10 @@
 // 2026-11-14 addenda (all accepted as written); entries marked "proposed" are this screen's wording and
 // wait for the designer's pass. The user never sees "relay". PL + EN.
 import { catalog, enForm, plForm } from "@cashu/i18n";
-import { formatClockTime } from "@cashu/i18n/values";
-import { dayMonthShort } from "@cashu/ui-logic/core/time";
+import { clockTime, dayMonthShort } from "@cashu/ui-logic/core/time";
 
-const clockPl = (at: number) => formatClockTime(new Date(at), "pl-PL");
-const clockEn = (at: number) => formatClockTime(new Date(at), "en-GB");
+const clockPl = (at: number) => clockTime(at, "pl");
+const clockEn = (at: number) => clockTime(at, "en");
 
 export const S = catalog({
   // #23.7.

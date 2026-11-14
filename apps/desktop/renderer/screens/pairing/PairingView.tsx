@@ -9,20 +9,34 @@ export type PairingViewState =
   | {
       kind: "invited";
       qr: string;
-      expiresAt: string;
+      /** The code under the QR as one short line (start…end); the full value only goes to the clipboard. */
+      codePreview: string;
+      /** Epoch ms; rendered through the shared clock format. */
+      expiresAt: number;
+      /**
+       * Whether a phone has connected to this invitation, as the host's inspect reports it. "unknown"
+       * (a host that does not say) shows the six-digit field as before; "waiting" hides it, so the
+       * code cannot be confirmed before a phone connected.
+       */
+      phone: "unknown" | "waiting" | "connected";
       code: string;
       onCodeChange(code: string): void;
       onConfirm(): Promise<void>;
       onCancel(): Promise<void>;
       onCopy(): void;
       canCopy: boolean;
+      /** "Copy code" succeeded and nothing happened since (no host push, no action). */
+      copied: boolean;
       submitting: boolean;
     }
-  | { kind: "checking" }
+  /** Always offers a way back: cancels the attempt (or reports the outcome as unknown). */
+  | { kind: "checking"; onCancel(): Promise<void> }
   /** The phone is admitted; its first sync has not reached this Mac yet. */
   | { kind: "waiting" }
   | { kind: "unknown"; onInspect(): Promise<void> }
   | { kind: "completed"; onCreate(): Promise<void> }
+  /** A cancel the host refused because the phone was already written into the vault. */
+  | { kind: "already_added"; onCreate(): Promise<void> }
   | { kind: "refused" | "expired" | "sync_off"; onCreate(): Promise<void> };
 
 export function PairingView({
@@ -54,42 +68,51 @@ export function PairingView({
           <p>{T.pasteHint}</p>
           <div className="grid gap-1">
             <span className="text-sm text-fg-muted">{T.codeLabel}</span>
-            <code className="select-all break-all rounded-control border border-border bg-chip px-3 py-1.5 font-mono text-xs-plus">
-              {state.qr}
+            <code className="truncate whitespace-nowrap rounded-control border border-border bg-chip px-3 py-1.5 font-mono text-xs-plus">
+              {state.codePreview}
             </code>
           </div>
-          <div>
+          <div aria-live="polite">
             <Button disabled={!state.canCopy} onPress={state.onCopy}>
-              {T.copy}
+              {state.copied ? T.copied : T.copy}
             </Button>
           </div>
-          <p>
-            {T.expiry} {state.expiresAt}
-          </p>
-          <p>{T.sasInstruction}</p>
-          <label className="grid gap-2">
-            <span>{T.sasLabel}</span>
-            <input
-              className="rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent"
-              value={state.code}
-              onChange={(event) =>
-                state.onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))
-              }
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              autoComplete="off"
-              spellCheck={false}
-              disabled={state.submitting}
-            />
-          </label>
+          <p>{T.expiry(state.expiresAt)}</p>
+          {state.phone === "waiting" ? (
+            <p role="status" className="flex items-center gap-1.5">
+              <Spinner />
+              {T.waitingForScan}
+            </p>
+          ) : (
+            <>
+              <p>{T.sasInstruction}</p>
+              <label className="grid gap-2">
+                <span>{T.sasLabel}</span>
+                <input
+                  className="rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent"
+                  value={state.code}
+                  onChange={(event) =>
+                    state.onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={state.submitting}
+                />
+              </label>
+            </>
+          )}
           <div className="flex gap-2">
-            <Button
-              disabled={state.code.length !== 6 || state.submitting}
-              onPress={state.onConfirm}
-            >
-              {T.confirm}
-            </Button>
+            {state.phone !== "waiting" && (
+              <Button
+                disabled={state.code.length !== 6 || state.submitting}
+                onPress={state.onConfirm}
+              >
+                {T.confirm}
+              </Button>
+            )}
             <Button disabled={state.submitting} onPress={state.onCancel}>
               {T.cancel}
             </Button>
@@ -97,10 +120,15 @@ export function PairingView({
         </div>
       )}
       {state.kind === "checking" && (
-        <p role="status" className="flex items-center gap-1.5">
-          <Spinner />
-          {T.checking}
-        </p>
+        <div className="grid gap-2">
+          <p role="status" className="flex items-center gap-1.5">
+            <Spinner />
+            {T.checking}
+          </p>
+          <div>
+            <Button onPress={state.onCancel}>{T.cancel}</Button>
+          </div>
+        </div>
       )}
       {state.kind === "unknown" && (
         <div className="grid gap-2">
@@ -116,6 +144,7 @@ export function PairingView({
       )}
       {state.kind === "completed" && <p role="status">{T.complete}</p>}
       {state.kind === "refused" && <p role="alert">{T.refused}</p>}
+      {state.kind === "already_added" && <p role="alert">{T.alreadyAdded}</p>}
       {state.kind === "expired" && (
         <div className="grid gap-2">
           <p role="alert">{T.expired}</p>
@@ -136,9 +165,10 @@ export function PairingView({
           )}
         </div>
       )}
-      {(state.kind === "idle" || state.kind === "completed" || state.kind === "refused") && (
-        <Button onPress={state.onCreate}>{T.create}</Button>
-      )}
+      {(state.kind === "idle" ||
+        state.kind === "completed" ||
+        state.kind === "refused" ||
+        state.kind === "already_added") && <Button onPress={state.onCreate}>{T.create}</Button>}
     </section>
   );
 }

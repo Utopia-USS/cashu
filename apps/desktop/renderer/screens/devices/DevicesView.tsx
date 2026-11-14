@@ -1,4 +1,4 @@
-import { Button, Dialog, Spinner } from "@cashu/ui";
+import { Button, DateText, Dialog, Spinner } from "@cashu/ui";
 import { T } from "./Devices.strings.js";
 import { LeaderAction } from "./LeaderAction.js";
 import { S } from "./Sync.strings.js";
@@ -139,12 +139,13 @@ export function DevicesView({
         <ul>
           {origins.map((device) => (
             <li key={device.id}>
-              {device.name}: {T.issuerBy} {issuerName(device.pairedBy)} (
-              {T.issuerAt(device.pairedAt.seg, device.pairedAt.offset)})
-              {device.forkAgreed && (
-                <span>
-                  . {T.forkAgreed}: {T.issuerAt(device.forkAgreed.seg, device.forkAgreed.offset)}
-                </span>
+              {/* Log positions are internal: never shown. The day, when the host knows it. */}
+              {device.name}: {T.issuerBy} {issuerName(device.pairedBy)}
+              {device.pairedOn !== undefined && (
+                <>
+                  {" · "}
+                  <DateText value={device.pairedOn} />
+                </>
               )}
             </li>
           ))}
@@ -227,8 +228,7 @@ export function DevicesView({
                     {origin && (
                       <span>
                         {" "}
-                        ({T.issuerBy} {issuerName(origin.pairedBy)},{" "}
-                        {T.issuerAt(origin.pairedAt.seg, origin.pairedAt.offset)})
+                        ({T.issuerBy} {issuerName(origin.pairedBy)})
                       </span>
                     )}
                   </label>

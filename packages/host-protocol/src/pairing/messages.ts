@@ -74,13 +74,28 @@ export const pairingConfirmResultSchema = z.union([
 export const pairingInspectParamsSchema = operation;
 export const pairingInspectResultSchema = z.union([
   z.strictObject({
-    kind: z.enum(["pending", "waiting_for_phone", "completed", "outcome_unknown", "not_started"]),
+    kind: z.literal("pending"),
+    operationId,
+    /** The phone scanned the code and its hello reached this Mac: it now shows the six digits. */
+    phoneConnected: z.boolean(),
+  }),
+  z.strictObject({
+    kind: z.enum(["waiting_for_phone", "completed", "outcome_unknown", "not_started"]),
     operationId,
   }),
   refusal,
 ]);
 export const pairingCancelParamsSchema = operation;
-export const pairingCancelResultSchema = z.strictObject({ kind: z.enum(["cancelled", "refused"]) });
+/**
+ * `cancelled`: the invitation ended before the commit point, nothing was kept on either side (also
+ * after the six digits, as long as the phone's membership was not written). `refused` with
+ * `already_added`: the commit point passed, the phone is in the vault (removing it is a device
+ * revocation). `refused` alone: no such invitation, or its outcome is not known yet.
+ */
+export const pairingCancelResultSchema = z.union([
+  z.strictObject({ kind: z.literal("cancelled") }),
+  z.strictObject({ kind: z.literal("refused"), code: z.literal("already_added").optional() }),
+]);
 
 export type PairingInviteParams = z.infer<typeof pairingInviteParamsSchema>;
 export type PairingInviteResult = z.infer<typeof pairingInviteResultSchema>;

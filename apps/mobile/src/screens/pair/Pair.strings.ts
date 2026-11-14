@@ -19,7 +19,7 @@ export const S = catalog({
   scanTitle: { pl: "Zeskanuj kod z Maca", en: "Scan the code on your Mac" },
   scanWhere: {
     pl: "Na Macu: Ustawienia > Urządzenia > Połącz telefon",
-    en: "On the Mac: Settings > Devices > Connect a phone",
+    en: "On your Mac: Settings > Devices > Pair a phone",
   },
   scanNote: {
     pl: "Kod jest zaproszeniem tylko dla tego telefonu i szybko wygasa.",

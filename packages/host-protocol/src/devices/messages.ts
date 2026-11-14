@@ -115,9 +115,23 @@ export const deviceListResultSchema = z.discriminatedUnion("kind", [
           forkAgreed: cursor.nullable(),
           pairedBy: id,
           pairedAt: cursor,
+          /**
+           * The local calendar day ("2026-11-14", this Mac's timezone) the device's `device.added`
+           * was written, from its clock stamp; absent when unknown. The renderer formats it.
+           */
+          pairedOn: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
         }),
       )
       .max(1024),
+    /**
+     * Counts the pairing transitions this host saw for the vault since it opened (a phone connected,
+     * an invitation ended, an admission settled, the phone's first sync arrived). Value-free; it only
+     * changes the pushed list so a screen that follows a pairing asks again. Absent before the first.
+     */
+    pairingRevision: z.number().int().nonnegative().optional(),
   }),
   deviceRefusalSchema,
 ]);

@@ -53,6 +53,20 @@ Electron exits.
 | Fresh demo | delete the data dir and run the command again |
 | A host left running | `node --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/host/src/cli.ts stop --data-dir <dir>`, or `pnpm cashu-next host stop` with that `CASHU_DATA_DIR`; a host exits on its own after 10 idle minutes |
 
+### Phone against the emulator
+
+To pair the iOS simulator with a desktop demo without a real Firebase project, run both against the
+local emulator (`firebase.json`: Firestore 8080, Auth 9099, project `demo-cashu`):
+`firebase emulators:start --only firestore,auth --project demo-cashu`; the host gets
+`CASHU_FIRESTORE_EMULATOR_HOST=127.0.0.1:8080` and `CASHU_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`
+(`apps/host/src/relay/config.ts`), the phone's dev build gets `EXPO_PUBLIC_FIRESTORE_EMULATOR_HOST` and
+`EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST` with the same values (in the environment of `expo start`, or in
+`apps/mobile/.env.local`; template `apps/mobile/.env.example`). With no project variables both use
+`demo-cashu`. A release build ignores the emulator variables; a real project goes in the four plain
+`EXPO_PUBLIC_FIREBASE_PROJECT_ID` / `_API_KEY` / `_APP_ID` / `_AUTH_DOMAIN` variables (unquoted: Expo's
+`.env` parser cuts a double-quoted value at its first quote, so the older JSON `EXPO_PUBLIC_FIREBASE_CONFIG`
+in quotes arrives as `{\`). Restart Metro with `--clear` after changing them: they are inlined at bundle time.
+
 ## The `cashu` command from a checkout
 
 `pnpm cashu-next <command>` runs the shim (`apps/cli/src/index.ts`) from source, e.g.

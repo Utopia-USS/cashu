@@ -47,6 +47,8 @@ const base = {
         forkAgreed: null,
         pairedBy: "b".repeat(32),
         pairedAt: { seg: 1, offset: 1 },
+        // The day the host knows; "This Mac" has none and shows the line without it.
+        pairedOn: "2026-11-12",
       },
     ],
   },
