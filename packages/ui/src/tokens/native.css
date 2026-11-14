@@ -1,0 +1,75 @@
+/* The phone's Tailwind entry (Uniwind, apps/mobile/metro.config.js): the tokens of ./tokens.css, with
+   utilities only for the classes of apps/mobile and of the packages/ui files that ../native.ts (the
+   phone's import of @cashu/ui) reaches. Uniwind compiles every generated utility into the JS bundle and
+   Metro cannot drop unused ones, so the desktop's classes (./theme.css scans all of apps/ and
+   packages/ui) stay out of the phone: whole folders would pull in the desktop renderers (platform.tsx),
+   the desktop-only components next to the shared ones and their stories, about 75 KB of the phone's JS.
+   The list is exactly the files ../native.ts imports, directly or through them; the arch guard
+   tools/arch/src/guards/nativeStyles.test.ts checks it, so a component the phone starts to render
+   fails `pnpm arch:check` until its files are added here. */
+@import "tailwindcss";
+@import "uniwind";
+@import "./tokens.css";
+
+@source "../../../../apps/mobile";
+@source "../native.ts";
+@source "../layout.ts";
+@source "../charts/BarChart.tsx";
+@source "../charts/Donut.tsx";
+@source "../charts/LineChart.tsx";
+@source "../charts/Sparkline.tsx";
+@source "../charts/barScene.ts";
+@source "../charts/charts.strings.ts";
+@source "../charts/donutScene.ts";
+@source "../charts/frame.ts";
+@source "../charts/geometry.ts";
+@source "../charts/lineScene.ts";
+@source "../charts/platform.native.tsx";
+@source "../charts/scene.ts";
+@source "../charts/sparkScene.ts";
+@source "../charts/types.ts";
+@source "../charts/values.ts";
+@source "../environment/UiEnv.tsx";
+@source "../values/DateText.tsx";
+@source "../values/Money.tsx";
+@source "../values/platform.native.tsx";
+@source "../values/presentation.ts";
+@source "../values/types.ts";
+@source "../values/useNumberValue.ts";
+@source "../values/value.strings.ts";
+@source "../controls/CategoryGrid.native.tsx";
+@source "../controls/Keypad.native.tsx";
+@source "../controls/SearchField.native.tsx";
+@source "../controls/Seg.native.tsx";
+@source "../controls/Seg.types.ts";
+@source "../controls/TextField.native.tsx";
+@source "../controls/TextField.types.ts";
+@source "../controls/ToggleRow.native.tsx";
+@source "../lists/Swatch.native.tsx";
+@source "../lists/SwipeStack.native.tsx";
+@source "../feedback/Banner.native.tsx";
+@source "../feedback/EmptyState.native.tsx";
+@source "../feedback/NoteLine.native.tsx";
+@source "../feedback/ProgressDots.native.tsx";
+@source "../feedback/feedback.strings.ts";
+@source "../icons/Icon.native.tsx";
+@source "../lists/ListRow.native.tsx";
+@source "../meters/Meter.native.tsx";
+@source "../status/FreshLine.native.tsx";
+@source "../surfaces/Facts.native.tsx";
+@source "../surfaces/GroupSection.native.tsx";
+@source "../surfaces/KpiStrip.native.tsx";
+@source "../surfaces/Tag.native.tsx";
+@source "../surfaces/Tag.types.ts";
+@source "../surfaces/Tile.native.tsx";
+@source "../values/Figure.native.tsx";
+@source "../controls/Button.native.tsx";
+@source "../controls/Button.types.ts";
+@source "../controls/usePressPending.ts";
+@source "../surfaces/Card.native.tsx";
+@source "../surfaces/Card.types.ts";
+@source "../values/Amount.tsx";
+@source "../values/Delta.tsx";
+@source "../values/Percent.tsx";
+@source "../instruments/TickerTile.native.tsx";
+@source "../text/Markdown.native.tsx";

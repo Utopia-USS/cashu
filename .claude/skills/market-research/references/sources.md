@@ -173,6 +173,6 @@ How to cite (in the outlook, a brief, a note summary):
   release or summary, never through a workaround.
 
 Never, even from these institutions: a forecast of a security's, an index's or a fund's price or
-valuation, a price target, a rating, a buy / sell view, an analyst consensus. The tools refuse the
+valuation, a price target, a rating, a buy / sell view, an analyst consensus. The tools flag the
 obvious wording (`S&P 500 wzrośnie do`, `wyceny spadną`, `kurs ... wzrośnie`, `cel cenowy`,
 `analitycy`, `konsensus`, `prognozujemy`).

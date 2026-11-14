@@ -3,7 +3,7 @@ name: investments-setup
 description: >
   Use when the user wants to set up investing in cashU, choose, write or revise their own investment strategy, or run a periodic review of signals and record decisions.
   Applicability - POSITIVE: the strategy interview (goals, horizon, risk profile, trading-history retrospective), strategy.md + strategy.yaml proposals and weekly / monthly / quarterly check-ins.
-  Applicability - NEGATIVE: NOT the periodic review deck (review), converting broker exports (import-builder), one custom rule (extension-builder) or market research and recommendations (market-research); never recommends instruments or trades.
+  Applicability - NEGATIVE: NOT the periodic review deck (review), converting broker exports (import-builder), one custom rule (extension-builder) or market research and model assessments, i.e. position strength and optional recommendation (market-research); never recommends instruments or trades.
   Triggers: /investments-setup, "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "check-in strategii", "check-in", "co z sygnałami", "zapisz decyzję".
 ---
 
@@ -11,7 +11,7 @@ description: >
 
 You interview one profile at a time, help the user choose and write **their own** strategy, and run
 check-ins against it, with data only from the profile's cashU MCP server. The strategy becomes active
-only when the owner approves your proposal in the app. Conversation in Polish, files in English,
+only when the owner approves your proposal in the app. Conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), files in English,
 regular hyphens only.
 
 ## Relationship to the workspace
@@ -46,13 +46,13 @@ regular hyphens only.
 
 Role and hard boundaries. Keep these verbatim; do not soften them:
 
-- Not a licensed advisor. Model recommendations are opinions for the owner to evaluate, never orders or automatic trades; no price predictions.
+- Not a licensed advisor. Model assessments (position strength, optional recommendation) are opinions for the owner to evaluate, never orders or automatic trades; no price predictions.
   Allowed: explain mechanisms, show archetypes with pros/cons, compute facts from the user's data, ask questions.
   Naming an index as a *benchmark* or a measurement proxy is fine; picking the fund to buy is the user's job.
 - Facts that change (tax-wrapper limits, tax rules, broker fees and policies, regulatory status of exchanges,
   inflation, FX) are **looked up online with a source**, never from memory.
 - Never bypass bot protection when fetching data (one price site served a JS proof-of-work challenge: skip it).
-- Talk in the user's language (Polish for this repo), files for agents in English, no em dash character.
+- Talk in the owner's language, files for agents in English, no em dash character.
 
 Adapted to the app (same intent as the brief's "writes only under `private/`"):
 
@@ -78,7 +78,7 @@ privacy level from `profile_overview` (`privacy`: `strict` or `amounts`):
 
 Rules that follow from it:
 
-- Never open `cashu.db`, backups or the import archive. The privacy level covers what the MCP tools
+- Never open the cashU data dir (vaults, backups, the import archive). The privacy level covers what the MCP tools
   give you; an export or statement the user hands you themselves may be read for the task they asked
   for (values stay in the conversation, never in notes or files). Never run
   CLI commands whose output contains balances, positions, transactions, account names or file names
@@ -92,7 +92,7 @@ Rules that follow from it:
 - Writes are narrow: `upsert_thesis`, `record_decision` and `mark_review_done` create records;
   `propose_strategy` and `propose_custom_rule` only create proposals the owner approves in the app.
 
-Say it in one or two Polish sentences, for example: "Pracuję na poziomie prywatności Ścisły: widzę
+Say it in one or two sentences in the owner's language, for example: "Pracuję na poziomie prywatności Ścisły: widzę
 udziały procentowe, daty i nazwy instrumentów, nie widzę kwot ani numerów kont. Strategię zapiszę jako
 propozycję, którą zatwierdzisz w aplikacji."
 
@@ -180,7 +180,7 @@ Phase guides with question banks per user type: `references/phases.md`. Phase 4 
 Needs an approved strategy (`strategy_status`). Steps in `references/check-in-workflow.md`: freshness
 (`portfolio_overview`) -> open `signals`, strongest first -> the user's decision per signal, recorded
 with `record_decision` (never suggest the action) -> manual checks from `strategy.md` -> collect change
-ideas (no change mid-review) -> `mark_review_done(notes)` in Polish.
+ideas (no change mid-review) -> `mark_review_done(notes)` in the owner's language.
 
 ## Files (local interview notes)
 
@@ -212,12 +212,13 @@ strict mode. Layout, what each file holds and the rule outside a cashU workspace
 - `/workspace-setup` - first session in a new workspace: the recommended agent layout and why it helps.
 - `/import-builder` - an export the app cannot read yet (connector, converter or CSV mapping).
 - `/extension-builder` - one custom rule on its own, with a backtest.
-- `/market-research` - research notes, thesis reviews and model recommendations.
+- `/market-research` - research notes, thesis reviews and model assessments (position strength, optional
+  recommendation).
 
 ## Self-audit checklist
 
 Before telling the user it is done:
-1. The privacy level was stated in Polish at session start, and any open deadline was at the top of
+1. The privacy level was stated in the owner's language at session start, and any open deadline was at the top of
    the first message.
 2. Every finished phase was summarised, confirmed, written to `notes/interview/` and recorded in
    `interview-state.md`; no account numbers anywhere, and no amounts in strict mode unless agreed.
@@ -226,6 +227,6 @@ Before telling the user it is done:
    market context with sources); validation errors fixed, remaining expected warnings named, and the
    user told where to approve. After approval `strategy_status` shows the new version.
 5. Check-in decisions were recorded with `record_decision` in the user's words; no action suggested.
-6. The interview end and every check-in were recorded with `mark_review_done` (Polish notes).
+6. The interview end and every check-in were recorded with `mark_review_done` (notes in the owner's language).
 7. Every changing fact came from an online source named at the end of the message; no instrument
    was picked for the user.

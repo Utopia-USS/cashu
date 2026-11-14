@@ -1,7 +1,23 @@
-# Writing notes (Polish)
+# Writing notes (in the owner's language)
 
 Notes are written through `add_research_note` and shown to the owner in the app: the research strip,
-the asset drawer, the research view and the Sunday review. They are in Polish; this file is in English.
+the asset drawer, the research view and the Sunday review. They are in the owner's language (the app language the cashU MCP server names; Polish when unsure); this file is in English.
+
+## Plain language for the owner
+
+Every text the owner reads (`title`, `summary`, `headline`, `details.context`, `details.bucket`,
+criterion `text` and `threshold`, a market view, a recommendation reason) is in plain words of the owner's language, written for
+the owner, not a log of your work:
+
+- No tool, field or file names and no working terms from the other language: not `research_context`, `strategy.yaml`,
+  `candidate_criteria`, `workspace`, `run`, `bucket`, `threshold`, `entry_type` values such as
+  `sentiment_correction` (write `korekta sentymentu`). Say what it means: `progi ze strategii`,
+  `koszyk Akcje PL`, `pliki profilu`.
+- No notes about your own process (which tool failed, where you took the data from as a fallback,
+  which strategy version you read). When a source or tool was unavailable, say what is unknown in
+  owner terms (`stopa dywidendy niepotwierdzona`) or tell the owner in the chat summary.
+- Proper names, tickers, ISINs and established terms with no equivalent in the owner's language (ETF, ESPI, EBITDA)
+  stay as they are.
 
 ## Fields
 
@@ -19,20 +35,21 @@ the asset drawer, the research view and the Sunday review. They are in Polish; t
 | `title` | at most 120 characters |
 | `summary` | at most 1200 characters; a segment note at most 400 |
 | `sources` | 1-10 objects with exactly the keys `url`, `publisher`, `published_at`, `title` |
-| `details` | optional object, only these keys: candidates `entry_type`, `criteria`, `criteria_version`, `bucket` (`candidates.md`); community `scale` (`small`, `medium`, `large`); any note `context` (one line, at most 200 characters; thesis-review notes start it with `Przegląd tezy:`, `thesis-review.md`) and `event` + `event_date` (the next dated event the note points to, `YYYY-MM-DD`); every note should carry `headline`: one plain Polish sentence of 8-80 characters a beginner understands at a glance, what happened and why it matters, no figures needed (`Inwestorzy sprawdzają, ile klienci AI naprawdę zarabiają`; the app shows it first and the `title` with its figures one level deeper; never a forecast or advice); segment and macro notes may carry `brief` (Briefs below). Never amounts, targets or sizes; never the agent's own market view (that goes under the topic thesis: `set_topic_market_view`, step 6 in `references/segments-workflow.md`) |
+| `details` | optional object, only these keys: candidates `entry_type`, `criteria`, `criteria_version`, `bucket` (`candidates.md`); community `scale` (`small`, `medium`, `large`); any note `context` (one line, at most 200 characters; thesis-review notes start it with `Przegląd tezy:`, `thesis-review.md`) and `event` + `event_date` (the next dated event the note points to, `YYYY-MM-DD`); every note should carry `headline`: one plain sentence in the owner's language of 8-80 characters a beginner understands at a glance, what happened and why it matters, no figures needed (`Inwestorzy sprawdzają, ile klienci AI naprawdę zarabiają`; the app shows it first and the `title` with its figures one level deeper; never a forecast or advice); segment and macro notes may carry `brief` (Briefs below). Never amounts, targets or sizes; never the agent's own market view (that goes under the topic thesis: `set_topic_market_view`, step 6 in `references/segments-workflow.md`) |
 | `observed_at` | leave to the tool (now); the dates of the facts go into `sources` and the summary |
 | `expires_in_days` | leave the default 30; community notes 15; a note tied to an event that passes earlier may expire then; never more than 30, except thesis-review notes: 90 (`thesis-review.md`) and brief notes: 60 |
 
 The tool validates lengths, enums, sources (http(s) URL, publisher, date; paywall-bypass hosts are
-refused) and refuses wording that reads like a recommendation, a rating or a security price
-prediction. If it
-refuses a note, fix the named field and retry once, then skip the note and count it in
-`counts.skipped`.
+refused). Wording that reads like a forecast, a call, a rating or a price target is not saved the
+first time: the reply names the fields. Rewrite them as facts and send again; send with
+`wording_ok: true` only when the flagged text is a fact the check misread (`raport będzie 14.08`).
+If the tool refuses a note for another reason, fix the named field and retry once, then skip the
+note and count it in `counts.skipped`.
 
 ## Title (at most 120 characters)
 
 - The fact, starting with the subject: `Premiera głównego tytułu przesunięta z 2027 na I półrocze 2028`.
-- Numbers with units, Polish formatting: decimal comma, `%` after a space, `pp` for percentage points,
+- Numbers with units, in the owner's number format (Polish: decimal comma, `%` after a space; English: decimal point, `%` without a space), `pp` for percentage points,
   `r/r`, `mld $`, `pb` for basis points.
 - No opinion, no question, no exclamation, no clickbait. Community titles name the venues and the
   direction: `Nastroje na forach wokół XYZ negatywne po wynikach`.
@@ -118,7 +135,7 @@ The home page shows each topic and each macro card as plain lines "for dummies",
 brief notes. A brief note is a segment note (topic key or `macro_*` key, rules above) with
 `details.brief`:
 
-- `headline`: 8-80 characters, one plain Polish sentence a beginner understands, the state or the
+- `headline`: 8-80 characters, one plain sentence in the owner's language a beginner understands, the state or the
   news in words (`Rośnie popyt na chipy`, `Rynek w konsolidacji`, `Trwa hossa na giełdach`).
 - `why`: at most 280 characters, plain words; for a topic: what is going on; for a macro card: why
   the state holds.
@@ -126,16 +143,17 @@ brief notes. A brief note is a segment note (topic key or `macro_*` key, rules a
   uważać", conditions and facts that historically supported or weighed on such a market, named
   plainly. Topic briefs leave them out (the tool refuses them).
 - Never `wzrośnie`, `urośnie`, `spadnie`, `będzie` / `będą`, `podrożeje`, `stanieje`, `potanieje`,
-  `odbije`, `prognoz...`, `kupuj`, `sprzedaj`, `cel cenowy` (the tool refuses them, also without
+  `odbije`, `prognoz...`, `kupuj`, `sprzedaj`, `cel cenowy`, in English `will rise`, `will be`,
+  `going to`, `forecast...`, `predict...` (the wording check flags them, also without
   Polish letters): describe what is, not what will be. The one exception is a sentence citing an
   institution's published trend forecast with who, how much and horizon (`MFW prognozuje wzrost PKB
   USA o 2,1 % w 2027`, `Fed w projekcji (dot plot) zakłada stopy ok. 3,4 % na koniec 2026`, `IEA
   szacuje, że popyt centrów danych na prąd wzrośnie do ok. 945 TWh w 2030`): the tool accepts it when
   the sentence names a known institution (`sources.md` 5) and an attribution word (`prognozuje`,
-  `szacuje`, `projekcja`, `według`, `dot plot`), and still refuses it with `prognozujemy` / `uważamy`,
+  `szacuje`, `projekcja`, `według`, `dot plot`), and still flags it with `prognozujemy` / `uważamy`,
   analysts, consensus, a rating, a call, or a price / valuation / index move (`S&P 500 wzrośnie do`,
   `wyceny spadną`, `kurs ... wzrośnie`). Each sentence is checked on its own, so an unattributed
-  `Rynek będzie rósł` next to a cited forecast is still refused. Company guidance is a fact: `spółka podała
+  `Rynek będzie rósł` next to a cited forecast is still flagged. Company guidance is a fact: `spółka podała
   wytyczne`, `zapowiedź spółki`, `oczekiwania firmy`.
 - `expires_in_days: 60`; write a new brief when the state or the drivers changed (or on the first run
   for a topic or card without one), never to refresh an unchanged one. A new brief with the same
@@ -155,12 +173,14 @@ sources.
 | field | rule |
 |---|---|
 | `segment` | a `segment_catalog` key with a thesis (the owner's or your draft); macro keys are refused |
-| `assessment` | 20-400 Polish characters: the topic's market now (adoption, demand, investment, cycle, valuations of the topic as a whole) |
+| `assessment` | 20-400 characters in the owner's language: the topic's market now (adoption, demand, investment, cycle, valuations of the topic as a whole) |
 | `outlook` | 20-400: where the market, adoption or demand is heading, resting on at least one quantitative industry estimate of market or demand growth with who, how much and horizon, as an estimate (`IFR szacuje ...`), plus the main risk. Refused without a number other than a year / horizon / quarter |
 | `sources` | required, 1-6, like note sources (`url` http(s) of the page you opened, `publisher`, `published_at`, `title?`): the reports behind the estimates; they replace the stored ones |
 
-Refused in both texts: buy / sell / hold wording, ratings, price targets, a price, quote, valuation or
-index move of a security, of shares or of an index. The write replaces the previous view (the
+Not in either text: buy / sell / hold wording, ratings, price targets, a price, quote, valuation or
+index move of a security, of shares or of an index (the tool saves the view and lists such wording
+under warnings; rewrite it). A price view that follows from the owner's strategy goes in the
+recommendation. The write replaces the previous view (the
 owner's edit included).
 
 ## Duplicates

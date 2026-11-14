@@ -7,6 +7,7 @@ version: 1.0.0
 author: cashU core team
 maintainer: utopia-uss
 last_verified: 2026-10-30
+countries: [PL]
 description: Historia operacji CSV z Banku Pekao (Pekao24) jako import budżetu. Własne konto to rachunek występujący w (prawie) każdym wierszu; drugi rachunek wiersza to kontrahent.
 module: budget
 kind: file

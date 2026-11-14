@@ -1,0 +1,39 @@
+{
+  "name": "@cashu/store-react",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "React bindings over the event store (useQuery, useCommand, useConnection, providers) and the desktop renderer's store client (store channel v2 through Electron main's relay to the local host).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client/index.ts",
+    "./local": "./src/local/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cashu/domain": "workspace:*",
+    "@cashu/host-protocol": "workspace:*",
+    "@cashu/store": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "better-sqlite3": "13.0.3",
+    "jsdom": "26.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

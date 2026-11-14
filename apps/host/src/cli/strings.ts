@@ -1,0 +1,94 @@
+// Texts the host's CLI runner prints itself (PL + EN, docs/agents/localization.md), resolved with the
+// command's own Translator (its CASHU_LANG / locale, settings.json, the OS).
+import type { TranslationVariants } from "@cashu/i18n";
+
+export const S = {
+  rootHelp: {
+    pl: (commands: string) =>
+      `Użycie: cashu [--profile PROFIL] POLECENIE [ARGUMENTY]\n\nPolecenia: ${commands}\n\nAplikacja: cashu app\nSerwer MCP: cashu mcp --profile PROFIL\nUsługa w tle: cashu host status|stop|run\nPomoc: cashu --help`,
+    en: (commands: string) =>
+      `Usage: cashu [--profile PROFILE] COMMAND [ARGS]\n\nCommands: ${commands}\n\nDesktop app: cashu app\nMCP server: cashu mcp --profile PROFILE\nBackground service: cashu host status|stop|run\nHelp: cashu --help`,
+  },
+  missingCommand: {
+    pl: "Podaj polecenie. Użyj `cashu --help`, aby zobaczyć dostępne polecenia.",
+    en: "Provide a command. Run `cashu --help` to see available commands.",
+  },
+  mcpUsage: {
+    pl: "Użycie: cashu mcp --profile PROFIL. Serwer MCP wymaga jednego profilu.",
+    en: "Usage: cashu mcp --profile PROFILE. The MCP server requires one profile.",
+  },
+  investmentAccountGid: {
+    pl: "Podaj pełny GID rachunku z `cashu invest accounts list` w opcji `--account GID`.",
+    en: "Use the full account GID from `cashu invest accounts list` with `--account GID`.",
+  },
+  investmentAccountUnknown: {
+    pl: "Wybrany profil nie ma rachunku maklerskiego o tym GID.",
+    en: "No brokerage account with that GID belongs to the selected investment profile.",
+  },
+  // Why an investments command cannot run for the selected profile (exit 1).
+  investmentProfileRequired: {
+    pl: "Wybierz profil: `cashu --profile PROFIL invest ...` (albo ustaw CASHU_PROFILE).",
+    en: "Choose a profile: `cashu --profile PROFILE invest ...` (or set CASHU_PROFILE).",
+  },
+  investmentProfileUnknown: {
+    pl: (slug: string) =>
+      `Profil „${slug}” nie jest otwarty w tej usłudze cashU. \`cashu profiles list\` pokazuje profile.`,
+    en: (slug: string) =>
+      `No profile "${slug}" is open in this cashU background service. \`cashu profiles list\` shows the profiles.`,
+  },
+  investmentProfileAmbiguous: {
+    pl: (slug: string) =>
+      `Więcej niż jeden otwarty sejf ma profil „${slug}”; nic nie zostało wykonane.`,
+    en: (slug: string) => `More than one open vault has the profile "${slug}"; nothing was run.`,
+  },
+  investmentModuleOff: {
+    pl: (slug: string) => `Moduł inwestycji nie jest włączony w profilu „${slug}”.`,
+    en: (slug: string) => `The investments module is not enabled for the profile "${slug}".`,
+  },
+  investmentStrategyUnavailable: {
+    pl: (slug: string, reason: string) =>
+      `Nie można teraz odczytać plików strategii profilu „${slug}” (${reason}). Spróbuj ponownie za chwilę.`,
+    en: (slug: string, reason: string) =>
+      `The strategy files of the profile "${slug}" cannot be read right now (${reason}). Try again in a moment.`,
+  },
+  investmentMarketUnavailable: {
+    pl: "Dane rynkowe są niedostępne w tej usłudze cashU w tle, więc nie można wycenić inwestycji.",
+    en: "Market data is unavailable in this cashU background service, so the investments cannot be valued.",
+  },
+  investmentSearchUnavailable: {
+    pl: "Wyszukiwanie online jest niedostępne; pokazuję instrumenty z tego profilu.",
+    en: "Online search is unavailable; showing this profile's instruments.",
+  },
+  retiredInitDb: {
+    pl: "`cashu init-db` zostało wycofane. Uruchom `cashu app`; natywny sejf jest tworzony podczas konfiguracji profilu.",
+    en: "`cashu init-db` was retired. Run `cashu app`; the native vault is created during profile setup.",
+  },
+  retiredMigrateData: {
+    pl: "`cashu migrate-data` zostało wycofane. Aplikacja nie importuje danych starej aplikacji; może je przenieść Twój agent.",
+    en: "`cashu migrate-data` was retired. The app does not import the old app's data; your agent can bring it over.",
+  },
+  retiredServe: {
+    pl: "`cashu serve` zostało wycofane. Uruchom `cashu app`, aby otworzyć lokalną aplikację.",
+    en: "`cashu serve` was retired. Run `cashu app` to open the local app.",
+  },
+  retiredOutbox: {
+    pl: "Polecenia outbox zostały wycofane. Sprawdź synchronizację w Ustawieniach aplikacji `cashu app`.",
+    en: "Outbox commands were retired. Check sync in Settings in `cashu app`.",
+  },
+  retiredSecrets: {
+    pl: "`cashu secrets` zostało wycofane. Zarządzaj sekretami konektorów w Ustawieniach aplikacji `cashu app`.",
+    en: "`cashu secrets` was retired. Manage connector secrets in Settings in `cashu app`.",
+  },
+  retiredSync: {
+    pl: "`cashu sync` zostało wycofane. Zarządzaj synchronizacją w Ustawieniach aplikacji `cashu app`.",
+    en: "`cashu sync` was retired. Manage sync in Settings in `cashu app`.",
+  },
+  unsupported: {
+    pl: "Nieznane lub nieobsługiwane polecenie albo argumenty. Sprawdź składnię i spróbuj ponownie.",
+    en: "Unknown or unsupported command or arguments. Check the syntax and try again.",
+  } satisfies TranslationVariants<string>,
+  busy: {
+    pl: "W tej sesji trwa już inne polecenie.",
+    en: "This session is already running a command.",
+  } satisfies TranslationVariants<string>,
+} as const;

@@ -2,7 +2,7 @@
 
 Converts an **Erste Bank Polska** (formerly **Santander Bank Polska**) CSV export of the account history
 into `cashu-budget-import` v1 JSON. A TypeScript (Deno) port of the parser cashU has built in
-(`src/cashu/modules/budget/ingestion/csv_import/erste.py`): every row gets the same date, amount,
+(the retired Python app's `modules/budget/ingestion/csv_import/erste.py`): every row gets the same date, amount,
 counterparty and texts, so a file imported earlier with the built-in parser is recognised as a
 duplicate, and the account is found again by its number (institution `erste`; the account numbers did
 not change with the rebrand, so legacy Santander history lands in the same account).

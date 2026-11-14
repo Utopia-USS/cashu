@@ -1,5 +1,11 @@
 # Connector runtime across macOS, Linux and Windows (design spike)
 
+> **Historical note.** This spike was written against the retired Python app: file references such as
+> `core/connectors/*.py`, `process.py` or `tests/test_*.py` point at code of the retired Python app
+> (in the git history only). The native connector runtime is
+> `apps/host/src/connectors/` and `apps/host/src/connectorRuntime.ts`; it runs connectors on macOS
+> (`sandbox-exec`) and refuses them elsewhere (`sandbox_unavailable`) until a native layer is built.
+
 Status: the spike below, then branch `connectors-deno` (R2 on macOS). Owner decisions: Deno is bundled
 in the app (open question 1), signed with its own `allow-jit` entitlement (2), the MCP tool
 `test_connector` exists (4), Deno / TypeScript is the default connector language and Python stays
@@ -103,7 +109,7 @@ Environment (nothing inherited, `process.py` still does `env -i`): the existing 
 `DENO_DIR=<run dir>/.deno`, `DENO_NO_UPDATE_CHECK=1`, `DENO_NO_PROMPT=1`, `NO_COLOR=1`. Deno's own
 module cache therefore lives in the run dir and is deleted with it.
 
-Probe results (a scratch experiment; most rows are also pytest cases in `tests/test_connectors_sandbox_deno.py`):
+Probe results (a scratch experiment at the time of the spike; the native runtime's sandbox tests are `apps/host/src/connectors/*.test.ts`):
 
 | Attempt | Result | R3 item |
 | --- | --- | --- |

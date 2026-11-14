@@ -1,0 +1,14 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["jest", "expo/types", "uniwind/types"],
+    "moduleSuffixes": [".ios", ".native", ""]
+  },
+  "include": ["index.ts", "app", "src", ".expo/types/**/*.ts", "expo-env.d.ts"]
+}

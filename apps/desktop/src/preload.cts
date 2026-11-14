@@ -1,0 +1,146 @@
+/// <reference types="node" />
+// Sandboxed preload (CommonJS: a sandboxed preload cannot be an ES module).
+//
+const electron: typeof import("electron") = require("electron");
+
+/** The page's window as this preload uses it (the shell's tsconfig has no DOM lib). */
+interface PageWindow {
+  addEventListener(
+    type: "message",
+    listener: (event: { readonly source: unknown; readonly data: unknown }) => void,
+  ): void;
+  postMessage(message: unknown, targetOrigin: string, transfer: unknown[]): void;
+  readonly location: { readonly origin: string };
+}
+
+if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
+  electron.contextBridge.exposeInMainWorld("cashuService", {
+    status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:service-status"),
+    setEnabled: (enabled: boolean): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:service-set-enabled", enabled),
+    onStatus: (handler: (status: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: unknown) => handler(status);
+      electron.ipcRenderer.on("cashu:service-status-changed", listener);
+      return () => electron.ipcRenderer.removeListener("cashu:service-status-changed", listener);
+    },
+  });
+  electron.contextBridge.exposeInMainWorld("cashuCreation", {
+    prepare: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:creation-prepare", input),
+    commit: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:creation-commit", input),
+    inspect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:creation-inspect", input),
+    current: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:creation-current", {}),
+  });
+  electron.contextBridge.exposeInMainWorld("cashuDevices", {
+    revokePreview: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokePreview", input),
+    revokeCommit: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokeCommit", input),
+    revokeInspect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokeInspect", input),
+    revokeCancel: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-revokeCancel", input),
+    leaderPreview: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-leaderPreview", input),
+    leaderCommit: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-leaderCommit", input),
+    leaderInspect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:devices-leaderInspect", input),
+  });
+  electron.contextBridge.exposeInMainWorld("cashuConnectors", {
+    installPending: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:connectors-install"),
+  });
+  electron.contextBridge.exposeInMainWorld("cashuBanking", {
+    chooseKeyAndConfigure: (vaultId: string, appId: string): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:banking-configure", { vaultId, appId }),
+    // The page hands over the dropped File itself; only here does it become a path (empty for a File
+    // the page built, which the main process refuses), so the page never names a path.
+    configureWithDroppedKey: (vaultId: string, appId: string, file: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:banking-configure-dropped", {
+        vaultId,
+        appId,
+        keyFilePath: electron.webUtils.getPathForFile(
+          file as Parameters<typeof electron.webUtils.getPathForFile>[0],
+        ),
+      }),
+    openBank: (vaultId: string, url: string): Promise<void> =>
+      electron.ipcRenderer.invoke("cashu:banking-open", { vaultId, url }),
+  });
+  electron.contextBridge.exposeInMainWorld("cashuPairing", {
+    invite: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:pairing-invite", input),
+    confirm: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:pairing-confirm", input),
+    inspect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:pairing-inspect", input),
+    cancel: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:pairing-cancel", input),
+  });
+  // Settings > Devices > Sync: the vault's sync switch and status (main checks params and results).
+  electron.contextBridge.exposeInMainWorld("cashuRelay", {
+    status: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-status", input),
+    enable: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-enable", input),
+    disable: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-disable", input),
+    purge: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-purge", input),
+    reconnect: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-reconnect", input),
+    keepFetching: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-keepFetching", input),
+    syncNow: (input: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:relay-syncNow", input),
+  });
+  // Start-up recovery: main holds the report, builds the prompt and owns the clipboard, the data
+  // folder and the start sequence. The page sends only the prompt language.
+  electron.contextBridge.exposeInMainWorld("cashuRecovery", {
+    report: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-report"),
+    copyPrompt: (lang: unknown): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:recovery-copy", lang),
+    openDataFolder: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-open"),
+    retry: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-retry"),
+    continueWithoutOldData: (): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:recovery-continue"),
+    quit: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:recovery-quit"),
+  });
+  electron.contextBridge.exposeInMainWorld("cashuNotifications", {
+    status: (): Promise<unknown> => electron.ipcRenderer.invoke("cashu:notifications-status"),
+    requestPermission: (): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:notifications-request-permission"),
+    onPermission: (handler: (status: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: unknown) => handler(status);
+      electron.ipcRenderer.on("cashu:notifications-permission-changed", listener);
+      return () =>
+        electron.ipcRenderer.removeListener("cashu:notifications-permission-changed", listener);
+    },
+    onPending: (handler: () => void) => {
+      const listener = () => handler();
+      electron.ipcRenderer.on("cashu:notification-pending", listener);
+      return () => electron.ipcRenderer.removeListener("cashu:notification-pending", listener);
+    },
+    onTarget: (handler: (target: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, target: unknown) => handler(target);
+      electron.ipcRenderer.on("cashu:notification-target", listener);
+      electron.ipcRenderer.send("cashu:notification-ready");
+      return () => electron.ipcRenderer.removeListener("cashu:notification-target", listener);
+    },
+  });
+  // Store port: the renderer's store channel, which the main process relays to the local host. A
+  // MessagePort cannot cross the context bridge, so the page asks with
+  // `window.postMessage({ cashu: "store-port-request" })` and receives the port the same way, from
+  // this frame's own origin; the main process checks the sending frame again before it opens a host
+  // session for it.
+  const page = (globalThis as { window?: PageWindow }).window;
+  page?.addEventListener("message", (event) => {
+    const data = event.data as { cashu?: unknown } | null;
+    if (event.source !== page || data?.cashu !== "store-port-request") return;
+    electron.ipcRenderer.send("cashu:store-port");
+  });
+  electron.ipcRenderer.on("cashu:store-port", (event) => {
+    page?.postMessage({ cashu: "store-port" }, page.location.origin, [...event.ports]);
+  });
+}

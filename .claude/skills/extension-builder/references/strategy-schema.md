@@ -12,8 +12,8 @@ Never put personal numbers here; this folder is committed.
 | `blank.yaml` + `blank.md` | empty scaffold: version, base currency, data limits; every other section commented out with examples |
 
 Every template must load without errors or warnings (the cashU test suite).
-Code: `cashu.modules.investments.strategy.load_strategy(yaml_text, md)`; templates:
-`cashu.modules.investments.templates.strategy_template(name)`.
+Code: `loadStrategy(yamlText, markdown)`; templates: `strategyTemplate(name)`, both from
+`@cashu/domain/investments/strategy`.
 
 ## strategy.yaml reference (version 1)
 

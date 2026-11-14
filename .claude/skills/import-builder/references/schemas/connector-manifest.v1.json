@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "connector-manifest.v1.json",
   "title": "cashU connector manifest (connector.yaml), api_version 1",
-  "description": "Generated from cashu.core.connectors.manifest.Manifest by scripts/gen_connector_schemas.py; see connectors.md. The app also enforces the rules a schema cannot express: run[0] is an allowed interpreter or ./<file>, no `..` or absolute paths in run, the file / fetch section matches kind, unique ids, directory limits.",
+  "description": "Generated from the connector manifest model (apps/host/src/connectors/manifest.ts) by apps/host/scripts/genConnectorSchemas.ts; see connectors.md. The app also enforces the rules a schema cannot express: run[0] is an allowed interpreter or ./<file>, no `..` or absolute paths in run, the file / fetch section matches kind, unique ids, directory limits.",
   "$defs": {
     "FetchSpec": {
       "additionalProperties": false,
@@ -211,6 +211,25 @@
       ],
       "default": null,
       "title": "Last Verified"
+    },
+    "countries": {
+      "anyOf": [
+        {
+          "items": {
+            "pattern": "^[A-Z]{2}$",
+            "type": "string"
+          },
+          "maxItems": 60,
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 3166-1 alpha-2 codes of the countries whose banks or users this source serves; absent for a source not tied to a country (an international broker or exchange).",
+      "title": "Countries"
     },
     "module": {
       "enum": [

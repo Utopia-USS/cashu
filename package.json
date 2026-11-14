@@ -1,0 +1,32 @@
+{
+  "name": "cashu-ts",
+  "private": true,
+  "type": "module",
+  "description": "cashU TypeScript monorepo: desktop and mobile apps, local host, CLI and MCP server.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test --concurrency=4",
+    "test:all": "vitest run",
+    "test:exhaustive": "turbo run test:exhaustive --concurrency=1",
+    "test:emulator": "command java -version >/dev/null 2>&1 || { echo 'test:emulator: Java 21+ is missing (macOS: brew install openjdk and put its bin on PATH)' >&2; exit 1; }; ${CASHU_FIREBASE:-firebase} --version >/dev/null 2>&1 || { echo 'test:emulator: firebase-tools is missing (npm install -g firebase-tools, or set CASHU_FIREBASE)' >&2; exit 1; }; ${CASHU_FIREBASE:-firebase} emulators:exec --only firestore,auth --project demo-cashu 'pnpm --filter @cashu/sync test:emulator && pnpm --filter @cashu/host test:emulator'",
+    "check": "turbo run typecheck lint && pnpm test",
+    "check:handoff": "pnpm check && pnpm test:exhaustive && pnpm arch:check",
+    "arch:check": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/arch/src/run.ts",
+    "bundle:check": "pnpm --filter @cashu/mobile bundle:check",
+    "format": "biome format --write .",
+    "design": "sh design/serve.sh",
+    "cashu-next": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/cli/src/index.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^22.20.5",
+    "turbo": "^2.11.10",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "packageManager": "pnpm@11.28.9"
+}

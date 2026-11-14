@@ -1,0 +1,84 @@
+// Knip: unused files, exports, types and dependencies of the TypeScript workspaces.
+// Run from the repo root by `pnpm arch:check` (tools/arch/src/run.ts).
+{
+  "$schema": "../../node_modules/.pnpm/knip@6.41.0/node_modules/knip/schema-jsonc.json",
+  "workspaces": {
+    // The root holds only tooling.
+    ".": {
+      "entry": [],
+      "project": [],
+      // Each TS workspace below runs its own Vitest plugin.
+      "github-actions": false,
+      "playwright": false,
+      "vitest": { "config": ["vitest.config.ts"], "entry": [] }
+    },
+    "packages/*": {
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/ui": {
+      "entry": ["src/**/*.stories.tsx"],
+      "project": ["src/**/*.{ts,tsx}"],
+      // Knip does not resolve React Native platform suffixes, so a relative import that only has a
+      // `.native.tsx` file (the phone's display layer) reads as unresolved here. `tsc -p tsconfig.native.json`
+      // in `typecheck` resolves and checks every one of them; knip keeps the package-level checks.
+      "ignoreUnresolved": ["^\\.\\.?/.*\\.js$"]
+    },
+    "apps/*": {
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "packages/node-host": {
+      // Spawned by the host tests as a separate process (through its path), which knip cannot follow.
+      "entry": ["src/testing/fixtureHost.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "apps/host": {
+      // Process entry points are referenced by path, not imported.
+      "entry": [
+        "src/cli.ts",
+        "src/testing/faultHost.ts",
+        "src/testing/nativeCreationHost.ts",
+        "src/testing/devDemo.ts",
+        "src/testing/seedOverviewDemo.ts",
+        "src/testing/syntheticCliHost.ts"
+      ],
+      "project": ["src/**/*.ts"],
+      // OS FIFO utility used by the native blob security test.
+      "ignoreBinaries": ["mkfifo"]
+    },
+    "apps/cli": {
+      // Loaded by a test-only Node --import path before the real shim entry.
+      "entry": ["src/testing/hostInterposer.ts"],
+      "project": ["src/**/*.ts"],
+      // macOS script(1) gives the terminal test a pseudo-terminal; not an npm package.
+      "ignoreBinaries": ["script"]
+    },
+    "apps/desktop": {
+      "entry": [
+        "src/entry.ts",
+        "src/preload.cts",
+        "renderer/main.tsx",
+        "renderer/**/*.stories.tsx",
+        "scripts/*.mjs",
+        "e2e/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,cts}",
+        "renderer/**/*.{ts,tsx}",
+        "scripts/**/*.mjs",
+        "e2e/**/*.ts"
+      ],
+      // Loading its Playwright config would run prepareSpecs() (writes a spec tree); list e2e/ instead.
+      "playwright": false,
+      // macOS system tool the quit spec calls, not an npm package.
+      "ignoreBinaries": ["pgrep"],
+      // Invoked by scripts/package-macos.mjs through its CLI, not imported as a module.
+      "ignoreDependencies": ["electron-builder"]
+    },
+    "tools/arch": {
+      "entry": ["src/run.ts", "src/depcruise.ts", "depcruise.config.cjs"],
+      "project": ["src/**/*.ts"],
+      // Spawned by src/run.ts through its bin path, which knip cannot follow.
+      "ignoreDependencies": ["sherif"]
+    }
+  }
+}

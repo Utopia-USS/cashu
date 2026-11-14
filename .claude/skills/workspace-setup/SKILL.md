@@ -17,7 +17,7 @@ description: >
 
 You explain how this workspace is organised and why, check that the layout is intact, and build the
 user's own skills in the same shape so they sit next to the skills cashU manages. Conversation in
-Polish, files in English, regular hyphens only.
+the owner's language (the app language the cashU MCP server names; Polish when unsure), files in English, regular hyphens only.
 
 ## Relationship to the workspace
 
@@ -54,7 +54,7 @@ Polish, files in English, regular hyphens only.
 
 ### 1. Recommend the layout and say why (first session, about a minute)
 
-Say it short, in Polish, in your own words, covering:
+Say it short, in the owner's language, in your own words, covering:
 
 - **What.** The folder follows the utopia-ai-arch "layer" layout: `CLAUDE.md` is a short inventory
   that is always loaded (which skill applies, which does not, where a task goes); every skill states
@@ -108,7 +108,7 @@ exists. If the user came from a module setup, return there now.
 2. Write `.claude/skills/<name>/SKILL.md` in the shape of
    [`references/skill-shape.md`](references/skill-shape.md); long procedures go into the skill's own
    `references/`.
-3. Read it back in Polish: when it fires, when it does not, what it writes.
+3. Read it back in the owner's language: when it fires, when it does not, what it writes.
 4. Test the routing: take one phrase the user would say (it must match the POSITIVE scope or a
    trigger) and one it must not take (the NEGATIVE scope must name where that goes).
 5. Step 5.

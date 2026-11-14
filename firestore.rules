@@ -1,0 +1,295 @@
+rules_version = '2';
+
+// Security rules of the cashU sync relay (Firestore, Spark plan). Firebase sees only opaque ids
+// (32-hex vault and device ids, anonymous uids), sizes, counters, timestamps and ciphertext.
+// Layout and rationale: packages/sync/src/transports/firestore (layout.ts) and the M4 transport spec.
+// Every rule is exercised against the emulator by
+// packages/sync/src/transports/firestore/rules.emulator.test.ts (allowed and denied cases).
+//
+// Who may write what: the member document members/{uid} (written only by an admin, the Mac) is what binds
+// an anonymous uid to a device. Segment metas and chunks are authorised by the CALLER'S member device,
+// never by the uid stored in a meta, so a device that lost its anonymous identity and was re-granted under
+// a new uid keeps writing its own segments (the meta's `writer` moves to the new uid).
+//
+// Abuse caps (S1: anyone can sign up anonymously and create a vault; no per-uid quota is expressible here,
+// accounts in M5 close it): a segment number below 100000, a segment meta of at most 64 MiB growing by at
+// most 8 MiB per commit, chunks only inside the append window (below), pairing message numbers of 4 digits,
+// and a vault document that holds only its known fields.
+//
+// Append window (S2): a chunk is written only at or beyond the segment's committed size BEFORE the commit,
+// so committed bytes are never rewritten. A meta is created at size 0 (rev 1) and only an update (rev >= 2)
+// grows it, so a meta at rev 1 holds size 0 whether it was created in this commit or earlier: the chunk
+// rule reads the size before the commit only when rev >= 2 (one access, `get`). The transport writes the
+// meta and the chunks of an append in each commit and grows the size only in the last one (a new segment
+// whose bytes fit one commit takes one more, meta-only commit); a retried append rewrites the orphan chunks
+// of an interrupted one (same ids, beyond the size), which is why `update` is allowed under the same
+// window as `create`. Its end is at most the size AFTER the commit when the commit grows the meta, else
+// (an intermediate commit) at most the size before plus 8 MiB.
+//
+// Recovery of the first admin (S7): the vault document may carry `recoveryHash` (sha256 of 32 random bytes
+// the Mac keeps with the vault's recovery material, never at the relay, never derivable from what a phone
+// holds). Whoever holds the secret re-admits itself in ONE commit: it creates recoveries/{own uid} { proof },
+// creates (or replaces) its own member document as admin, and replaces `recoveryHash` with a different
+// 32-byte value. The member write is allowed only when the proof doc did not exist before the commit and
+// does after, and sha256(proof) equals the hash BEFORE the commit; the hash must change in the same commit.
+// So a proof is single-use by construction, a proof doc can never exist without the member write of the
+// same commit (no parked tickets), and a leftover proof doc grants nothing later (it existed before any
+// later commit). Admins may list and delete proof docs (the helper deletes its own right after; a purge
+// deletes them all). Once set, `recoveryHash` is only ever replaced, never removed.
+// An admin never deletes or demotes its own member document and never rebinds its own device (the last
+// admin cannot be counted in rules; two admins removing each other at the same instant rely on Firestore
+// serialising the two commits, and recovery is the way back if that ever left no admin).
+//
+// Document access budget (Firestore: at most 10 access calls per rule evaluation and 20 per request for a
+// batched write; repeated accesses to one document MAY be cached, which this budget does not rely on).
+// get / exists / getAfter / existsAfter calls per evaluation, worst case, counting every call:
+//   /vaults/{v}                     create 1 (member after), read 1, update 2 (caller's member before and
+//                                   after), delete 0 (never)
+//   .../members/{uid}               read 1, create 6 (vault before; recovery 4: proof doc before + after,
+//                                   vault before + after; caller's member), update 5 (caller's member +
+//                                   recovery 4), delete 1
+//   .../recoveries/{uid}            create 3 (caller's member: exists, get, getAfter), list 1, get 0,
+//                                   update 0, delete 1
+//   .../segments/{segId}            read 1, create 1, update 1, delete 1 (all: the caller's member doc)
+//   .../segments/{segId}/chunks/{s} read 1, create / update 3 (caller's member, segment after, segment
+//                                   before only when its rev >= 2), delete 1
+//   .../pairings/{sid}              create 1, get 0, list 1, update 0, delete 1
+//   .../pairings/{sid}/messages/{n} read 1, create 1 (the pairing), update 0, delete 1
+// Per request, every call counted: an append commit (meta + N chunks) costs 1 + 3N, so the transport writes
+// at most 6 chunks per commit (19 <= 20); a delete costs 1 (the admin's member doc), so a purge commit holds
+// at most 20 deletes; a recovery commit (proof + member + vault) costs at most 3 + 6 + 2 = 11.
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function hex32(id) {
+      return id is string && id.matches('^[0-9a-f]{32}$');
+    }
+    function vaultPath(v) {
+      return /databases/$(db)/documents/vaults/$(v);
+    }
+    function memberPath(v) {
+      return /databases/$(db)/documents/vaults/$(v)/members/$(request.auth.uid);
+    }
+    function recoveryPath(v) {
+      return /databases/$(db)/documents/vaults/$(v)/recoveries/$(request.auth.uid);
+    }
+    // The caller's member document (one access); an error (no member doc) denies.
+    function me(v) {
+      return get(memberPath(v)).data;
+    }
+    function member(v) {
+      return signedIn() && exists(memberPath(v));
+    }
+    function admin(v) {
+      return signedIn() && me(v).role == 'admin';
+    }
+    function data() {
+      return request.resource.data;
+    }
+    // 8 MiB: the most a segment meta grows per commit (an append is at most one segment, 4 MiB soft cap).
+    function maxGrowth() {
+      return 8388608;
+    }
+    // The caller's recovery in this commit (S7, header), 4 accesses: its proof doc did not exist before and
+    // does after (getAfter of a missing doc denies), the proof hashes to the vault's hash BEFORE the commit,
+    // and the commit replaces that hash (the vault update rule keeps it 32 bytes).
+    function recovering(v) {
+      let hashBefore = get(vaultPath(v)).data.recoveryHash;
+      return !exists(recoveryPath(v))
+        && hashing.sha256(getAfter(recoveryPath(v)).data.proof) == hashBefore
+        && getAfter(vaultPath(v)).data.recoveryHash != hashBefore;
+    }
+
+    match /vaults/{v} {
+      // Optional until every creator writes it (the host's transitional creation writes none).
+      function validRecoveryHash() {
+        return !('recoveryHash' in data())
+          || (data().recoveryHash is bytes && data().recoveryHash.size() == 32);
+      }
+      // `admins`: 1 to 10 uids (Firebase Auth: 1-128 characters, no path separator).
+      function uidAt(l, i) {
+        return l.size() <= i || (l[i] is string && l[i].matches('^[A-Za-z0-9_-]{1,128}$'));
+      }
+      function validAdmins(l) {
+        return l is list && l.size() >= 1 && l.size() <= 10
+          && uidAt(l, 0) && uidAt(l, 1) && uidAt(l, 2) && uidAt(l, 3) && uidAt(l, 4)
+          && uidAt(l, 5) && uidAt(l, 6) && uidAt(l, 7) && uidAt(l, 8) && uidAt(l, 9);
+      }
+      // The creating device becomes the first admin in the same commit (members/{uid} create below).
+      allow create: if signedIn() && hex32(v)
+        && data().keys().hasOnly(['createdAt', 'admins', 'recoveryHash'])
+        && data().admins == [request.auth.uid]
+        && data().createdAt is timestamp
+        && validRecoveryHash()
+        && existsAfter(memberPath(v));
+      allow read: if member(v);
+      // Known fields only; `createdAt` never changes; `recoveryHash` is replaced (never removed) by an
+      // admin, or by a recovering device in its recovery commit: its member doc is admin after the commit,
+      // which for a caller that is not admin before only the member rules' recovery branch allows.
+      allow update: if signedIn()
+        && data().keys().hasOnly(['createdAt', 'admins', 'recoveryHash'])
+        && validAdmins(data().admins)
+        && validRecoveryHash()
+        && (!('recoveryHash' in resource.data) || 'recoveryHash' in data())
+        && (
+          (admin(v) && data().diff(resource.data).affectedKeys().hasOnly(['admins', 'recoveryHash']))
+          || (data().diff(resource.data).affectedKeys().hasOnly(['recoveryHash'])
+            && getAfter(memberPath(v)).data.role == 'admin'));
+      // Never deleted: a missing vault doc would reopen the first-admin bootstrap below to anyone who knows
+      // the id. A purge removes segments and chunks only; the vault doc stays as a tombstone.
+      allow delete: if false;
+
+      match /members/{uid} {
+        function validMember() {
+          return data().keys().hasOnly(['device', 'role', 'addedAt'])
+            && hex32(data().device)
+            && data().role in ['admin', 'member']
+            && data().addedAt is timestamp;
+        }
+        allow read: if member(v);
+        allow create: if signedIn() && hex32(v) && validMember() && (
+          // Vault creation: the vault does not exist yet and is created in the same commit by this uid.
+          (uid == request.auth.uid && data().role == 'admin'
+            && !exists(vaultPath(v))
+            && getAfter(vaultPath(v)).data.admins == [request.auth.uid])
+          // Recovery: the holder of the recovery secret re-admits itself (header, `recovering`).
+          || (uid == request.auth.uid && data().role == 'admin' && recovering(v))
+          // An admin (the Mac) adds a device.
+          || admin(v));
+        // An admin never demotes its own member doc (it may be the vault's last admin) nor rebinds its
+        // own device. A recovery replaces the caller's own doc (demoted, or bound to a lost device).
+        allow update: if signedIn() && validMember() && (
+          (admin(v) && (uid != request.auth.uid
+            || (data().role == 'admin' && data().device == resource.data.device)))
+          || (uid == request.auth.uid && data().role == 'admin' && recovering(v)));
+        allow delete: if admin(v) && uid != request.auth.uid;
+      }
+
+      // Proof of the relay recovery secret (header): created by its own uid only together with the write
+      // that makes that uid's member doc admin (created, or changed, in the same commit; the member rules
+      // check the proof), never readable one by one, listed and deleted by admins (the recovering device
+      // deletes its own right after; a purge deletes them all).
+      match /recoveries/{rid} {
+        // 3 accesses: the caller's member doc after the commit, and before it when it existed.
+        function ownMemberWrittenAsAdmin(v) {
+          let after = getAfter(memberPath(v)).data;
+          return after.role == 'admin' && (!exists(memberPath(v)) || get(memberPath(v)).data != after);
+        }
+        allow create: if signedIn() && rid == request.auth.uid
+          && data().keys().hasOnly(['proof'])
+          && data().proof is bytes && data().proof.size() >= 16 && data().proof.size() <= 64
+          && ownMemberWrittenAsAdmin(v);
+        allow list: if admin(v);
+        allow get, update: if false;
+        allow delete: if admin(v);
+      }
+
+      match /segments/{segId} {
+        // `rev` counts the commits of the segment (1 on create, +1 on every commit), so every commit of an
+        // append changes the meta and its updateTime (the transport's precondition chain).
+        function validMeta() {
+          return data().keys().hasOnly(['device', 'seg', 'size', 'updatedAt', 'writer', 'rev'])
+            && data().writer == request.auth.uid
+            && data().seg is int && data().seg >= 0 && data().seg < 100000
+            && data().size is int && data().size >= 0 && data().size <= 67108864
+            && data().rev is int
+            && data().updatedAt is timestamp;
+        }
+        allow read: if member(v);
+        // Only the member bound to the segment's device may create it, empty (the append window reads a
+        // rev-1 meta as size 0) or grow it.
+        allow create: if signedIn() && validMeta()
+          && data().rev == 1
+          && data().size == 0
+          && segId.matches('^[0-9a-f]{32}_[0-9]{10}$')
+          && segId.split('_')[0] == data().device
+          && int(segId.split('_')[1]) == data().seg
+          && me(v).device == data().device;
+        // Size never shrinks; device and seg never change; the writer becomes the caller.
+        allow update: if signedIn() && validMeta()
+          && data().device == resource.data.device
+          && data().seg == resource.data.seg
+          && data().size >= resource.data.size
+          && data().size - resource.data.size <= maxGrowth()
+          && data().rev == resource.data.rev + 1
+          && me(v).device == resource.data.device;
+        allow delete: if admin(v);
+
+        match /chunks/{start} {
+          function segmentDoc() {
+            return /databases/$(db)/documents/vaults/$(v)/segments/$(segId);
+          }
+          // The append window (header): at or beyond the committed size before the commit, ending within
+          // the size after it, or within 8 MiB of the size before when the commit does not grow the meta.
+          // The meta must exist after the commit (getAfter of a missing meta denies). A rev-1 meta holds
+          // size 0 (created empty, grown only by updates), so `before` costs a `get` only from rev 2 on.
+          function inWindow() {
+            let metaAfter = getAfter(segmentDoc()).data;
+            let after = metaAfter.size;
+            let before = metaAfter.rev == 1 ? 0 : get(segmentDoc()).data.size;
+            return data().start >= before
+              && (data().end <= after || (after == before && data().end <= before + maxGrowth()));
+          }
+          // Written only together with (or after) the segment's meta, by the member bound to the device the
+          // segment id names, never over committed bytes.
+          allow read: if member(v);
+          allow create, update: if signedIn()
+            && data().keys().hasOnly(['start', 'end', 'bytes'])
+            && segId.matches('^[0-9a-f]{32}_[0-9]{10}$')
+            && start.matches('^[0-9]{12}$')
+            && data().start is int && data().start == int(start)
+            && data().end is int
+            && data().bytes is bytes && data().bytes.size() <= 716800
+            && data().end - data().start == data().bytes.size()
+            && me(v).device == segId.split('_')[0]
+            && inWindow();
+          allow delete: if admin(v);
+        }
+      }
+
+      match /pairings/{sid} {
+        allow create: if admin(v)
+          && data().keys().hasOnly(['inviter', 'joiner', 'expiresAt', 'createdAt'])
+          && data().inviter == request.auth.uid && data().joiner == null
+          && data().expiresAt is timestamp && data().createdAt is timestamp;
+        // A party, or anyone with the session id while unclaimed (the QR carries it); listing open
+        // pairings needs the vault's admin, so the vault id alone finds none (S3).
+        allow get: if signedIn() && (resource.data.inviter == request.auth.uid
+          || resource.data.joiner == request.auth.uid || resource.data.joiner == null);
+        allow list: if admin(v);
+        // Claim: any signed-in device may set joiner from null to itself once, before expiry (first hello wins).
+        allow update: if signedIn() && resource.data.joiner == null
+          && data().joiner == request.auth.uid
+          && data().diff(resource.data).affectedKeys().hasOnly(['joiner'])
+          && request.time < resource.data.expiresAt;
+        allow delete: if admin(v);
+
+        match /messages/{n} {
+          function pairing() {
+            return get(/databases/$(db)/documents/vaults/$(v)/pairings/$(sid)).data;
+          }
+          function party(p) {
+            return p.inviter == request.auth.uid || p.joiner == request.auth.uid;
+          }
+          // Messages are written while the pairing is open, by one of its two parties as itself.
+          function validMessage(p) {
+            return party(p) && request.time < p.expiresAt
+              && data().keys().hasOnly(['from', 'n', 'box', 'part', 'parts', 'createdAt'])
+              && data().from == request.auth.uid
+              && n.matches('^[0-9]{4}$') && data().n == int(n)
+              && data().box is bytes && data().box.size() <= 716800
+              && data().parts is int && data().part is int
+              && data().part >= 0 && data().part < data().parts
+              && data().createdAt is timestamp;
+          }
+          allow read: if signedIn() && party(pairing());
+          allow create: if signedIn() && validMessage(pairing());
+          allow update: if false;
+          allow delete: if admin(v);
+        }
+      }
+    }
+  }
+}

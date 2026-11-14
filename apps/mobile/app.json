@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "cashU",
+    "slug": "cashu",
+    "scheme": "cashu",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "dev.cashu.mobile",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.cashu.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      "expo-secure-store",
+      "expo-localization",
+      [
+        "expo-notifications",
+        {
+          "enableRemoteNotifications": false
+        }
+      ],
+      "expo-task-manager",
+      "expo-background-task",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "cashU uses Face ID to unlock the app."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "cashU uses the camera to scan the pairing code shown on your Mac."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "updates": {
+      "enabled": false
+    },
+    "locales": {
+      "pl": "./locales/pl.json"
+    }
+  }
+}

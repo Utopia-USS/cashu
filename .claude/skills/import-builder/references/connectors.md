@@ -46,6 +46,7 @@ author: Jan Kowalski             # optional, <= 80 characters
 description: Wyciąg CSV ...      # optional, <= 280 characters
 maintainer: "@jkowalski"         # optional (required in the catalog), <= 80 characters
 last_verified: 2026-10-01        # optional (required in the catalog), ISO date
+countries: [PL]                  # optional, ISO 3166-1 alpha-2 codes; absent = not tied to a country
 module: budget                   # investments | budget
 kind: file                       # file | fetch
 run: [deno, connector.ts]        # argv, see below (deno: the app's own Deno, the default)
@@ -69,6 +70,7 @@ file:                            # kind file only (and required for it)
 | `author`, `description` | optional, <= 80 / <= 280 characters |
 | `maintainer` | optional, <= 80 characters: who keeps the connector working, a GitHub handle (`@octocat`) or a name. Required for an entry of the connector catalog (`connectors/` in the cashU repository) |
 | `last_verified` | optional, an ISO date `YYYY-MM-DD` (quoted or not; no time): the last day the maintainer checked the connector against a real, current export or API. Required in the catalog, where an entry older than 180 days is shown as stale |
+| `countries` | optional, 1..60 unique ISO 3166-1 alpha-2 codes in upper case (`[PL]`, `[DE, AT]`): the countries whose banks or users the source serves. Leave it out for a source not tied to a country (an international broker or exchange). In the catalog the owner's agent matches the owner's country against it, so set it for every bank |
 | `module`, `kind` | see above; `kind: file` needs a `file` section and no `fetch` section, and the other way round |
 | `run` | 1..8 plain strings, each <= 200 characters, no control characters, no `..` path segment, no absolute or `~` paths. No shell: it is an argv, not a command line. An argument that names a file of the connector (`connector.py`) is passed as that file's absolute path, because the process runs in another directory (section 4) |
 | `run[0]` | an interpreter name from the allowlist `deno`, `python3`, `node`, `bun`, `ruby`, `perl`, or `./<file>`: an executable file inside the connector directory (covered by the hash). **`deno` is the default**: the app ships its own Deno, so a Deno connector needs nothing installed (section 4, "Deno connectors") |
@@ -80,7 +82,7 @@ file:                            # kind file only (and required for it)
 | `fetch.params[]` | `id` as above, `label` <= 60, `type` `string` (default) / `date` / `number` / `boolean`, `required` (default `false`); unique ids |
 
 - Unknown keys are errors (with a "did you mean" hint), at every level. The manifest is at most 64 KiB.
-- `name` and the `label`s are shown to the owner verbatim; the app's UI is Polish, so write them in Polish.
+- `name` and the `label`s are shown to the owner verbatim; write them in the owner's language (the app language: Polish or English).
 - Schema: [`schemas/connector-manifest.v1.json`](schemas/connector-manifest.v1.json) (the app also checks
   what a schema cannot express: `run`, the matching section, unique ids, the directory rules).
 
@@ -202,7 +204,7 @@ it. Log counts and steps, never values.
 | platform | interpreters that run | sandbox |
 | --- | --- | --- |
 | macOS | all (`deno`, `python3`, `node`, `bun`, `ruby`, `perl`, `./<file>`) | `sandbox-exec`; Deno connectors also Deno's permissions inside it |
-| Linux | file connectors only (fetch: `sandbox_unavailable` for now) | Landlock + a seccomp filter (x86_64 / aarch64), when the kernel supports them (details: [agents/connector-sandbox-platforms.md](agents/connector-sandbox-platforms.md)); otherwise none run |
+| Linux | none yet (`sandbox_unavailable`) | a Landlock + seccomp layer is designed ([agents/connector-sandbox-platforms.md](agents/connector-sandbox-platforms.md)) but not built in the native app |
 | Windows | none yet (`sandbox_unavailable`), Deno included | Deno's permissions alone are not a sandbox; AppContainer is planned |
 
 **Deno connectors** (`run: [deno, connector.ts]`) get a second layer inside the macOS sandbox: Deno's
@@ -325,33 +327,15 @@ approved. Two ways, same checks, same value-free report:
   and make the validation issue kinds tell you what to fix. The counts and the match flag remain a
   low-bandwidth channel (a hostile connector could encode a few bits in them per call), accepted
   because the code only reads the sample, its own directory and the narrow system set.
-- **Terminal:** the CLI, from a source checkout or with the app's binary
-  (`/Applications/cashU.app/Contents/MacOS/cashu`):
+- **Terminal:** the same test from the `cashu` command of the installed app (the launcher
+  `<data dir>/bin/cashu`; the current directory plays the role of the workspace):
 
 ```bash
 cashu connectors test connectors/<id> --file inbox/<export>          # file kind: detect + convert
 cashu connectors test connectors/<id> --fixture connectors/<id>/fixture.json   # fetch kind, offline
-cashu connectors test connectors/<id> --check-manifest                # manifest and directory only
-cashu connectors test connectors/<id> --file <export> --module budget # also check the module
 ```
 
-The CLI report (for a person in a terminal) is **value-free**: manifest facts, the interpreter, the
-hash, each command's outcome and time, then the import validation as counts per record kind and type, and problems by kind with row
-numbers and field names. It never prints a value from the file, the document, your error message or
-stderr verbatim (it masks values in your message, which a hostile connector can defeat; the MCP tool
-returns none of it). Exit code 0 = everything OK. Example:
-
-```
-manifest: OK (budget-csv-example 1.0.0, module budget, kind file)
-  interpreter: /opt/homebrew/Cellar/python@3.14/.../bin/python3.14
-  content sha256: 0163...
-  extensions: csv
-detect: ok (77 ms)
-  match: yes (confidence 0.95)
-convert: ok (75 ms)
-document: OK (cashu-budget-import)
-  cashu-budget-import v1 (json): OK, 4 transactions, 0 balances
-```
+It prints the same value-free report as `test_connector` (JSON); exit code 0 = everything OK.
 
 **Fetch connectors are tested offline.** `fixture` (MCP) / `--fixture <file>` (CLI) runs `fetch` with no network and the
 fixture file's text (a recorded or synthetic API response, JSON, <= 1 MiB) as `params.fixture`; every
@@ -362,8 +346,7 @@ Make your connector answer from `params.fixture` when it is present (see
 test. `check` and the real network are tried in the app (`Sprawdź połączenie`) once the owner approved
 the connector and entered the key.
 
-CLI test runs are recorded in the connector's run log without a profile; `test_connector` runs are not
-recorded.
+Test runs (CLI or `test_connector`) are not recorded in any run log.
 
 ## 7. Installing
 
@@ -453,8 +436,7 @@ bindings before the investments daily check, so what they commit is in that day'
 
 ## 10. Secrets and privacy
 
-- **Secrets** are entered by the owner only: in the binding form in the app (a password field) or with
-  `cashu connectors secret set <binding> <secret_id>` (hidden prompt). They live in the macOS keychain,
+- **Secrets** are entered by the owner only: in the binding form in the app (a password field, Ustawienia > Konektory). They live in the OS keychain,
   are never returned by any endpoint, never stored in runs, logs, proposals or MCP answers, and reach
   your process only on stdin, for `fetch` and `check`. Never print, log or echo them; never put them in
   a URL query, the cursor or the document. (The app also replaces secret values in your message and
@@ -470,8 +452,7 @@ bindings before the investments daily check, so what they commit is in that day'
 
 ## 11. Checklist
 
-1. `connector.yaml` is valid (`test_connector` reports `manifest.valid`, or `cashu connectors test <dir>
-   --check-manifest`).
+1. `connector.yaml` is valid (`test_connector` or `cashu connectors test` reports `manifest.valid`).
 2. Only the standard library, `node:` built-ins or files inside the directory (no `pip install`,
    `npm:` / `jsr:` / `https:` imports at run time: there is no network, and Deno refuses them).
 3. One JSON object on stdout, logs on stderr, exit 0 or 1 with an error object.

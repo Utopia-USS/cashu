@@ -15,7 +15,7 @@ description: >
 # assets-setup: manually valued assets
 
 A short guided setup (5-10 minutes). You explain what belongs here, prepare the commands, and the user
-runs them. Conversation in Polish, files in English, regular hyphens only.
+runs them. Conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), files in English, regular hyphens only.
 
 ## Relationship to the workspace
 
@@ -23,7 +23,7 @@ runs them. Conversation in Polish, files in English, regular hyphens only.
 |---|---|
 | privacy level, boundaries, the MCP tool list, where files go | what counts as a manually valued asset and which type it gets |
 | which profile the workspace serves | the `add-position` / `set-vehicle` / `set-balance` commands with placeholders for the user |
-| the `cashu` CLI name (packaged app or checkout) | the car depreciation mechanism and the revaluation rhythm |
+| the `cashu` command of this install (the app's launcher) | the car depreciation mechanism and the revaluation rhythm |
 
 ## Problem -> reference mapping
 
@@ -71,8 +71,8 @@ curve), `networth_breakdown` (bucket shares per currency, to confirm the asset a
    profiles). In the profile's agent workspace (its `CLAUDE.md` names the profile) it is configured in
    `.mcp.json`. Elsewhere, if none is connected: the `claude mcp add` line from Ustawienia > Agent AI,
    then restart Claude Code (or create the workspace there and start Claude Code in it). `cashu` in
-   the commands below is the CLI named in the workspace's `CLAUDE.md` (in the packaged app, the app's
-   binary). Call `profile_overview` and `setup_status("assets")`; state the privacy level.
+   the commands below is the command named in the workspace's `CLAUDE.md` (the app's launcher
+   `~/Library/Application Support/cashU/bin/cashu`). Call `profile_overview` and `setup_status("assets")`; state the privacy level.
 2. **What to add** (one question at a time, question tool with options):
    - real estate: flat, house, plot (type `property`, illiquid: counts toward net worth, not toward
      liquid money);
@@ -95,7 +95,7 @@ curve), `networth_breakdown` (bucket shares per currency, to confirm the asset a
    <YYYY-MM-DD>` records a new valuation from that date (the account id is in `cashu accounts`, run by
    the user). Suggest a rhythm the user chooses (e.g. once a year for property).
 5. **Check:** `setup_status("assets")` shows the steps done; `networth_breakdown` shows the property /
-   vehicle bucket with its share. The Majątek tab and Przegląd in the dashboard show the values to the
+   vehicle bucket with its share. The Majątek page and Przegląd in the app show the values to the
    user (you do not take screenshots).
 6. **Next:** a mortgage against the flat goes to `/loans-setup`, so net worth shows the asset and the
    liability side by side.

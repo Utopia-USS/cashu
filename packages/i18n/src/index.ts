@@ -1,0 +1,37 @@
+// @cashu/i18n: the UI language, text catalogs and plurals (docs/agents/localization.md). Platform free:
+// no DOM, React or Node; UI uses a `LanguageSource`, backend contexts use a `BackendLanguageSource`.
+// Screen copy catalogs live under
+// src/<core|module>/ and are imported by their own subpath (`@cashu/i18n/core/common.strings`).
+// Exact domain-value formatting is opt-in via @cashu/i18n/values; keep this entrypoint compatible
+// with the legacy dashboard runtime instead of pulling in the modern domain barrel.
+export { catalog } from "./catalog.js";
+export {
+  FALLBACK_LANG,
+  inEveryLang,
+  installLanguageSource,
+  intlLocale,
+  LANG_NAME,
+  LANGS,
+  type Lang,
+  type LanguageSource,
+  lang,
+  matchLang,
+  pinnedLang,
+  setLanguage,
+  setLanguageForTests,
+} from "./lang.js";
+export { normalizeNumberInput } from "./number.js";
+export { normalizeNumberInputForLanguage } from "./numberInput.js";
+export { enCount, enForm, plCount, plForm } from "./plural.js";
+export {
+  type BackendI18n,
+  type BackendLanguageSource,
+  createBackendI18n,
+  createTranslator,
+  LANG_ENV,
+  LANG_HEADER,
+  parseLang,
+  type TranslationVariants,
+  type Translator,
+  tr,
+} from "./tr.js";

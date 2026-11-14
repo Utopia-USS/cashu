@@ -17,5 +17,5 @@ notes/interview/
   special-<topic>.md        one file per time-sensitive individual issue
 ```
 
-Files are in English (quotes of the user's words may stay Polish). In strict mode they hold relative
+Files are in English (quotes of the user's words may stay in the owner's language). In strict mode they hold relative
 values only, unless the user agreed to note amounts.

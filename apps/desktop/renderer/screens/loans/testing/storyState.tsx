@@ -1,0 +1,114 @@
+import { D, loans } from "@cashu/domain";
+import { S as DS } from "@cashu/i18n/loans/Drawers.strings";
+import { cur } from "@cashu/ui-logic/core/format";
+import type { ComponentType } from "react";
+import { initialLoanForm } from "../loanForm.js";
+import { dmShort, listRows, loanDetail, previewText, startSteps, stepsTag } from "../loansModel.js";
+import type { LoansState } from "../useLoansScreen.js";
+
+const terms = {
+  id: "01900000-0000-8000-8000-000000000001",
+  accountId: "01900000-0000-8000-8000-000000000002",
+  principal: D("12000"),
+  annualRate: D("6.5"),
+  termMonths: 120,
+  startDate: "2026-01-31",
+  originationDate: null,
+  updatedAt: "2026-01-01T00:00:00Z",
+  paymentIban: null,
+  paymentText: null,
+};
+const row = {
+  ...loans.loanSummary(
+    terms,
+    { id: terms.accountId, name: "Synthetic mortgage", type: "mortgage", currency: "PLN" },
+    loans.loanValuation(terms, []),
+    "2026-10-01",
+    "PLN",
+  ),
+  matched: 0,
+};
+const noop = () => {};
+const steps = [
+  { id: "loan", status: "done" as const },
+  { id: "payments", status: "on" as const },
+];
+/** The fake state, formatted now (call it with incognito on to get masked amounts). */
+export function loansStoryState(): LoansState {
+  const name = "Synthetic mortgage";
+  return {
+    empty: false,
+    rows: listRows([row]),
+    count: 1,
+    selected: 0,
+    select: noop,
+    detail: loanDetail(row, name),
+    range: null,
+    setRange: noop,
+    start: {
+      tag: stepsTag({ state: "partial", steps }),
+      steps: startSteps({
+        steps,
+        budgetOn: true,
+        loans: [row],
+        base: "PLN",
+        openLoan: noop,
+        openPayment: noop,
+      }),
+    },
+    drawer: null,
+    busy: false,
+    err: null,
+    close: noop,
+    loan: {
+      form: {
+        ...initialLoanForm("2026-10-01", "PLN"),
+        principal: "12000",
+        annualRate: "6,5",
+        term: "10",
+      },
+      set: noop,
+      errors: {},
+      preview: previewText(136.26, 120, "PLN"),
+      currencies: ["PLN", "EUR", "USD", "CHF"],
+      save: async () => {},
+    },
+    payment: {
+      loans: [{ value: row.accountId, label: name }],
+      account: row.accountId,
+      name,
+      pick: noop,
+      mode: "text",
+      setMode: noop,
+      text: "",
+      setText: noop,
+      iban: "",
+      setIban: noop,
+      storedTail: null,
+      stored: false,
+      candidates: [
+        {
+          key: "a",
+          payee: "Synthetic bank",
+          detail: DS.candidate(cur(136.26, "PLN"), 30, dmShort("2026-10-05")),
+        },
+      ],
+      send: async () => {},
+    },
+  };
+}
+export const storyState = loansStoryState();
+
+/** Fake state and links keep stories independent of the store and router. */
+export function StoryFixture({
+  component: Component,
+  state,
+}: {
+  component: ComponentType<{
+    state: LoansState;
+    onSetup(): void;
+  }>;
+  state?: Partial<LoansState>;
+}) {
+  return <Component state={{ ...storyState, ...state }} onSetup={noop} />;
+}

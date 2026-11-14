@@ -1,0 +1,40 @@
+import {
+  type ConnectionStatus,
+  createPortClient,
+  messagePortChannel,
+} from "@cashu/store-react/client";
+
+/** The existing preload/main own-origin relay; the page receives no filesystem or IPC authority. */
+function requestStorePort(): Promise<MessagePort> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      window.removeEventListener("message", receive);
+      reject(new Error("store port unavailable"));
+    }, 10_000);
+    const receive = (event: MessageEvent) => {
+      const data = event.data as { cashu?: unknown } | null;
+      const port = event.ports[0];
+      if (
+        event.source !== window ||
+        event.origin !== location.origin ||
+        data?.cashu !== "store-port" ||
+        port === undefined
+      )
+        return;
+      window.removeEventListener("message", receive);
+      clearTimeout(timeout);
+      resolve(port);
+    };
+    window.addEventListener("message", receive);
+    window.postMessage({ cashu: "store-port-request" }, location.origin);
+  });
+}
+
+export async function desktopClient(onStatus?: (status: ConnectionStatus) => void) {
+  return createPortClient(messagePortChannel(await requestStorePort()), {
+    onStatus,
+    // A page opened again within this time renders its last values at once instead of suspending
+    // (a fallback costs ~300 ms of React's reveal throttle); its live queries reopen behind it.
+    retainMs: 10 * 60_000,
+  });
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@cashu/host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The local host process: one per data dir, the only process that opens this device's stores; every other process is a client over the host socket.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "cashu-host": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:emulator": "test -n \"$FIRESTORE_EMULATOR_HOST\" && test -n \"$FIREBASE_AUTH_EMULATOR_HOST\" || { echo 'test:emulator: no Firestore / Auth emulator; run pnpm test:emulator at the repo root' >&2; exit 1; }; vitest run src/testing/relayE2e.emulator.test.ts",
+    "gen:connector-schemas": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/genConnectorSchemas.ts",
+    "skills:sync": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ../../tools/node-ts/resolveTs.ts scripts/syncSkillReferences.ts",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cashu/domain": "workspace:*",
+    "@cashu/host-protocol": "workspace:*",
+    "@cashu/i18n": "workspace:*",
+    "@cashu/llm": "workspace:*",
+    "@cashu/market": "workspace:*",
+    "@cashu/mcp": "workspace:*",
+    "@cashu/node-host": "workspace:*",
+    "@cashu/store": "workspace:*",
+    "@cashu/sync": "workspace:*",
+    "@peculiar/asn1-schema": "3.0.0",
+    "@peculiar/x509": "3.1.0",
+    "commander": "15.0.0",
+    "dbus-next": "0.10.2",
+    "reflect-metadata": "0.2.2",
+    "yaml": "2.8.1",
+    "zod": "^4.6.7"
+  }
+}

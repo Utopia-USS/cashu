@@ -1,0 +1,25 @@
+{
+  "name": "@cashu/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The `cashu` command: a thin client of the data dir's local host (CLI and `cashu mcp`); the commands themselves run in the host.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "cashu": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cashu/domain": "workspace:*",
+    "@cashu/host-protocol": "workspace:*",
+    "@cashu/i18n": "workspace:*",
+    "@cashu/node-host": "workspace:*"
+  }
+}

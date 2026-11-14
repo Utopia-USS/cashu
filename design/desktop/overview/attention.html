@@ -1,0 +1,179 @@
+<!doctype html>
+<!--
+  design/desktop/overview/attention.html - "Worth a look" on the desktop Overview (proposal, 2026-11-12).
+  The same significance model as the mobile Today (design/mobile/companion, section 5 of index.html):
+  only what matters at the owner's own scale - money at risk (a bill not covered, a large sum without a
+  category), a held position's thesis or an action alert (one item per subject), unusual charges. At most
+  3 items; on a quiet day the tile is absent and the side column is Budget + Surplus as today.
+  Small housekeeping (4 small payments without a category) never gets a row: it is one quiet line.
+  Variants (keys): 1 = tile at the top of the side column (proposed), 2 = slim strip above the bento,
+  Q = toggle a quiet day. URL: #1 / #2, ?quiet, ?still. Data: synthetic (the Anna demo of the companion).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cashU overview - worth a look</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0b; --card: #0e0e10; --surface: #111113; --surface-2: #17171a; --surface-3: #1e1e22;
+  --line: rgba(255,255,255,.065); --line-2: rgba(255,255,255,.11); --line-3: rgba(255,255,255,.18);
+  --ink: #ededf0; --ink-2: #a3a3ab; --ink-3: #6e6e77; --ink-4: #4a4a52;
+  --accent: #8ea4ff; --accent-soft: rgba(142,164,255,.13);
+  --pos: #4cc38a; --pos-soft: rgba(76,195,138,.12); --neg: #ef6f6c; --neg-soft: rgba(239,111,108,.12);
+  --warn: #e5a54a; --warn-soft: rgba(229,165,74,.12);
+  --font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 13px/1.45 var(--font); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.pos { color: var(--pos); } .neg { color: var(--neg); } .warn { color: var(--warn); }
+.app { max-width: 1200px; margin: 0 auto; padding: 0 28px 120px; }
+.topbar { display: flex; align-items: center; gap: 20px; height: 56px; border-bottom: 1px solid var(--line); }
+.brand { font: 800 19px/1 var(--font); letter-spacing: -.03em; }
+.nav { display: flex; gap: 2px; height: 100%; }
+.nav a { display: flex; align-items: center; padding: 0 10px; color: var(--ink-3); position: relative; }
+.nav a.active { color: var(--ink); }
+.nav a.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 1.5px; background: var(--ink); border-radius: 2px; }
+.spacer { flex: 1; }
+.profile { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.avatar { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 650; background: #c9d3ff; color: #0a0a0b; }
+.fresh { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-3); }
+.fresh b { color: var(--ink-2); font-weight: 550; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--pos); }
+
+.bento { margin-top: 24px; display: grid; grid-template-columns: repeat(12, 1fr); grid-auto-rows: minmax(150px, auto); gap: 14px; }
+.tile { position: relative; border-radius: 28px; padding: 20px 22px; display: flex; flex-direction: column; min-width: 0;
+  background: linear-gradient(180deg, #161619, var(--card) 58%);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255,255,255,.05), 0 1px 2px rgba(0,0,0,.5), 0 14px 34px -18px rgba(0,0,0,.85);
+  animation: in 560ms var(--out) both; animation-delay: calc(var(--i, 0) * 50ms); }
+.still .tile, .still .strip > * { animation: none; }
+@keyframes in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+.s4 { grid-column: span 4; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; } .tall { grid-row: span 2; }
+.t-h { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.t-h .r { margin-left: auto; font-size: 12px; color: var(--ink-3); }
+.t-h a { margin-left: auto; color: var(--ink-3); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.t-foot { margin-top: auto; padding-top: 12px; font-size: 12px; color: var(--ink-3); }
+.t-foot b { color: var(--ink-2); font-weight: 600; }
+
+/* hero */
+.fig { display: flex; align-items: flex-start; font-weight: 700; letter-spacing: -.035em; line-height: 1; margin-top: 14px; }
+.fig .cur { font-size: 18px; font-weight: 600; color: var(--ink-3); margin: 6px 7px 0 0; letter-spacing: 0; }
+.fig .int { font-size: 56px; }
+.sub { font-size: 12.5px; color: var(--ink-3); margin-top: 10px; }
+.facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: auto; padding-top: 16px; }
+.fact { padding: 12px 14px; border-radius: 16px; background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012)); box-shadow: inset 0 0 0 1px var(--line), inset 0 1px 0 rgba(255,255,255,.04); }
+.fact .l { font-size: 12px; color: var(--ink-3); } .fact .v { font-size: 17px; font-weight: 650; letter-spacing: -.02em; margin-top: 2px; } .fact .d { font-size: 11.5px; color: var(--ink-3); }
+
+/* worth a look */
+.att { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 1px 12px; align-items: start; padding: 11px 10px; margin: 0 -10px; border-radius: 14px; position: relative; cursor: pointer; transition: background .15s; }
+.att + .att::before { content: ""; position: absolute; top: 0; left: 10px; right: 10px; height: 1px; background: var(--line); }
+.att:hover { background: rgba(255,255,255,.035); }
+.att .ic { grid-row: span 2; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); align-self: center; }
+.att .ic.warn { color: var(--warn); background: var(--warn-soft); box-shadow: none; } .att .ic.neg { color: var(--neg); background: var(--neg-soft); box-shadow: none; }
+.att .n { font-weight: 550; font-size: 13.5px; }
+.att .v { font-weight: 650; font-size: 13.5px; text-align: right; white-space: nowrap; }
+.att .s { font-size: 12px; color: var(--ink-3); }
+.att .s2 { font-size: 11.5px; color: var(--ink-3); text-align: right; white-space: nowrap; }
+.att .go { display: none; }
+.att:hover .s2 { display: none; } .att:hover .go { display: block; font-size: 11.5px; color: var(--ink); text-align: right; }
+.quiet { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.quiet span { flex: 1; } .quiet b { color: var(--ink-2); font-weight: 550; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+/* budget rows */
+.brow { display: grid; grid-template-columns: 76px 1fr auto; gap: 12px; align-items: center; margin-top: 10px; font-size: 13px; }
+.brow .l { color: var(--ink-3); } .brow .v { font-weight: 650; text-align: right; }
+.bar { height: 7px; border-radius: 4px; background: rgba(255,255,255,.05); overflow: hidden; } .bar i { display: block; height: 100%; border-radius: 4px; }
+
+/* variant 2: strip */
+.strip { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 24px; }
+.strip > div { border-radius: 20px; padding: 14px 16px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 1px 12px; align-items: center;
+  background: var(--card); box-shadow: inset 0 0 0 1px var(--line); animation: in 560ms var(--out) both; }
+.strip .ic { grid-row: span 2; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; }
+.strip .ic.warn { color: var(--warn); background: var(--warn-soft); } .strip .ic.neg { color: var(--neg); background: var(--neg-soft); } .strip .ic.n0 { color: var(--ink-2); background: var(--surface-2); }
+.strip .n { font-weight: 550; } .strip .v { font-weight: 650; text-align: right; } .strip .s, .strip .s2 { font-size: 11.5px; color: var(--ink-3); } .strip .s2 { text-align: right; }
+
+.labbar { position: fixed; right: 14px; bottom: 14px; display: flex; gap: 6px; z-index: 50; }
+.labbar button { height: 30px; padding: 0 11px; border-radius: 9px; border: 0; background: var(--surface-3); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-2); font-size: 12px; }
+.labbar button.on { background: var(--ink); color: #0b0b0c; }
+.labbar kbd { font: 600 10px var(--font); opacity: .6; margin-right: 6px; }
+.note { max-width: 1200px; margin: 18px auto 0; padding: 0 330px 0 28px; color: var(--ink-3); font-size: 12.5px; line-height: 19px; }
+.note b { color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="designed-by" style="position:fixed;left:12px;bottom:12px;z-index:9999;pointer-events:none;font:600 10px/1 system-ui,-apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#8e8e94;background:rgba(22,22,25,.9);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:4px 10px;">designed by <span style="color:#8ea4ff;">jakob</span></div>
+<div class="app" id="app"></div>
+<div class="note" id="note"></div>
+<div class="labbar" id="lab"></div>
+<script>
+const P = new URLSearchParams(location.search);
+if (P.has('still')) document.body.classList.add('still');
+let V = location.hash === '#2' ? 2 : 1, quiet = P.has('quiet');
+const I = {
+  bell: '<path d="M4.5 11V7.5a3.5 3.5 0 0 1 7 0V11l1 1.5h-9z"/><path d="M6.8 14a1.3 1.3 0 0 0 2.4 0"/>',
+  tag: '<path d="M2.5 8.5V3a.5.5 0 0 1 .5-.5h5.5l5 5-6 6z"/><circle cx="5.5" cy="5.5" r="1"/>',
+  cal: '<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/>',
+  wallet: '<rect x="2" y="4" width="12" height="9" rx="2"/><path d="M10.5 8.5h1.5"/>',
+};
+const ic = (k) => `<svg class="ico" viewBox="0 0 16 16">${I[k]}</svg>`;
+const ITEMS = [
+  { ic: 'bell', cls: 'neg', n: 'CD Projekt fell 9.4%', s: 'your alert fired · a reported delay weakens your thesis', v: '7.4%', s2: 'of portfolio', go: 'Decide' },
+  { ic: 'cal', cls: '', n: 'Netflix costs more', s: 'PLN 49 to 60 a month, from Friday', v: '+PLN 132', s2: 'a year', go: 'See the payee' },
+];
+function chart() {
+  let s = 3, v = 231943, pts = [];
+  for (let i = 0; i < 52; i++) { pts.unshift(v); v = v / 1.0028 * (1 + ((s = (s * 9301 + 49297) % 233280) / 233280 - .5) * .02); }
+  const min = Math.min(...pts), max = Math.max(...pts), w = 740, h = 170;
+  const p = pts.map((y, i) => `${(i / 51 * w).toFixed(1)},${(8 + (1 - (y - min) / (max - min)) * (h - 16)).toFixed(1)}`);
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:${h}px;margin-top:16px;overflow:visible"><defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#8ea4ff" stop-opacity=".2"/><stop offset="1" stop-color="#8ea4ff" stop-opacity="0"/></linearGradient></defs>
+    ${[.25, .5, .75].map((f) => `<line x1="0" x2="${w}" y1="${h * f}" y2="${h * f}" stroke="rgba(255,255,255,.065)"/>`).join('')}
+    <path d="M0,${h} L${p.join(' L')} L${w},${h} Z" fill="url(#g)"/><path d="M${p.join(' L')}" fill="none" stroke="#8ea4ff" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
+}
+const hero = (rows) => `<section class="tile s8 ${rows === 2 ? 'tall' : ''}" style="--i:0">
+  <div class="t-h">Net worth, converted to PLN<span class="r">incl. EUR 1,240.00 · USD 12,400.00 at the NBP mid rate of Tue 10 Nov</span></div>
+  <div class="fig"><span class="cur">PLN</span><span class="int">231,943</span></div>
+  <div class="sub"><b class="pos">+PLN 4,120 (+1.8%)</b> since October</div>${chart()}
+  <div class="facts"><div class="fact"><div class="l">Cash at hand</div><div class="v">PLN 44,118</div><div class="d">3.5 months of spending</div></div>
+    <div class="fact"><div class="l">Investments</div><div class="v">PLN 129,825</div><div class="d">-2.4% this week</div></div>
+    <div class="fact"><div class="l">Car</div><div class="v">PLN 58,000</div><div class="d">-PLN 580 a month</div></div>
+    <div class="fact"><div class="l">Owed</div><div class="v">PLN 0</div><div class="d">no loans</div></div></div></section>`;
+const att = `<section class="tile s4" style="--i:1"><div class="t-h">Worth a look</div>
+  <div style="margin-top:6px">${ITEMS.map((x) => `<div class="att"><span class="ic ${x.cls}">${ic(x.ic)}</span><span class="n">${x.n}</span><span class="v">${x.v}</span><span class="s">${x.s}</span><span class="s2">${x.s2}</span><span class="go">${x.go} →</span></div>`).join('')}</div>
+  <div class="quiet">${ic('tag')}<span>4 small payments without a category · PLN 316</span><b>Categorize</b></div></section>`;
+const budget = (i) => `<section class="tile s4" style="--i:${i}"><div class="t-h">Budget · November<a>Expenses</a></div>
+  <div class="brow"><span class="l">Income</span><span class="bar"><i style="width:100%;background:#8ea4ff"></i></span><span class="v">PLN 14,800</span></div>
+  <div class="brow"><span class="l">Spent</span><span class="bar"><i style="width:40%;background:#a3a3ab"></i></span><span class="v">PLN 5,960</span></div>
+  <div class="brow"><span class="l">Bills due</span><span class="bar"><i style="width:35%;background:#4a4a52"></i></span><span class="v">PLN 5,240</span></div>
+  <div class="t-foot">on track to keep <b>PLN 2,140</b> · <b class="pos">PLN 440 under</b> usual so far</div></section>`;
+const surplus = `<section class="tile s4" style="--i:2"><div class="t-h">Surplus → investing<a>month close</a></div>
+  <div style="font-size:14px;line-height:20px;color:var(--ink-2);margin-top:10px">October kept <b style="color:var(--ink)">PLN 2,560</b>; the plan is <b style="color:var(--ink)">PLN 2,500</b> a month.</div>
+  <div class="t-foot">contributions 2026: <b>PLN 24,000</b> of PLN 27,500</div></section>`;
+const middle = `<section class="tile s4" style="--i:3"><div class="t-h">Investments<a>Investments</a></div><div style="font:700 26px/1.15 var(--font);letter-spacing:-.03em;margin-top:10px">PLN 129,825</div><div class="sub" style="margin-top:4px">this year <b class="pos">+6.1%</b> · weekly review due Sunday</div></section>
+  <section class="tile s4" style="--i:4"><div class="t-h">Car</div><div style="font:700 26px/1.15 var(--font);letter-spacing:-.03em;margin-top:10px">PLN 58,000</div><div class="sub" style="margin-top:4px">loses about PLN 580 a month</div></section>
+  <section class="tile s4" style="--i:5"><div class="t-h">Subscriptions</div><div style="font:700 26px/1.15 var(--font);letter-spacing:-.03em;margin-top:10px">PLN 630<span style="font-size:13px;color:var(--ink-3);font-weight:500;letter-spacing:0"> a month</span></div><div class="sub" style="margin-top:4px">this week: Netflix on Friday</div></section>`;
+function render() {
+  const top = `<div class="topbar"><span class="brand">cashU</span><span class="profile"><span class="avatar">A</span>Anna</span>
+    <nav class="nav"><a class="active">Overview</a><a>Budget</a><a>Investments</a><a>Strategies</a></nav><span class="spacer"></span>
+    <span class="fresh"><span class="dot"></span>Bank data from <b>06:40 today</b></span></div>`;
+  let body;
+  if (V === 2 && !quiet) body = `<div class="strip">${ITEMS.map((x, k) => `<div style="animation-delay:${k * 50}ms"><span class="ic ${x.cls || 'n0'}">${ic(x.ic)}</span><span class="n">${x.n}</span><span class="v">${x.v}</span><span class="s">${x.s}</span><span class="s2">${x.s2}</span></div>`).join('')}</div>
+    <div class="bento">${hero(2)}${budget(1)}${surplus}${middle}</div>`;
+  else body = `<div class="bento">${hero(2)}${quiet ? budget(1) + surplus : att + budget(2)}${quiet ? middle : surplus.replace('s4', 's4') + middle.split('</section>').slice(0, 2).join('</section>') + '</section>'}</div>`;
+  document.getElementById('app').innerHTML = top + body;
+  document.getElementById('note').innerHTML = V === 1
+    ? `<b>Proposed: 1 · a tile at the top of the side column.</b> It takes the place the eye reaches first after the net worth, and only on days it has something. A quiet day returns the side column to Budget + Surplus (press Q). Housekeeping is one quiet line, never a row.`
+    : `<b>2 · a strip above the bento.</b> Louder and always first, but it pushes the whole page down and turns into a banner that people learn to skip. Kept for comparison.`;
+  document.getElementById('lab').innerHTML = `<button class="${V === 1 ? 'on' : ''}" onclick="setV(1)"><kbd>1</kbd>Side tile</button><button class="${V === 2 ? 'on' : ''}" onclick="setV(2)"><kbd>2</kbd>Strip</button><button class="${quiet ? 'on' : ''}" onclick="toggleQuiet()"><kbd>Q</kbd>Quiet day</button>`;
+}
+function setV(v) { V = v; history.replaceState(null, '', '#' + v + location.search.replace(/^/, '') ); render(); }
+function toggleQuiet() { quiet = !quiet; render(); }
+document.addEventListener('keydown', (e) => { if (e.key === '1') setV(1); if (e.key === '2') setV(2); if (e.key === 'q' || e.key === 'Q') toggleQuiet(); });
+render();
+</script>
+</body>
+</html>

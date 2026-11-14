@@ -1,0 +1,15 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "typecheck": {
+      "inputs": ["app/**", "src/**", "tsconfig.json", "package.json"]
+    },
+    "lint": {
+      "inputs": ["app/**", "src/**", "*.js", "*.json", "../../biome.json"]
+    },
+    "test": {
+      "inputs": ["app/**", "src/**", "package.json", "jest.config.js"]
+    }
+  }
+}

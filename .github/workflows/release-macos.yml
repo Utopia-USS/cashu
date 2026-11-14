@@ -1,0 +1,267 @@
+# Release the native cashU.app to GitHub Releases after every version bump on main, the same way the owner's
+# local fallback does (apps/desktop/scripts/release-macos.mjs): build arm64 + x64, sign with the Developer ID,
+# notarize, staple, verify, write latest-mac.yml + the two Sparkle appcasts, then draft -> check -> publish.
+#
+# Trigger: "Bump version" (bump-version.yml) completing successfully for a push to main of this repository.
+# The bump commit itself starts no workflow (it is pushed with GITHUB_TOKEN), so this workflow follows the bump
+# run instead of `push`. The run's head_sha is the merged commit BEFORE the bump; the release commit is the bump
+# commit right after it on main's first-parent line (its parent must be head_sha, author github-actions[bot],
+# subject "Bump version to X.Y.Z [skip ci]"). When the bump was skipped ("[skip bump]" or a hand-made version) the
+# release commit is head_sha itself. Either way it must be an ancestor of main's tip; main may already have moved
+# on (the next merge), which is why the tip itself is never taken: it may carry changes of a later, not yet bumped
+# merge under this version. A version whose tag exists already ends the run with a notice (nothing new).
+# workflow_dispatch (from main only) re-runs a release of main's tip; `dry_run` builds, signs, notarizes and
+# verifies without publishing (the first proof of the signed CI path).
+#
+# Every release job waits for an approval in the `release` environment (required reviewer: the owner), and
+# only that environment holds the signing secrets: MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD,
+# ASC_API_KEY_P8_BASE64, ASC_API_KEY_ID, ASC_API_ISSUER_ID.
+#
+# One macOS runner builds both arches (x64 cross-built on Apple silicon, as on the owner's Mac; package-macos.mjs
+# and the per-arch keyring package support it): one keychain import, one API key, and all 7 assets in one place
+# for the draft check, with no artifact hand-over between jobs. Dependencies are installed before the keychain
+# or the key file exist, so no install script runs next to them; no dependency cache (a release builds from the
+# lockfile alone). The temporary keychain, the search list and the key file are cleaned up in an always() step.
+name: Release macOS
+
+on:
+  workflow_run:
+    workflows: ["Bump version"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build, sign, notarize and verify, but publish nothing"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: release-macos
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  resolve:
+    name: Pick the release commit
+    if: >-
+      github.repository == 'Utopia-USS/cashu' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == 'Utopia-USS/cashu'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.pick.outputs.commit }}
+      version: ${{ steps.pick.outputs.version }}
+      release: ${{ steps.pick.outputs.release }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Pick the release commit
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_REF: ${{ github.ref }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          main="$(git rev-parse HEAD)"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "$DISPATCH_REF" != "refs/heads/main" ]; then
+              echo "::error::Run this workflow from main (got $DISPATCH_REF)."
+              exit 1
+            fi
+            commit="$main"
+          else
+            if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$HEAD_SHA" "$main"; then
+              echo "::error::The bumped commit $HEAD_SHA is not on main."
+              exit 1
+            fi
+            commit="$HEAD_SHA"
+            after="$(git rev-list --reverse --first-parent "$HEAD_SHA..$main")"
+            first="${after%%$'\n'*}"
+            if [ -n "$first" ] \
+              && [ "$(git rev-parse "$first^")" = "$HEAD_SHA" ] \
+              && [ "$(git log -1 --format=%an "$first")" = "github-actions[bot]" ] \
+              && [[ "$(git log -1 --format=%s "$first")" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+\ \[skip\ ci\]$ ]]; then
+              commit="$first"
+            else
+              echo "::notice::No bump commit right after ${HEAD_SHA:0:12}: releasing that commit's own version."
+            fi
+          fi
+          version="$(git show "$commit:apps/desktop/package.json" | jq -r .version)"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::apps/desktop/package.json at $commit has no X.Y.Z version."
+            exit 1
+          fi
+          release=true
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              echo "::error::Tag v$version exists: nothing new to release."
+              exit 1
+            fi
+            echo "::notice::Tag v$version exists (bump skipped?): nothing to release."
+            release=false
+          fi
+          echo "Release commit $commit, version $version, release $release"
+          {
+            echo "commit=$commit"
+            echo "version=$version"
+            echo "release=$release"
+          } >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Build, sign, notarize, publish
+    needs: resolve
+    if: needs.resolve.outputs.release == 'true'
+    runs-on: macos-15
+    timeout-minutes: 150
+    environment: release
+    permissions:
+      contents: write
+    env:
+      COMMIT: ${{ needs.resolve.outputs.commit }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      # Before any work: every secret by name, so a missing one fails here with its name, not later.
+      - name: Check secrets
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          missing=()
+          for name in MACOS_CERT_P12_BASE64 MACOS_CERT_PASSWORD ASC_API_KEY_P8_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing secrets in the release environment: ${missing[*]}. Nothing was built."
+            exit 1
+          fi
+          echo "All 5 signing secrets are set."
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the checkout
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$COMMIT" ]; then
+            echo "::error::Checked out $(git rev-parse HEAD), expected $COMMIT."
+            exit 1
+          fi
+          if [ "$(jq -r .version apps/desktop/package.json)" != "$VERSION" ]; then
+            echo "::error::apps/desktop/package.json is not version $VERSION."
+            exit 1
+          fi
+
+      # No dependency cache in a release (see the header); setup-node v5 would turn one on by itself.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      # pnpm at the exact version of "packageManager" in package.json (Corepack ships with Node 24).
+      - name: Install
+        run: |
+          corepack enable pnpm
+          pnpm --version
+          pnpm install --frozen-lockfile
+
+      # The release script asks Gatekeeper for the notarized Developer ID verdict of every artifact.
+      - name: Gatekeeper assessments on
+        run: |
+          status="$(spctl --status 2>&1 || true)"
+          echo "Gatekeeper: $status"
+          if [ "$status" != "assessments enabled" ]; then
+            sudo spctl --global-enable 2> /dev/null || sudo spctl --master-enable
+            spctl --status
+          fi
+
+      - name: Temporary keychain with the Developer ID
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/cashu-release.keychain-db"
+          KEYCHAIN_LIST="$RUNNER_TEMP/cashu-release-keychains.txt"
+          password="$(openssl rand -base64 32)"
+          echo "::add-mask::$password"
+          security list-keychains -d user | tr -d '"' | sed 's/^ *//' > "$KEYCHAIN_LIST"
+          security create-keychain -p "$password" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$password" "$KEYCHAIN"
+          cert="$RUNNER_TEMP/cashu-release-cert.p12"
+          printf '%s' "$MACOS_CERT_P12_BASE64" | base64 --decode > "$cert"
+          security import "$cert" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign > /dev/null
+          rm -f "$cert"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$KEYCHAIN" > /dev/null
+          keychains=("$KEYCHAIN")
+          while IFS= read -r line; do [ -n "$line" ] && keychains+=("$line"); done < "$KEYCHAIN_LIST"
+          security list-keychains -d user -s "${keychains[@]}"
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -q '"Developer ID Application: Utopia Ultimate Software Solutions Sp. z o.o. (29W838VKU4)"'; then
+            echo "::error::The p12 holds no valid Developer ID Application identity of team 29W838VKU4 (certificate and private key, trusted chain)."
+            exit 1
+          fi
+          echo "Developer ID identity imported into a temporary keychain."
+
+      - name: App Store Connect API key file
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: |
+          umask 077
+          NOTARY_DIR="$RUNNER_TEMP/cashu-notary"
+          mkdir -p "$NOTARY_DIR"
+          printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$NOTARY_DIR/AuthKey.p8"
+          if ! grep -q -- '-----BEGIN PRIVATE KEY-----' "$NOTARY_DIR/AuthKey.p8"; then
+            echo "::error::ASC_API_KEY_P8_BASE64 does not decode to a .p8 private key."
+            exit 1
+          fi
+
+      - name: Release
+        env:
+          CASHU_RELEASE_KEYCHAIN: ${{ runner.temp }}/cashu-release.keychain-db
+          CASHU_NOTARY_KEY_PATH: ${{ runner.temp }}/cashu-notary/AuthKey.p8
+          CASHU_NOTARY_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          CASHU_NOTARY_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          args=(--ci)
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); else args+=(--yes); fi
+          # Hand-written release text, when the merge carried one (required above 50 commits since the last tag).
+          notes="docs/releases/v$VERSION.md"
+          if [ -f "$notes" ]; then args+=(--notes "$notes"); fi
+          node apps/desktop/scripts/release-macos.mjs "${args[@]}"
+
+      - name: Clean up the keychain and the key file
+        if: always()
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/cashu-release.keychain-db"
+          KEYCHAIN_LIST="$RUNNER_TEMP/cashu-release-keychains.txt"
+          if [ -s "$KEYCHAIN_LIST" ]; then
+            keychains=()
+            while IFS= read -r line; do [ -n "$line" ] && keychains+=("$line"); done < "$KEYCHAIN_LIST"
+            security list-keychains -d user -s "${keychains[@]}" || true
+          fi
+          security delete-keychain "$KEYCHAIN" 2> /dev/null || true
+          rm -rf "$RUNNER_TEMP/cashu-notary" "$KEYCHAIN_LIST" "$RUNNER_TEMP/cashu-release-cert.p12"
+          echo "Temporary keychain, search list and key file cleaned up."

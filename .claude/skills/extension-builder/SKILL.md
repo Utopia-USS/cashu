@@ -14,7 +14,7 @@ the user about what situation should raise a signal, draft it as a built-in rule
 expression (kind custom, metric catalog in `references/expressions.md`), submit it through the
 profile's cashU MCP server with `propose_custom_rule`, read the backtest on the profile's history (how
 often it would have fired), tune it with the user and leave approval to the owner in the app. The rule
-becomes part of the strategy only when the owner approves it in the app. Conversation in Polish, files
+becomes part of the strategy only when the owner approves it in the app. Conversation in the owner's language (the app language the cashU MCP server names; Polish when unsure), files
 in English, regular hyphens only.
 
 ## Relationship to the workspace
@@ -53,8 +53,8 @@ in English, regular hyphens only.
   asks; never bypass bot protection.
 - Never read strategy files, exports or the database directly, and never ask for passwords, IBANs or
   account numbers.
-- Custom expressions run in the app's own safe evaluator (no code execution). Script rules (Python
-  extensions run out of process) are not available yet: if an idea needs one, say so and record it as a
+- Custom expressions run in the app's own safe evaluator (no code execution). Script rules (code run
+  out of process) are not available yet: if an idea needs one, say so and record it as a
   manual check instead.
 
 ### MCP tools used
@@ -82,7 +82,7 @@ in English, regular hyphens only.
    - how strong: the threshold, and whether a value right on it should fire;
    - severity: `info` (weekly digest) or `action` (immediate notification per the strategy's
      `notifications`); `cooldown_days` so a resolved signal does not come back at once;
-   - the message the user wants to read (one line, Polish, at most 200 characters, no trade
+   - the message the user wants to read (one line, in the owner's language, at most 200 characters, no trade
      instructions).
 3. **Choose the form.** Prefer a built-in kind when it says the same thing (clearer messages, known
    semantics): `allocation_drift`, `position_concentration`, `loss_from_cost`, `gain_from_cost`,
@@ -100,7 +100,7 @@ in English, regular hyphens only.
      currency: in strict mode prefer ratios; use an amount only if the user gives it knowingly;
    - function arguments are literals (`drawdown_from_high(252)`), bucket names must exist in the
      strategy, tags compare case-insensitively.
-5. **Read it back in plain Polish** before proposing: when it fires, when it does not, and that it is
+5. **Read it back in plain words in the owner's language** before proposing: when it fires, when it does not, and that it is
    skipped (never fires) when data is missing or stale (the YAML shape for reading back:
    `references/rule-patterns.md`).
 6. **Propose and read the backtest:** `propose_custom_rule(kind_or_expression, params, reason)` where
@@ -117,7 +117,7 @@ in English, regular hyphens only.
    strategy version. Afterwards `strategy_status` shows it among the active rules (not inactive); the
    next daily run evaluates it.
 9. **Keep the strategy consistent:** every rule should be referenced in `strategy.md`. Suggest the line
-   to add (Polish), to be included in the next strategy revision (`/investments-setup`) or edited by
+   to add (in the owner's language), to be included in the next strategy revision (`/investments-setup`) or edited by
    the user from the strategy popover (`Otwórz strategy.md`).
 
 ## References
@@ -140,10 +140,10 @@ in English, regular hyphens only.
 Before telling the user it is done:
 
 1. The first two boundary lines were said at the start.
-2. The rule was read back in plain Polish (when it fires, when not, skipped on missing or stale data).
+2. The rule was read back in plain words in the owner's language (when it fires, when not, skipped on missing or stale data).
 3. Units are right: ratios with `%` or fractions, percentage points as plain numbers, amounts only
    when the user gave them knowingly.
 4. `propose_custom_rule` returned a stored proposal, and the backtest (how often, when, whether it
    fires today) was shown; the final proposal is named when there were several.
-5. The message is Polish, at most 200 characters, with no "buy" / "sell" or trade instruction.
+5. The message is in the owner's language, at most 200 characters, with no "buy" / "sell" or trade instruction.
 6. The user knows the approval path in the app and the line to add to `strategy.md`.

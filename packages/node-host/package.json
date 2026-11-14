@@ -1,0 +1,32 @@
+{
+  "name": "@cashu/node-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./keyring": "./src/keyring/production.ts",
+    "./connector-secrets": "./src/keyring/connectors.ts",
+    "./banking-secrets": "./src/keyring/banking.ts",
+    "./classifier-secrets": "./src/keyring/classifier.ts",
+    "./relay-auth": "./src/keyring/relay.ts",
+    "./sqlite": "./src/sqlite.ts",
+    "./testing": "./src/testing.ts",
+    "./bundle-identity": "./src/bundleIdentity.ts",
+    "./test-build": "./src/testBuild.ts",
+    "./admission": "./src/admissionGuard.ts",
+    "./flavor": "./src/flavor.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cashu/host-protocol": "workspace:*",
+    "@cashu/store": "workspace:*",
+    "@cashu/sync": "workspace:*",
+    "@napi-rs/keyring": "2.1.2"
+  }
+}

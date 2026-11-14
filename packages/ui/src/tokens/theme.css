@@ -1,0 +1,18 @@
+/* The desktop renderer's and Storybook's Tailwind entry (@tailwindcss/vite): the tokens of ./tokens.css,
+   with utilities for every class used in apps/ and packages/ui. The phone has its own entry, ./native.css. */
+@import "tailwindcss";
+@import "uniwind";
+@import "./tokens.css";
+
+@source "../../../../apps";
+@source "..";
+
+/* A scrollbar that takes width (macOS shows one with a mouse attached) would appear only on pages taller than
+   the window and move the centred header and page by half its width, so every page keeps its scrollbar.
+   `scrollbar-gutter: stable` is not enough: Chromium on macOS reserves no gutter there. Overlay scrollbars
+   (trackpad) take no width and show nothing extra. */
+@layer base {
+  html {
+    overflow-y: scroll;
+  }
+}

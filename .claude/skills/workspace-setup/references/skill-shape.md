@@ -43,7 +43,7 @@ description: >
   Use when <the user's situation, one sentence>.
   Applicability - POSITIVE: <one sentence>.
   Applicability - NEGATIVE: NOT <one sentence, naming the skill that covers each case>.
-  Triggers: /<name>, "<Polish phrase>", "<Polish phrase>".
+  Triggers: /<name>, "<phrase in the owner's language>", "<phrase in the owner's language>".
 ---
 # <name>: <title>
 <One framing paragraph.>

@@ -1,0 +1,660 @@
+// Budget commands (S24 5): statement imports, categories, the cash pool, the cushion settings.
+// Python oracles: `budget/service.py` (ingest_transactions, import_statement, _end_of_day_balances,
+// set_transaction_category, recategorize_merchant, the LLM half of categorize_all), `budget/cash.py`
+// (get_cash_account, add_cash_expense, delete_cash_transaction), `categorize/reclassify.py` (the
+// answers it writes), `budget/settings.py` (parse), with the validation of `budget/api.py`.
+// Categories are facts (claims, rules); the effective category of every row is derived
+// (`derive/categories.ts`), so no command writes one.
+import { D, Decimal, floatRepr } from "@cashu/domain";
+import {
+  acceptMerchantAnswer,
+  budgetBaseCurrency,
+  CASH_ACCOUNT_TYPE,
+  CASH_WITHDRAWAL,
+  cashExpenseAmount,
+  cashPoolExternalId,
+  cashPoolName,
+  checkCushionAccounts,
+  type DatedAmount,
+  defaultBudgetSettings,
+  isCategoryKey,
+  isOwnerDecided,
+  isStructural,
+  matchTransfers,
+  ownerDecision,
+  pairScore,
+  planImport,
+  type RawTransaction,
+  RECLASSIFY_KEYS,
+  ruleUpsert,
+  transferAmountKey,
+} from "@cashu/domain/budget";
+import { normalizeText, pyStrip, pyUpper } from "@cashu/domain/text";
+import { z } from "zod";
+import { type CommandContext, defineCommand, ok, refuse } from "../command.js";
+import { emitBalance, ensureAccount } from "../core/commands.js";
+import { accountByGid, profileOf } from "../core/queries.js";
+import { BALANCE_SOURCES } from "../events/v1/core.js";
+import { blobRef, calendarDate, eventBlob, gid } from "../events/v1/primitives.js";
+import { vaultPaymentPatterns } from "../overview/networth.js";
+import { projectedMerchantRuleChanges } from "./derive/categories.js";
+import {
+  reclassifyRowByGid,
+  ruleByMerchant,
+  storedTxnsOfAccount,
+  transactionByGid,
+} from "./queries.js";
+import { budgetEngineContext } from "./read-models.js";
+import { CASHEXP, CASHLEG } from "./transactions.js";
+
+const ISO_CURRENCY = /^[A-Z]{3}$/;
+const plain = (d: Decimal) => d.format("f");
+
+// ------------------------------------------------------------------------------- import
+
+const decimalValue = z.custom<Decimal>((v) => v instanceof Decimal, "expected a Decimal");
+const rawTransaction = z.custom<RawTransaction>(
+  (v) => typeof v === "object" && v !== null && (v as RawTransaction).amount instanceof Decimal,
+  "expected a parsed transaction",
+);
+const datedAmount = z.object({ date: z.string(), amount: decimalValue });
+
+/**
+ * Python `_end_of_day_balances`: one figure per date from the running balances in file order (a
+ * newest-first statement is reversed first, so the last row of a date is its end of day).
+ */
+function endOfDayBalances(
+  transactions: readonly Pick<RawTransaction, "bookingDate">[],
+  balances: readonly DatedAmount[],
+): Map<string, Decimal> {
+  const eod = new Map<string, Decimal>();
+  if (balances.length === 0) return eod;
+  const first = transactions[0]?.bookingDate;
+  const last = transactions[transactions.length - 1]?.bookingDate;
+  const descending =
+    transactions.length >= 2 && first !== undefined && last !== undefined && first > last;
+  for (const b of descending ? [...balances].reverse() : balances) eod.set(b.date, b.amount);
+  return eod;
+}
+
+/**
+ * Write a parsed statement (Python `import_statement` + `ingest_transactions`) as one batch: the
+ * account (given, or found / opened from the statement's bank and number), `importBatch.recorded`,
+ * one `txn.imported` per new row (S07 `planImport` over every stored row of the account), and the
+ * end-of-day balances (explicit closing balances win). The newest-day rule depends on the view at
+ * import time, so it runs on the fetch-lease holder only (events.md 8.3).
+ */
+export const importStatement = defineCommand({
+  id: "budget.importStatement",
+  input: z.object({
+    account: gid.optional(),
+    statement: z.object({
+      bank: z.string().regex(/^[a-z0-9_-]+$/),
+      accountNumber: z.string().nullable(),
+      accountName: z.string().nullable(),
+      currency: z.string(),
+      transactions: z.array(rawTransaction),
+      balances: z.array(datedAmount),
+      closingBalances: z.array(datedAmount),
+    }),
+    accountType: z.string().default("checking"),
+    accountName: z.string().nullable().optional(),
+    externalId: z.string().min(1).nullable().optional(),
+    source: z.enum(BALANCE_SOURCES).default("csv"),
+    filename: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    newestDayRule: z.boolean().default(false),
+    archive: blobRef.optional(),
+  }),
+  run(ctx, input) {
+    if (input.newestDayRule && !ctx.lease.isHolder()) return refuse("not_leader");
+    const stmt = input.statement;
+    const rows = stmt.transactions;
+    // PARITY(S07 Q7): Python stores any currency text; the event catalog takes ISO codes only.
+    if (rows.some((r) => !ISO_CURRENCY.test(r.currency.toUpperCase()))) {
+      return refuse("bad_currency");
+    }
+    let account: { gid: string; currency: string; bank: string; created: boolean };
+    if (input.account !== undefined) {
+      const a = accountByGid(ctx.read, input.account);
+      if (a === undefined) return refuse("no_account");
+      account = { gid: a.gid, currency: a.currency, bank: a.bank, created: false };
+    } else {
+      if (!ISO_CURRENCY.test(stmt.currency)) return refuse("bad_currency");
+      const a = ensureAccount(ctx, {
+        bank: stmt.bank,
+        iban: stmt.accountNumber,
+        name: input.accountName || stmt.accountName,
+        externalId: input.externalId ?? null,
+        type: input.accountType,
+        currency: stmt.currency,
+      });
+      account = { gid: a.gid, currency: a.currency, bank: stmt.bank, created: a.created };
+    }
+
+    const stored = account.created ? [] : storedTxnsOfAccount(ctx.read, account.gid);
+    const plan = planImport(stored, rows, { newestDayRule: input.newestDayRule });
+    const batch = ctx.newGid();
+    const at = ctx.now();
+    ctx.emit("importBatch.recorded", batch, {
+      source: input.source,
+      bank: account.bank,
+      account: account.gid,
+      filename: input.filename ?? null,
+      startedAt: at,
+      finishedAt: at,
+      numSeen: rows.length,
+      numInserted: plan.toInsert.length,
+      numDuplicates: plan.numDuplicates + plan.numOverlap,
+      notes: input.notes || null,
+      ...(input.archive === undefined ? {} : { archive: input.archive }),
+    });
+    for (const t of plan.toInsert) {
+      ctx.emit(
+        "txn.imported",
+        ctx.det("transactions", [account.gid, t.dedupHash, String(t.occurrence)]),
+        {
+          account: account.gid,
+          batch,
+          bookingDate: t.bookingDate,
+          valueDate: t.valueDate,
+          amount: plain(t.amount),
+          currency: t.currency,
+          counterpartyName: t.counterpartyName,
+          counterpartyIban: t.counterpartyIban,
+          description: t.description,
+          reference: t.reference,
+          bankTransactionId: t.bankTransactionId,
+          source: t.source,
+          dedupHash: t.dedupHash,
+          occurrence: t.occurrence,
+          // A bank JSON float travels as decimal text (events.md 4.3); the fold puts the number back.
+          ...eventBlob("raw", t.raw),
+        },
+      );
+    }
+    const eod = endOfDayBalances(rows, stmt.balances);
+    for (const c of stmt.closingBalances) eod.set(c.date, c.amount);
+    for (const [date, amount] of eod) {
+      emitBalance(ctx, account.gid, date, input.source, plain(amount), account.currency);
+    }
+    return ok({
+      account: account.gid,
+      batch,
+      numSeen: rows.length,
+      numInserted: plan.toInsert.length,
+      numDuplicates: plan.numDuplicates + plan.numOverlap,
+    });
+  },
+});
+
+// ------------------------------------------------------------------------------- categories
+
+/** Current view rows in the S08 matcher's anchor order, including derived cash legs. */
+function transferRows(ctx: CommandContext) {
+  return ctx.read<{
+    gid: string;
+    account: string;
+    booking_date: string;
+    amount: string;
+    counterparty_iban: string | null;
+    transfer_group_id: string | null;
+    is_internal_transfer: number;
+    anchor: string | null;
+  }>(
+    `SELECT t.gid, v.gid AS account, t.booking_date, t.amount, t.counterparty_iban,
+       t.transfer_group_id, t.is_internal_transfer,
+       COALESCE(k.anchor_ord, sk.anchor_ord || '~') AS anchor
+     FROM transactions t JOIN view_ids v ON v.id = t.account_id
+     LEFT JOIN fold_txn_keys k ON k.row = CASE
+       WHEN t.dedup_hash LIKE 'cashexp:%' THEN t.dedup_hash
+       ELSE v.gid || '|' || t.dedup_hash || '|' || t.occurrence END
+     LEFT JOIN transactions src ON t.dedup_hash = 'cashleg:' || src.gid
+     LEFT JOIN view_ids sv ON sv.id = src.account_id
+     LEFT JOIN fold_txn_keys sk ON sk.row = sv.gid || '|' || src.dedup_hash || '|' || src.occurrence
+     WHERE k.anchor_ord IS NOT NULL OR sk.anchor_ord IS NOT NULL
+     ORDER BY anchor, t.gid`,
+  );
+}
+
+/** Re-run transfer matching over currently ungrouped rows; reset releases prior pairs first. */
+export const matchTransfersCommand = defineCommand({
+  id: "budget.matchTransfers",
+  input: z.object({ reset: z.boolean().default(false), maxDays: z.int().default(3) }),
+  run(ctx, input) {
+    const rows = transferRows(ctx);
+    const accounts = new Map(
+      ctx
+        .read<{ gid: string; iban_match: string | null }>("SELECT gid, iban_match FROM accounts")
+        .map((a) => [a.gid, a.iban_match ?? ""]),
+    );
+    const byGid = new Map(rows.map((r) => [r.gid, r]));
+    const retained: { out: string; in: string }[] = [];
+    if (!input.reset) {
+      const groups = new Map<string, typeof rows>();
+      for (const row of rows) {
+        if (row.transfer_group_id === null) continue;
+        groups.set(row.transfer_group_id, [...(groups.get(row.transfer_group_id) ?? []), row]);
+      }
+      for (const [out, members] of groups) {
+        const debit = byGid.get(out);
+        const inc = members.find((r) => r.gid !== out);
+        if (
+          !debit ||
+          !inc ||
+          members.length !== 2 ||
+          !D(debit.amount).isSigned() ||
+          D(inc.amount).isSigned()
+        )
+          continue;
+        if (transferAmountKey(D(debit.amount)) !== transferAmountKey(D(inc.amount))) continue;
+        if (
+          pairScore(
+            {
+              key: out,
+              account: debit.account,
+              bookingDate: debit.booking_date,
+              amount: D(debit.amount),
+              counterpartyIban: debit.counterparty_iban,
+            },
+            {
+              key: inc.gid,
+              account: inc.account,
+              bookingDate: inc.booking_date,
+              amount: D(inc.amount),
+              counterpartyIban: inc.counterparty_iban,
+            },
+            accounts,
+          ) !== null
+        )
+          retained.push({ out, in: inc.gid });
+      }
+    }
+    const cleared = input.reset ? rows.filter((r) => r.transfer_group_id !== null).length : 0;
+    const candidates = rows.filter((r) => input.reset || r.transfer_group_id === null);
+    const pairs = matchTransfers(
+      candidates.map((r) => ({
+        key: r.gid,
+        account: r.account,
+        bookingDate: r.booking_date,
+        amount: D(r.amount),
+        counterpartyIban: r.counterparty_iban,
+      })),
+      accounts,
+      { maxDays: input.maxDays },
+    );
+    const run = ctx.newGid();
+    const all = [...retained, ...pairs];
+    ctx.emit("transferRun.started", run, {
+      reset: input.reset,
+      maxDays: input.maxDays,
+      pairCount: all.length,
+    });
+    for (const [ordinal, pair] of all.entries()) {
+      ctx.emit("transferPair.claimed", run, { run, out: pair.out, in: pair.in, ordinal });
+    }
+    return ok({ cleared, matched: pairs.length });
+  },
+});
+
+const categoryKey = z.string().refine(isCategoryKey, "unknown category");
+const ownerMerchantKey = z.string().transform(normalizeText).refine(Boolean, "empty merchant");
+
+/**
+ * The cash pool account of `currency` (Python `get_cash_account(create=True)`): the vault's
+ * `manual` / `cash:<CUR>` account, else `account.opened` with its DET gid, named "Gotówka" in the
+ * base currency and "Gotówka (<CUR>)" otherwise (the name is matching data, decided once).
+ */
+function ensureCashPool(ctx: CommandContext, currency: string): { gid: string; currency: string } {
+  const base = budgetBaseCurrency(profileOf(ctx.read)?.baseCurrency);
+  const pool = ensureAccount(ctx, {
+    bank: "manual",
+    iban: null,
+    name: cashPoolName(currency, base),
+    externalId: cashPoolExternalId(currency),
+    type: CASH_ACCOUNT_TYPE,
+    currency,
+  });
+  return { gid: pool.gid, currency: pool.currency };
+}
+
+/**
+ * Set one transaction's category by hand (Python `set_transaction_category` via
+ * POST /transactions/{id}/category): a `manual_txn` claim on the row (a cash leg or a cash expense
+ * included), which survives every recomputation. Marking a bank row `cash_withdrawal` derives its
+ * mirror leg on the cash pool, so the pool is opened in the same batch when the view lacks it (m3).
+ */
+export const setTransactionCategory = defineCommand({
+  id: "budget.setTransactionCategory",
+  input: z.object({ txn: gid, category: categoryKey }),
+  run(ctx, input) {
+    const t = transactionByGid(ctx.read, input.txn);
+    if (t === undefined) return refuse("no_transaction");
+    if (input.category === CASH_WITHDRAWAL && t.accountType !== CASH_ACCOUNT_TYPE) {
+      ensureCashPool(ctx, t.currency);
+    }
+    ctx.emit("txn.categorySet", t.gid, { category: input.category, source: "manual_txn" });
+    return ok(null);
+  },
+});
+
+/**
+ * Pin a merchant to a category (Python `recategorize_merchant` via POST /merchant-category): a
+ * manual, locked `categoryRule.set`; its rows follow by derivation (rows with their own decision,
+ * structural transfers and cash legs keep theirs). Nothing is emitted when the rule already says so.
+ */
+export const setMerchantCategory = defineCommand({
+  id: "budget.setMerchantCategory",
+  input: z.object({ merchantKey: ownerMerchantKey, category: categoryKey }),
+  run(ctx, input) {
+    const prev = ruleByMerchant(ctx.read, input.merchantKey);
+    if (prev?.locked && prev.source === "manual" && prev.category === input.category) {
+      return ok({ changed: false, updated: 0 });
+    }
+    const updated = projectedMerchantRuleChanges(
+      ctx.read,
+      {
+        merchantKey: input.merchantKey,
+        category: input.category,
+        source: "manual",
+        locked: true,
+      },
+      vaultPaymentPatterns(ctx.read),
+    );
+    ctx.emit("categoryRule.set", ctx.det("category_rules", [input.merchantKey]), {
+      merchantKey: input.merchantKey,
+      category: input.category,
+      source: "manual",
+      locked: true,
+    });
+    return ok({ changed: true, updated });
+  },
+});
+
+/** Agent suggestion: an unlocked rule, subordinate to every owner and structural decision. */
+export const learnMerchantCategory = defineCommand({
+  id: "budget.learnMerchantCategory",
+  input: z.object({ merchantKey: z.string().min(1), category: categoryKey }),
+  run(ctx, input) {
+    if (
+      ctx.read<{ present: number }>(
+        "SELECT 1 AS present FROM transactions WHERE merchant_key = ? LIMIT 1",
+        input.merchantKey,
+      ).length === 0
+    )
+      return refuse("no_merchant");
+    const prev = ruleByMerchant(ctx.read, input.merchantKey);
+    if (prev?.locked)
+      return ok({ changed: false, updated: 0, kept: true, category: prev.category });
+    if (prev?.source === "llm" && prev.category === input.category)
+      return ok({ changed: false, updated: 0, kept: false, category: input.category });
+    const updated = projectedMerchantRuleChanges(
+      ctx.read,
+      {
+        merchantKey: input.merchantKey,
+        category: input.category,
+        source: "llm",
+        locked: false,
+      },
+      vaultPaymentPatterns(ctx.read),
+    );
+    ctx.emit("categoryRule.set", ctx.det("category_rules", [input.merchantKey]), {
+      merchantKey: input.merchantKey,
+      category: input.category,
+      source: "llm",
+      locked: false,
+    });
+    return ok({ changed: true, updated, kept: false, category: input.category });
+  },
+});
+
+/**
+ * Cache the merchant classifier's answers as `llm` rules (the LLM half of `categorize_all`): an
+ * answer becomes a rule only when `acceptMerchantAnswer` takes it (FIX(Q9, D-09.5a): never `other`,
+ * `transfer` or `cash_withdrawal`), never over a locked rule (`ruleUpsert`), and not when the rule
+ * already says so. The answers come from the classifier port (S09b), whose cloud variant only ever
+ * saw `classifierMerchants(read).cloud` (PRIVACY(D-09.5)); this command sends nothing anywhere.
+ */
+export const cacheLlmRules = defineCommand({
+  id: "budget.cacheLlmRules",
+  input: z.object({
+    items: z.array(z.object({ merchantKey: z.string().min(1), category: z.string() })),
+  }),
+  run(ctx, input) {
+    const answers = new Map<string, string>();
+    for (const it of input.items) {
+      const category = acceptMerchantAnswer(it.category);
+      if (category !== null) answers.set(it.merchantKey, category);
+    }
+    let cached = 0;
+    for (const [merchantKey, category] of answers) {
+      const prev = ruleByMerchant(ctx.read, merchantKey);
+      const next = ruleUpsert(prev, merchantKey, { category, source: "llm", locked: false });
+      if (next === "keep") continue;
+      if (prev?.source === "llm" && !prev.locked && prev.category === category) continue;
+      ctx.emit("categoryRule.set", ctx.det("category_rules", [merchantKey]), {
+        merchantKey,
+        category: next.category,
+        source: next.source,
+        locked: next.locked,
+      });
+      cached += 1;
+    }
+    return ok({ cached });
+  },
+});
+
+/**
+ * Store the transaction classifier's answers (`reclassify_all` after `applyReclassify`): an
+ * `llm_full` claim per row the classifier may decide, exactly the rows Python's `planReclassify`
+ * targets: never a structural row (`isStructural`: cash account, internal transfer, own-IBAN
+ * counterparty, structural category), an owner-decided one (`isOwnerDecided`: manual / manual_txn /
+ * cash_leg source, manual-only category) or one the owner's configuration decides (`ownerDecision`:
+ * locked rule, payment pattern). Only `RECLASSIFY_KEYS` are accepted (never `transfer` /
+ * `cash_withdrawal`, D-09.5a): any other key refuses the whole input. Unknown rows are skipped; the
+ * result counts the claims written.
+ */
+export const setLlmCategories = defineCommand({
+  id: "budget.setLlmCategories",
+  input: z.object({
+    items: z.array(
+      z.object({
+        txn: gid,
+        category: z.string().refine((k) => RECLASSIFY_KEYS.includes(k), "not a reclassify key"),
+      }),
+    ),
+  }),
+  run(ctx, input) {
+    const engine = budgetEngineContext(ctx.read, vaultPaymentPatterns(ctx.read));
+    let set = 0;
+    for (const it of input.items) {
+      const row = reclassifyRowByGid(ctx.read, it.txn);
+      if (row === undefined) continue;
+      if (isStructural(row, engine.ownIbans) || isOwnerDecided(row)) continue;
+      if (ownerDecision(row, engine) !== null) continue;
+      ctx.emit("txn.categorySet", row.key, { category: it.category, source: "llm_full" });
+      set += 1;
+    }
+    return ok({ set });
+  },
+});
+
+// ------------------------------------------------------------------------------- cash pool
+
+/**
+ * Log a manual cash expense (Python `add_cash_expense` via POST /cash/expense): it draws the cash
+ * pool of `currency` (default: the base currency) down by `-abs(amount)`, opened in the same batch
+ * when missing. Refusals: `unknown_category`, `empty_title` (the title is stripped, as the API does),
+ * `invalid_amount` (not a finite number: FIX(Q14), Python would store NaN), `zero_amount`,
+ * `bad_currency`. The day defaults to today (the injected clock).
+ */
+const cashExpenseInput = z.object({
+  amount: z.union([z.string(), z.number()]),
+  title: z.string(),
+  category: z.string(),
+  currency: z.string().nullable().optional(),
+  onDate: calendarDate.nullable().optional(),
+});
+
+function cashExpenseRun(
+  ctx: CommandContext,
+  input: z.infer<typeof cashExpenseInput>,
+  preserveTitle: boolean,
+) {
+  if (!isCategoryKey(input.category)) return refuse("unknown_category");
+  const title = preserveTitle ? input.title : pyStrip(input.title);
+  if (!title) return refuse("empty_title");
+  let parsed: Decimal;
+  try {
+    parsed = Decimal.parse(
+      typeof input.amount === "number" ? floatRepr(input.amount) : pyStrip(input.amount),
+    );
+  } catch {
+    return refuse("invalid_amount");
+  }
+  const amount = cashExpenseAmount(parsed);
+  if (!amount.ok) return refuse(amount.reason);
+  const currency = input.currency
+    ? pyUpper(pyStrip(input.currency))
+    : budgetBaseCurrency(profileOf(ctx.read)?.baseCurrency);
+  if (!ISO_CURRENCY.test(currency)) return refuse("bad_currency");
+  const pool = ensureCashPool(ctx, currency);
+  const txn = ctx.newGid();
+  ctx.emit("txn.cashExpenseAdded", txn, {
+    account: pool.gid,
+    bookingDate: input.onDate ?? ctx.today(),
+    amount: plain(amount.amount),
+    currency: pool.currency,
+    title,
+    category: input.category,
+  });
+  return ok({ txn });
+}
+
+export const addCashExpense = defineCommand({
+  id: "budget.addCashExpense",
+  input: cashExpenseInput,
+  run(ctx, input) {
+    return cashExpenseRun(ctx, input, false);
+  },
+});
+
+/** CLI `cash-add` preserves Python's verbatim nonempty title; the API command above still strips. */
+export const addCashExpenseCli = defineCommand({
+  id: "budget.addCashExpenseCli",
+  input: cashExpenseInput,
+  run(ctx, input) {
+    return cashExpenseRun(ctx, input, true);
+  },
+});
+
+/**
+ * Delete a cash pool entry (Python `delete_cash_transaction`): a cash expense ends (`txn.deleted`);
+ * a mirror leg is derived, so deleting it clears the claim on its source bank transaction
+ * (`txn.categoryCleared`, events.md 8.3); anything else is refused.
+ */
+export const deleteCashTransaction = defineCommand({
+  id: "budget.deleteCashTransaction",
+  input: z.object({ txn: gid }),
+  run(ctx, input) {
+    const t = transactionByGid(ctx.read, input.txn);
+    if (t === undefined || t.accountType !== "cash") return refuse("not_cash");
+    if (t.dedupHash.startsWith(CASHEXP)) {
+      ctx.emit("txn.deleted", t.gid, {});
+      return ok<{ deleted: "expense" | "leg" }>({ deleted: "expense" });
+    }
+    const source = t.raw.cash_leg_of;
+    if (t.dedupHash.startsWith(CASHLEG) && typeof source === "string") {
+      ctx.emit("txn.categoryCleared", source, {});
+      return ok<{ deleted: "expense" | "leg" }>({ deleted: "leg" });
+    }
+    return refuse("not_cash");
+  },
+});
+
+// ------------------------------------------------------------------------------- cushion
+
+/** `budget/settings.py` MAX_TARGET_MONTHS. */
+const MAX_TARGET_MONTHS = 36;
+
+const loose = z.union([z.string(), z.number(), z.boolean(), z.null()]).optional();
+
+/** `_positive`: empty -> null; a positive finite number quantized to 0.01 (half even); else refused. */
+function positive(value: z.infer<typeof loose>): Decimal | null | "invalid" {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "boolean") return "invalid";
+  let d: Decimal;
+  try {
+    d = Decimal.parse(typeof value === "number" ? floatRepr(value) : value);
+  } catch {
+    return "invalid";
+  }
+  if (d.isSigned() || d.isZero()) return "invalid"; // non-finite text already threw
+  return d.quantize(-2);
+}
+
+/**
+ * Save the cushion settings (Python `settings.parse` + `save`): currency stripped and upper-cased,
+ * positive amounts quantized to 0.01, months 1..36, account gids of this vault (first occurrence
+ * kept), an enabled cushion needs a target, then (PUT /budget/settings) every account is the
+ * vault's and in the cushion currency (else the base currency). Refusals are value-free codes
+ * (`cushion_currency_mismatch`, `unknown_account`, ...). One `budgetSettings.cushionSet` with every
+ * field.
+ */
+export const setCushion = defineCommand({
+  id: "budget.setCushion",
+  input: z.object({
+    enabled: z.boolean().default(false),
+    currency: z.string().nullable().optional(),
+    targetAmount: loose,
+    targetMonths: loose,
+    accounts: z.array(z.string()).default([]),
+    monthlyMax: loose,
+  }),
+  run(ctx: CommandContext, input) {
+    let currency: string | null = null;
+    if (input.currency !== undefined && input.currency !== null && input.currency !== "") {
+      currency = pyUpper(pyStrip(input.currency));
+      if (!ISO_CURRENCY.test(currency)) return refuse("invalid_currency");
+    }
+    const target = positive(input.targetAmount);
+    if (target === "invalid") return refuse("invalid_target_amount");
+    const monthlyMax = positive(input.monthlyMax);
+    if (monthlyMax === "invalid") return refuse("invalid_monthly_max");
+    const m = input.targetMonths;
+    let months: number | null = null;
+    if (m !== undefined && m !== null && m !== "") {
+      if (typeof m !== "number" || !Number.isInteger(m) || m < 1 || m > MAX_TARGET_MONTHS) {
+        return refuse("invalid_target_months");
+      }
+      months = m;
+    }
+    const accounts = [...new Set(input.accounts)];
+    if (input.enabled && target === null && months === null) return refuse("needs_target");
+    // Python PUT /budget/settings, after the parse: every account is the profile's (unknown ids
+    // first), and in the cushion currency (else the profile's base currency, "PLN" before a profile).
+    const refs = accounts.flatMap((g) => {
+      const a = accountByGid(ctx.read, g);
+      return a === undefined ? [] : [{ id: a.gid, name: a.name, currency: a.currency }];
+    });
+    const problem = checkCushionAccounts(
+      { ...defaultBudgetSettings().cushion, currency, accountIds: accounts },
+      refs,
+      profileOf(ctx.read)?.baseCurrency || "PLN",
+    );
+    if (problem !== null) {
+      return refuse(
+        problem.kind === "unknown_account" ? "unknown_account" : "cushion_currency_mismatch",
+      );
+    }
+    ctx.emit("budgetSettings.cushionSet", ctx.det("budget_settings", ["cushion"]), {
+      enabled: input.enabled,
+      currency,
+      targetAmount: target === null ? null : plain(target),
+      targetMonths: months,
+      accounts,
+      monthlyMax: monthlyMax === null ? null : plain(monthlyMax),
+    });
+    return ok(null);
+  },
+});

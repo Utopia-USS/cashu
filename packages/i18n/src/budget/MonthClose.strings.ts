@@ -1,0 +1,65 @@
+// Texts of the month close card (MonthClose.tsx). See docs/agents/localization.md.
+import { catalog } from "../index.js";
+
+export const S = catalog({
+  /** What the cushion level is (backend monthclose.py): one text for the fact and the form. */
+  cushionLevel: {
+    pl: "Saldo na początek miesiąca plus przelewy netto, bez wydatków z innych kont",
+    en: "Balance at the start of the month plus net transfers, without spending from other accounts",
+  },
+  inProgress: { pl: "w toku", en: "in progress" },
+  noTransactions: {
+    pl: (c: string) => `Brak transakcji w ${c}.`,
+    en: (c: string) => `No transactions in ${c}.`,
+  },
+  income: { pl: "Przychody", en: "Income" },
+  surplus: { pl: "Nadwyżka", en: "Surplus" },
+  afterCushion: {
+    pl: (amount: string) => `po dopłacie do poduszki ${amount}`,
+    en: (amount: string) => `after the cushion top-up of ${amount}`,
+  },
+  set: { pl: "Ustaw", en: "Set" },
+  cushion: { pl: "Poduszka finansowa", en: "Emergency cushion" },
+  off: { pl: "wyłączona", en: "off" },
+  noHistory: { pl: "brak historii wydatków do celu", en: "no spending history for the target" },
+  reached: {
+    pl: (balance: string) => `osiągnięta (${balance})`,
+    en: (balance: string) => `reached (${balance})`,
+  },
+  progress: {
+    pl: (balance: string, target: string, topUp: string) =>
+      `${balance} z ${target} · dopłata ${topUp}`,
+    en: (balance: string, target: string, topUp: string) =>
+      `${balance} of ${target} · top-up ${topUp}`,
+  },
+  noStrategy: { pl: "brak strategii", en: "no strategy" },
+  strategyInvalid: { pl: "strategia z błędami", en: "strategy has errors" },
+  noContributions: { pl: "brak planu wpłat w strategii", en: "no contributions in the strategy" },
+  plan: { pl: "Plan wpłat", en: "Contribution plan" },
+  perMonth: {
+    pl: (amount: string) => `${amount} / mies.`,
+    en: (amount: string) => `${amount} / mo`,
+  },
+  short: { pl: (amount: string) => `brakuje ${amount}`, en: (amount: string) => `${amount} short` },
+  noData: { pl: (c: string) => `brak danych w ${c}`, en: (c: string) => `no data in ${c}` },
+  cushionFirst: { pl: "Poduszka przed inwestycjami", en: "Cushion before investments" },
+  cushionFirstTitle: {
+    pl: "Najpierw dopłać do poduszki, resztę nadwyżki przelej na inwestycje",
+    en: "Top up the cushion first, transfer the rest of the surplus to investments",
+  },
+  target: { pl: "Cel poduszki", en: "Cushion target" },
+  amount: { pl: "Kwota", en: "Amount" },
+  monthsOfSpending: { pl: "Miesiące wydatków", en: "Months of expenses" },
+  amountIn: { pl: (c: string) => `Kwota (${c})`, en: (c: string) => `Amount (${c})` },
+  months: { pl: "Miesięcy wydatków", en: "Months of expenses" },
+  currency: { pl: "Waluta", en: "Currency" },
+  maxTopUp: { pl: "Maks. dopłata / mies.", en: "Max top-up / mo" },
+  accountsTitle: {
+    pl: (c: string, level: string) =>
+      `Domyślnie konta oszczędnościowe w ${c}; ${level.toLowerCase()}.`,
+    en: (c: string, level: string) =>
+      `Savings accounts in ${c} by default; ${level.toLowerCase()}.`,
+  },
+  accounts: { pl: "Konta", en: "Accounts" },
+  noAccounts: { pl: (c: string) => `Brak kont w ${c}.`, en: (c: string) => `No accounts in ${c}.` },
+});

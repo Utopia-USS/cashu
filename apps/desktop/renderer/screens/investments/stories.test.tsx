@@ -1,0 +1,34 @@
+import { setLanguageForTests } from "@cashu/i18n";
+import { type ComponentType, createElement, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { expect, it } from "vitest";
+import * as markdown from "../strategies/MarkdownDocument.stories.js";
+import * as strategies from "../strategies/StrategiesView.stories.js";
+import * as settings from "../strategies/StrategySettingsView.stories.js";
+
+type Decorator = (Story: ComponentType) => ReactElement;
+type Story = { args?: Record<string, unknown>; decorators?: Decorator[] };
+type Meta = Story & {
+  component: ComponentType<Record<string, unknown>>;
+  render?: (args: Record<string, unknown>) => ReactElement;
+};
+it.each(["en", "pl"] as const)(
+  "renders all actual investment and strategy story phases in %s",
+  (language) => {
+    setLanguageForTests(language);
+    for (const module of [strategies, markdown, settings]) {
+      const meta = module.default as unknown as Meta;
+      for (const [name, value] of Object.entries(module)) {
+        if (name === "default") continue;
+        const story = value as Story;
+        const args = { ...meta.args, ...story.args };
+        let element = meta.render ? meta.render(args) : createElement(meta.component, args);
+        for (const decorate of [...(story.decorators ?? []), ...(meta.decorators ?? [])]) {
+          const previous = element;
+          element = decorate(() => previous);
+        }
+        expect(renderToStaticMarkup(element)).not.toContain("undefined");
+      }
+    }
+  },
+);

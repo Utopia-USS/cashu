@@ -23,18 +23,22 @@ Fixes land on `main`; there are no separately maintained release branches.
 
 - **Data leaks**: financial data, account identifiers or names leaving the machine, reaching another
   profile, landing in logs, the repository or agent workspaces, or getting past the MCP privacy layer
-  (`src/cashu/core/mcp/redaction.py`) to an agent at a stricter privacy level than the profile allows.
+  (`packages/mcp/src/privacy/`) to an agent at a stricter privacy level than the profile allows.
 - **Connector sandbox escapes**: an approved or pending connector reading or writing outside what the
   contract allows, reaching hosts not listed in its manifest, running without the owner's approval or
   after its content changed ([`docs/connectors.md`](docs/connectors.md)).
-- **The local API token**: the dashboard API accepting a request without the per-launch token, the
-  token leaking (to another origin, a log, a URL kept beyond the first load), or the server answering
-  on anything but loopback by default.
-- Secrets handling: Open Banking keys and sessions, API keys in the OS keychain.
+- **The local host**: the host socket (`<data dir>/run/`) serving a client that did not pass the
+  handshake, a client of another build, or a role beyond what it was admitted for (UI, CLI, MCP,
+  admin); another local user or process reaching a profile's stores through it; a store or vault
+  opened without its key.
+- **Encrypted vaults and keys**: a vault readable without its key, the vault key or the recovery
+  phrase leaking (logs, files, the renderer, an MCP answer), or one profile's vault key opening
+  another's.
+- Secrets handling: Open Banking keys and sessions, connector secrets and API keys in the OS keychain.
 
 ## Out of scope
 
 - Someone with full access to the user's account on the machine (they can read the data dir anyway).
 - A connector or file the owner deliberately approved or handed to an agent doing what it says.
 - Bank, broker or Open Banking provider issues: report those to the provider.
-- Missing hardening without a concrete attack (headers, rate limits on a loopback server).
+- Missing hardening without a concrete attack (headers, rate limits on a local-only socket).

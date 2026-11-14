@@ -1,0 +1,24 @@
+// Texts of the v2 widget primitives (frontend/src/widgets.tsx). See docs/agents/localization.md.
+import { catalog } from "../index.js";
+
+export const S = catalog({
+  addedByAgent: { pl: "Dodane przez agenta", en: "Added by the agent" },
+  alertMet: { pl: "spełniony", en: "met" },
+  alertNear: { pl: "blisko", en: "near" },
+  alertWaiting: { pl: "czeka", en: "waiting" },
+});
+
+export const POLARITY = catalog({
+  positive: { pl: "szansa", en: "opportunity" },
+  negative: { pl: "ryzyko", en: "risk" },
+  neutral: { pl: "neutralny", en: "neutral" },
+});
+
+/** Alert status -> [label, css class]; the class is not translated. */
+export const ALERT_STATUS = catalog({
+  active: { pl: ["aktywny", "active"] as [string, string], en: ["active", "active"] },
+  triggered: { pl: ["spełniony", "trig"] as [string, string], en: ["triggered", "trig"] },
+  snoozed: { pl: ["uśpiony", "snz"] as [string, string], en: ["snoozed", "snz"] },
+  muted: { pl: ["wyciszony", "mute"] as [string, string], en: ["muted", "mute"] },
+  expired: { pl: ["wygasł", "mute"] as [string, string], en: ["expired", "mute"] },
+});
