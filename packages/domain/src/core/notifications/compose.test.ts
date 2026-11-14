@@ -223,6 +223,9 @@ describe("composeNotifications: fixtures", () => {
   });
 });
 
+// The message types hold counts only, so this guards a field added later; the end-to-end oracle (every
+// title, body and data value the phone's planner schedules, over synthetic stores, PL and EN) is
+// `apps/mobile/src/notifications/planner.countsOnly.test.ts`.
 describe("composeNotifications: counts only", () => {
   it("never carries an amount, a name, a gid or the profile label in a message", () => {
     for (const input of [owner(), partner(), quiet()]) {

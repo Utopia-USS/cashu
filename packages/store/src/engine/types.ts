@@ -170,6 +170,11 @@ export interface DeriveContext {
   resolve(kind: string, gid: string): string;
   identityMembers(kind: string, root: string): readonly string[];
   readonly contributions: Contributions;
+  /**
+   * The store runs the companion derivers (`Deriver.companion`, `StoreOptions.companionReads`): a base
+   * deriver records hand-over data only they consume (the categories deriver's changed rows) only then.
+   */
+  readonly companionReads: boolean;
 }
 
 /**
@@ -188,6 +193,13 @@ export interface Deriver {
   readonly writes: readonly DerivedWrite[];
   /** Materializer ids (and `CONTRIBUTIONS`) whose dirty partitions make it run. */
   readonly inputs: readonly string[];
+  /**
+   * Registered only on a store opened with `StoreOptions.companionReads` (the phone): a deriver whose
+   * tables only the phone's companion queries read. It must write nothing but its own internal tables
+   * (`writes` empty), keep them out of snapshots (`snapshot: false`) and come after every other
+   * deriver, so a store without it derives exactly the same public view (`Store.open` checks).
+   */
+  readonly companion?: true;
   /** Re-derive what the dirty partitions can affect; must equal `deriveAll` restricted to them. */
   derive(dirty: DirtyPartitions, ctx: DeriveContext): void;
   deriveAll(ctx: DeriveContext): void;

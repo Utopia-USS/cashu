@@ -220,6 +220,8 @@ function reopen(driver: SqlDriver, modules: readonly StoreModule[], progress?: R
     vault: TEST_VAULT,
     salt: TEST_SALT,
     modules,
+    // the phone's store (every deriver), like `freshStore`
+    companionReads: true,
     ...(progress ? { onRebuild: (p: RebuildProgress) => progress.push(p) } : {}),
   });
 }

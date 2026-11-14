@@ -27,7 +27,8 @@ export const budgetModule: StoreModule = {
   // transfers (categories read `is_internal_transfer` and take its flipped rows), then categories,
   // then the recurring payments (they read the rows whose category or transfer flag changed), then
   // the month aggregates (they take those rows); the search index last (it reads the rows' texts,
-  // cash legs included).
+  // cash legs included). The last three are companion derivers (`Deriver.companion`): registered only
+  // with `StoreOptions.companionReads` (the phone), so they stay after every other deriver.
   derivers: [
     legsDeriver,
     transfersDeriver,

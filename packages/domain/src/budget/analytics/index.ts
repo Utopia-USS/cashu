@@ -46,12 +46,14 @@ export {
   categoryNormFromRows,
   coverageStartFromRows,
   currenciesFromRows,
+  largestIncomeSoFarFromRows,
   type MonthAggregates,
   type MonthCatRow,
   type MonthDayRow,
   monthlyCashflowFromRows,
   spendingByCategoryFromRows,
   usualPayDayFromRows,
+  usualSalaryFromRows,
   usualToDateFromRows,
 } from "./monthAggregates.js";
 export {
@@ -101,10 +103,14 @@ export {
 } from "./payeeHistory.js";
 export {
   categoryNorm,
+  largestIncomeSoFar,
   type MonthProjection,
   type MonthProjectionInput,
   monthProjection,
+  SALARY_BOOKED_SHARE,
+  SALARY_TOLERANCE,
   usualPayDay,
+  usualSalary,
   usualToDate,
 } from "./projection.js";
 export {

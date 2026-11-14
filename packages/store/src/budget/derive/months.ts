@@ -40,6 +40,8 @@ const catTable: TableDef = {
   name: "fold_month_cat",
   primaryKey: ["account_id", "currency", "month", "category"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   wakesWith: WAKES_WITH,
   columns: [
@@ -70,6 +72,8 @@ const dayTable: TableDef = {
   name: "fold_month_day",
   primaryKey: ["account_id", "currency", "month", "day"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   wakesWith: WAKES_WITH,
   columns: [
@@ -95,6 +99,8 @@ const rowsTable: TableDef = {
   name: "fold_month_rows",
   primaryKey: ["leg", "row"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   columns: [
     { name: "leg", type: "INTEGER", notNull: true },
@@ -121,6 +127,8 @@ const envTable: TableDef = {
   name: "fold_month_env",
   primaryKey: ["k"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   columns: [
     { name: "k", type: "TEXT", notNull: true },
@@ -789,6 +797,8 @@ function derive(keys: readonly string[], ctx: DeriveContext, own: ReadonlySet<st
 
 export const monthsDeriver: Deriver = {
   id: "budget.months",
+  // Only the phone reads it (companion queries): registered with `StoreOptions.companionReads`.
+  companion: true,
   version: 1,
   tables: [catTable, dayTable, rowsTable, envTable],
   writes: [],

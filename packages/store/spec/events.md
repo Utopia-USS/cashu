@@ -939,7 +939,19 @@ Derived internal tables (not hashed, never synced). A table queries read declare
 (`TableDef`): the public tables written in every apply that changes it; `Store.tablesRead` reports them
 for a SQL that names the table, so a live query over it wakes without reading them (the aggregates of
 `budget.months`: `transactions`, `accounts`; the records of `budget.recurring`: also `category_rules`).
-The deriver's other tables (its row memory and environment) declare nothing and are read by no query:
+The deriver's other tables (its row memory and environment) declare nothing and are read by no query.
+
+Companion derivers (`Deriver.companion`): `budget.recurring`, `budget.months` and `budget.search` are read only by
+the phone's companion queries, so they are registered only on a store opened with `StoreOptions.companionReads`
+(the phone; the desktop host, MCP and the CLI open without it). Each writes nothing but its own internal tables,
+all `snapshot: false`, and comes after every other deriver (`Store.open` refuses otherwise), so the public view and
+its hash are the same with and without them and the other derivers keep their recorded positions. Opening a database
+last opened with the other setting is a partial upgrade: without the option their recorded components and tables are
+dropped (never the whole-view rebuild a removed deriver otherwise causes), with it they run `deriveAll`. Without the
+option `budget.categories` records no `fold_category_changes` (only they take them), and a query over their tables
+fails with `CompanionReadsOffError`. A snapshot never carries their tables; `importSnapshot` compares the event
+fingerprint and the recorded definitions without them, keeps the importing store's own definitions record, and
+`rederiveSnapshotOmitted` derives every table left out (theirs included) on the importing store:
 
 | Tables | Recomputed from |
 |---|---|
@@ -948,7 +960,10 @@ The deriver's other tables (its row memory and environment) declare nothing and 
 | `fold_txn_fts` (deriver `budget.search` v2; a contentless FTS5 virtual table, `unicode61 remove_diacritics 2`), `fold_txn_fts_rows`, `fold_txn_fts_env` | one document per `transactions` row of a visible account (an `accounts` row, not removed; cash legs included), rowid = `<booking day since 1970-01-01> * 2^32 + transactions.id` (the index iterates newest day first; `rowid & 0xFFFFFFFF` is the row id): `text` = `normalizeText(counterparty_name description reference)` and the `merchant_key`, `amount` = the absolute amount as one token `<integer>d<fraction, >= 2 digits>` (`1284.00` -> `1284d00`). Incremental per row, documents written in ascending rowid (FTS5 flushes its pending terms on a lower rowid): the dirty partitions (every cash leg after an account change), the row's id, booking day and indexed text from `fold_txn_fts_rows` (a vanished or re-anchored row is deleted by rowid, an unchanged one skipped). A change of the visible accounts (`fold_txn_fts_env`) or a full re-fold runs the full derivation; a bulk dirty set stays incremental. Virtual tables (`TableDef.virtual`) are never hashed and never in a snapshot, nor are tables marked `snapshot: false` (`fold_txn_fts_rows`, `fold_txn_fts_env`): the import runs their deriver's `deriveAll` (`Store.rederiveSnapshotOmitted`, snapshot.ts). Read by the phone's search (`budgetSearch`: word-prefix tokens, case and diacritics folded both ways, dev-feedback #22.9) instead of a LIKE scan: the newest page from the index with an early exit, the total from its `count(*)`; a category-label token adds its category's rows through the `transactions.category` index |
 
 Upgrade cost: `budget.transactions` v3 -> v4 (the `merchant_key` column) indexes refs, so the first
-open after it rebuilds the whole view (rebuild.ts). Before the M3 derivers, at 60k rows (`perf.test.ts`,
+open after it rebuilds the whole view (rebuild.ts). Since M4 (S14) the desktop runs none of the companion derivers:
+its rebuild and upgrading opens are back at the pre-M3 numbers (file mode, loaded machine: rebuild 1.8-1.9 s, a
+`budget.transactions` bump's open 3.0-3.2 s CPU; performance.md), and the first desktop open of a database that held
+their tables drops them. The M3 numbers below are the phone's store (with them). Before the M3 derivers, at 60k rows (`perf.test.ts`,
 memory, load 6-10) the rebuild took 1.9-2.0 s wall and the upgrading open 2.5 s CPU. With the months
 (C1), recurring and search (C2) derivers, two runs each, load 9-28 (not idle): rebuild 2.9-3.3 s wall
 in memory, 4.1 s in file mode (WAL); a `budget.transactions` bump's open 3.8-3.9 s CPU in memory, 5.8-6.0 s

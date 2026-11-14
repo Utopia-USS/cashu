@@ -43,6 +43,7 @@ export interface DeriveDeps {
   readonly ids: ViewIds;
   readonly identity: IdentityService;
   readonly contributions: readonly ModuleContributions[];
+  readonly companionReads: boolean;
 }
 
 function contributionsOf(list: readonly ModuleContributions[], sql: ViewSql): Contributions {
@@ -64,6 +65,7 @@ export function deriveContext(deps: DeriveDeps, sql: ViewSql): DeriveContext {
     resolve: (kind, gid) => deps.identity.resolve(kind, gid),
     identityMembers: (kind, root) => deps.identity.members(kind, root),
     contributions: contributionsOf(deps.contributions, sql),
+    companionReads: deps.companionReads,
   };
 }
 

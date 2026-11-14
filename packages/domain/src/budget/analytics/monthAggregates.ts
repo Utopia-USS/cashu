@@ -1,7 +1,7 @@
 /**
  * The month figures over monthly aggregates instead of every row: the same results as the book-based
- * `monthlyCashflow`, `cashflowCoverageStart`, `usualToDate`, `usualPayDay`, `categoryNorm`,
- * `spendingByCategory` and `budgetCurrencies`, from per-(currency, month, category) and per-(currency,
+ * `monthlyCashflow`, `cashflowCoverageStart`, `usualToDate`, `usualPayDay`, `usualSalary`,
+ * `largestIncomeSoFar`, `categoryNorm`, `spendingByCategory` and `budgetCurrencies`, from per-(currency, month, category) and per-(currency,
  * month, day) sums the store keeps (`budget.months`), so a month read costs a few hundred aggregate
  * rows, not the vault's history. Every sum is an exact `Decimal` summed from 0 in the caller (never a
  * float), so a sum of sums equals the sum of the rows, its exponent included. One currency at a time,
@@ -171,13 +171,16 @@ export function usualToDateFromRows(
   return total.div(D(String(labels.size)));
 }
 
-/** `usualPayDay(book, currency, today, n)` over the aggregates. */
-export function usualPayDayFromRows(
+/**
+ * Each norm month's largest income (the day groups' `maxIncome`; equal amounts: the earlier day), as
+ * `usualPayDay` and `usualSalary` take it from the rows.
+ */
+function largestIncomesFromRows(
   agg: MonthAggregates,
   currency: string,
   today: IsoDate,
-  n = NORM_MONTHS,
-): number | null {
+  n: number,
+): { amount: Decimal; day: number }[] {
   const labels = new Set(normLabels(agg, currency, today, n));
   const largest = new Map<string, { amount: Decimal; day: number }>();
   for (const r of agg.day) {
@@ -188,9 +191,56 @@ export function usualPayDayFromRows(
       largest.set(r.month, { amount: r.maxIncome, day: r.day });
     }
   }
-  if (largest.size < 2) return null;
-  const days = [...largest.values()].map((v) => v.day).sort((a, b) => a - b);
+  return [...largest.values()];
+}
+
+/** `usualPayDay(book, currency, today, n)` over the aggregates. */
+export function usualPayDayFromRows(
+  agg: MonthAggregates,
+  currency: string,
+  today: IsoDate,
+  n = NORM_MONTHS,
+): number | null {
+  const largest = largestIncomesFromRows(agg, currency, today, n);
+  if (largest.length < 2) return null;
+  const days = largest.map((v) => v.day).sort((a, b) => a - b);
   return days[Math.floor((days.length - 1) / 2)] as number;
+}
+
+/**
+ * `usualSalary(book, currency, today, n)` over the aggregates, equal by value (the day groups keep
+ * only the largest income's value, not its exponent; the projection only compares it).
+ */
+export function usualSalaryFromRows(
+  agg: MonthAggregates,
+  currency: string,
+  today: IsoDate,
+  n = NORM_MONTHS,
+): Decimal | null {
+  const largest = largestIncomesFromRows(agg, currency, today, n);
+  if (largest.length < 2) return null;
+  const amounts = largest.map((v) => v.amount).sort((a, b) => a.compare(b));
+  return amounts[Math.floor((amounts.length - 1) / 2)] as Decimal;
+}
+
+/**
+ * `largestIncomeSoFar(book, currency, today)` over the day groups, equal by value: the largest
+ * `maxIncome` of today's month through today's day; 0 without one. `day` MUST hold today's month's
+ * day groups (the norm months' alone give 0).
+ */
+export function largestIncomeSoFarFromRows(
+  day: readonly MonthDayRow[],
+  currency: string,
+  today: IsoDate,
+): Decimal {
+  const label = today.slice(0, 7);
+  const through = parseDate(today).day;
+  let max = ZERO;
+  for (const r of day) {
+    if (r.currency !== currency || r.month !== label || r.day > through) continue;
+    if (r.maxIncome?.gt(max)) max = r.maxIncome;
+  }
+  return max;
 }
 
 /** `categoryNorm(book, currency, today, n)` over the aggregates. */

@@ -29,7 +29,8 @@
 //
 // For the month aggregates after it (`budget.months`): `fold_category_changes` collects the row keys
 // whose category this run wrote and the transfer flips it took (`*` after a full pass); that deriver
-// takes them (`takeCategoryChanges`) in the same apply.
+// takes them (`takeCategoryChanges`) in the same apply. Recorded only on a store that runs those
+// companion derivers (`DeriveContext.companionReads`).
 import { budget, core, D } from "@cashu/domain";
 import { CONTRIBUTIONS, type DeriveContext, type Deriver } from "../../engine/types.js";
 import type { Read } from "../../query.js";
@@ -81,6 +82,9 @@ const changesTable: TableDef = {
 export const ALL_CHANGED = "*";
 
 function changed(ctx: DeriveContext, rows: Iterable<string>): void {
+  // Only the companion derivers (recurring, months) take them: a store without them records none,
+  // or the table would grow by every changed row forever.
+  if (!ctx.companionReads) return;
   for (const row of rows) {
     ctx.sql.insert(
       changesTable.name,

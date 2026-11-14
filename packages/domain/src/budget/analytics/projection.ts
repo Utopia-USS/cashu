@@ -27,6 +27,13 @@ export interface MonthProjectionInput {
   readonly normToDate: Decimal | null;
   /** Day of month of the usual salary (`usualPayDay`); null = unknown. */
   readonly usualPayDay: number | null;
+  /**
+   * The usual salary (`usualSalary`: the norm's main income) and the largest single income booked this
+   * month so far (`largestIncomeSoFar`). With it, the pay day counts the salary as booked once ONE
+   * income of about its size is in (`SALARY_TOLERANCE`); without it (null or absent, a caller not
+   * wired yet), the month's total income against `SALARY_BOOKED_SHARE` of a usual month's income.
+   */
+  readonly salary?: { readonly usual: Decimal; readonly largestSoFar: Decimal } | null;
 }
 
 export interface MonthProjection {
@@ -34,7 +41,7 @@ export interface MonthProjection {
   readonly keep: Decimal;
   /** `incomeSoFar + incomeStillExpected`. */
   readonly expectedIncome: Decimal;
-  /** The usual income not in yet while the usual pay day is still ahead; 0 otherwise. */
+  /** The usual income not in yet while the salary is still ahead (`salaryStillAhead`); 0 otherwise. */
   readonly incomeStillExpected: Decimal;
   /** `max(0, norm.expense - normToDate)`, 0 without a norm. */
   readonly usualRest: Decimal;
@@ -51,12 +58,49 @@ export interface MonthProjection {
 
 const maxDecimal = (a: Decimal, b: Decimal): Decimal => (a.gte(b) ? a : b);
 
+/**
+ * Fallback without `MonthProjectionInput.salary`: on the usual pay day, the month's income of at least
+ * this share of a usual month's income means the salary is booked.
+ */
+export const SALARY_BOOKED_SHARE = D("0.5");
+
+/**
+ * "About the usual salary's size": one income of at least this share of the usual salary. 0.8 leaves
+ * room for a salary that varies month to month (overtime, sick pay, a smaller month) while two or
+ * three smaller incomes (a partner's transfer, a refund, a side job) of a household never reach it
+ * one by one, which a share of the month's total income does.
+ */
+export const SALARY_TOLERANCE = D("0.8");
+
+/**
+ * Whether the usual salary still counts as ahead on day `day` of the month:
+ * - before the usual pay day: yes (what is not in yet of a usual month's income is still expected);
+ * - ON the usual pay day: yes until ONE income of about the usual salary's size is booked this month
+ *   (`SALARY_TOLERANCE`; banks often book the salary a day late, or late in the day); without the
+ *   salary input, while the month's income is under `SALARY_BOOKED_SHARE` of a usual month's income;
+ * - after the usual pay day: no (a salary that did not come is not projected any more).
+ */
+function salaryStillAhead(
+  day: number,
+  usualPayDay: number,
+  input: MonthProjectionInput,
+  norm: MonthNorm,
+): boolean {
+  if (day < usualPayDay) return true;
+  if (day !== usualPayDay) return false;
+  const salary = input.salary;
+  if (salary !== undefined && salary !== null) {
+    return salary.largestSoFar.lt(salary.usual.mul(SALARY_TOLERANCE));
+  }
+  return input.incomeSoFar.lt(norm.income.mul(SALARY_BOOKED_SHARE));
+}
+
 /** The running month projected to its end (see the file comment). */
 export function monthProjection(input: MonthProjectionInput): MonthProjection {
   const { today, norm, normToDate, usualPayDay } = input;
   const day = parseDate(today).day;
   const incomeStillExpected =
-    usualPayDay !== null && norm !== null && day < usualPayDay
+    usualPayDay !== null && norm !== null && salaryStillAhead(day, usualPayDay, input, norm)
       ? maxDecimal(ZERO, norm.income.sub(input.incomeSoFar))
       : ZERO;
   const expectedIncome = input.incomeSoFar.add(incomeStillExpected);
@@ -132,17 +176,13 @@ export function usualToDate(
   return total.div(D(String(labels.length)));
 }
 
-/**
- * The usual pay day: the median booking day of each norm month's largest income row (positive, not a
- * transfer; equal amounts: the earlier row). With an even number of months, the lower of the two middle
- * days. Null with fewer than 2 months that have income.
- */
-export function usualPayDay(
+/** Each norm month's largest income row (positive, not a transfer; equal amounts: the earlier row). */
+function largestIncomes(
   book: BudgetBook,
   currency: string,
   today: IsoDate,
-  n = NORM_MONTHS,
-): number | null {
+  n: number,
+): { amount: Decimal; date: IsoDate }[] {
   const labels = normLabels(book, currency, today, n);
   const largest = new Map<string, { amount: Decimal; date: IsoDate }>();
   for (const t of flowRows(book, currency, new Set(labels))) {
@@ -154,9 +194,51 @@ export function usualPayDay(
       largest.set(label, { amount: t.amount, date: t.bookingDate });
     }
   }
-  if (largest.size < 2) return null;
-  const days = [...largest.values()].map((v) => parseDate(v.date).day).sort((a, b) => a - b);
+  return [...largest.values()];
+}
+
+/**
+ * The usual pay day: the median booking day of each norm month's largest income row (positive, not a
+ * transfer; equal amounts: the earlier row). With an even number of months, the lower of the two middle
+ * days. Null with fewer than 2 months that have income.
+ */
+export function usualPayDay(
+  book: BudgetBook,
+  currency: string,
+  today: IsoDate,
+  n = NORM_MONTHS,
+): number | null {
+  const largest = largestIncomes(book, currency, today, n);
+  if (largest.length < 2) return null;
+  const days = largest.map((v) => parseDate(v.date).day).sort((a, b) => a - b);
   return days[Math.floor((days.length - 1) / 2)] as number;
+}
+
+/**
+ * The usual salary: the median amount of each norm month's largest income row (the rows `usualPayDay`
+ * takes the day of). With an even number of months, the lower of the two middle amounts. Null with
+ * fewer than 2 months that have income (as `usualPayDay`).
+ */
+export function usualSalary(
+  book: BudgetBook,
+  currency: string,
+  today: IsoDate,
+  n = NORM_MONTHS,
+): Decimal | null {
+  const largest = largestIncomes(book, currency, today, n);
+  if (largest.length < 2) return null;
+  const amounts = largest.map((v) => v.amount).sort((a, b) => a.compare(b));
+  return amounts[Math.floor((amounts.length - 1) / 2)] as Decimal;
+}
+
+/** The largest single income row (positive flow) of today's month through today; 0 without one. */
+export function largestIncomeSoFar(book: BudgetBook, currency: string, today: IsoDate): Decimal {
+  const label = today.slice(0, 7);
+  let max = ZERO;
+  for (const t of flowRows(book, currency, new Set([label]))) {
+    if (t.bookingDate <= today && t.amount.gt(max)) max = t.amount;
+  }
+  return max;
 }
 
 /**

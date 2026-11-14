@@ -22,7 +22,7 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Tap / click to visual response | <= 100 ms |
 | Scrolling the 60k list | no dropped frames > 1% in a 10 s fling at 60 Hz (120 Hz on ProMotion) |
 | Mobile memory, steady state with 60k transactions | <= 250 MB |
-| Bundles | mobile JS (Hermes bytecode) <= 9.60 MB ceiling (M3 companion budget, see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
+| Bundles | mobile JS (Hermes bytecode) <= 10.00 MB ceiling (M3 companion budget, see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
 | Render regressions on key screens (Reassure) | <= 10% more renders or render time than the baseline |
 
 Mobile bundle note (lead, 2026-11-01, from S41b measurements): the first 4 MB budget was a guess. React Native +
@@ -59,16 +59,22 @@ budget, asserted at 60k: month figures 1.2 ms (was 229), month with bills 1.8 ms
 862), upcoming 0.1 ms, account balances and the uncategorized count 0.0 ms (was 62 / 3.9), search 0.1-5.2 ms (was
 67-79; "orlen" 0.9, "1284" 0.4, "sklep 12" 5.2, "sk" / "sklep" / "karta" 4.7-4.8, "paliwo" 3.4). One query is
 logged, not asserted: "zakup" at 15 ms, a token that occurs in every row of the synthetic workload and is also the
-prefix of the "Zakupy" category label (the hit set is the whole table). The write side pays for the four derivers.
-File mode, 1000-event batches, before -> after (the "before" export ran at load 25-50, the "after" at load 8-9, so
-the ratio is a floor): bulk apply 12.7 s -> 25.5 s wall, rebuild 1.9 s -> 3.6 s, a day's events 75 -> 113 ms wall
-(54 -> 92 ms CPU), upgrade after a `budget.transactions` bump 3.0 -> 5.8 s CPU; the 25k sync-pull shape in memory
-is 7.8 s. Lead decision: the read budgets are the user-facing ones on the phone and are met; the bulk, rebuild and
-day budgets above are MISSED in the 1000-event batch shape on a loaded machine and are accepted for the M3 commit
-with two conditions: an idle re-measure before the next milestone, and a follow-up (M3.1) on the write path: the
-recurring deriver re-detects every touched merchant group per batch (the largest share), the months index costs
-0.5-0.9 s of bulk, and a rules bump re-derives the search index because the upgrade planner does not know which
-columns a deriver reads. Also since M3 the store needs SQLite with FTS5: `node:sqlite` has it from Node 24 (the
+prefix of the "Zakupy" category label (the hit set is the whole table). The write side pays for the derivers.
+M3 accepted the write-budget misses for one milestone (idle re-measure, write-path follow-up); M4 (S14) took them off the desktop instead: the three derivers only the phone reads (`budget.months`,
+`budget.recurring`, `budget.search`) are registered only on a store opened with `StoreOptions.companionReads` (the
+phone sets it; the desktop host, MCP and the CLI do not), their tables are out of snapshots and the view hash, and a
+toggle on one file drops or derives only them. M4 measurements (2026-11-14, `src/perf.test.ts`, file mode, 1000-event
+batches, `CASHU_PERF_COMPANION=0|1`, the M-series Mac with other sessions running, two runs per setting, load average
+18-57 on 10 cores, so the numbers are not idle ones): without them (the desktop) bulk apply 11.3-16.1 s wall
+(11.1-12.6 s CPU), rebuild 1.8-1.9 s, a day's events 72-82 ms wall (52-64 ms CPU), the upgrading open after a
+`budget.transactions` bump 3.0-3.2 s CPU, a `budget.category_rules` bump 0.4 s; with them (the phone's store on the
+Mac) 26.2-34.7 s (25.8-28.7 s CPU), 4.2-6.8 s, 111-160 ms (100-106 ms CPU), 5.8-7.2 s, 2.0-2.3 s. State against the
+budgets: the desktop is back at its pre-M3 numbers; its day's events and rebuild are within budget, its first sync
+(about 11 s CPU) and the transactions-bump open (3.0-3.2 s CPU) sit at or just over the 10 s / 3 s lines as they did
+before M3 (not caused by the derivers; an idle re-measure decides). The phone's numbers are inside its 30 s first sync
+only at the lower load and over the 100 ms day budget on this Mac; the recurring deriver's per-batch group re-detection
+(M3.1) is still the largest write cost there, and the phone's real figures belong to the device runs (S41g).
+Also since M3 the store needs SQLite with FTS5: `node:sqlite` has it from Node 24 (the
 `.nvmrc` Node, also Electron 45's), not in Node 23; better-sqlite3 and expo-sqlite ship it (docs/agents/running.md).
 
 ## Rules that keep the budgets

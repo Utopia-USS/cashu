@@ -352,7 +352,7 @@ const DAY_DATE = "d.month || '-' || substr('0' || d.day, -2)";
  * them (whole, before the month, with income or spending: a sum is non-zero exactly when its text
  * has a digit 1-9), the month groups of those months in `currency` plus every currency's groups of
  * `label` (by account, then first outflow: `spendingByCategoryFromRows`' order), and the day groups of
- * the norm months.
+ * the norm months and of `label` in `currency` (`largestIncomeSoFarFromRows`).
  */
 function monthAggregatesOf(
   read: Read,
@@ -396,8 +396,9 @@ function monthAggregatesOf(
   }>(
     `SELECT d.currency, d.month, d.day, d.n, d.income, d.expense, d.max_income AS maxIncome
      FROM fold_month_day d JOIN accounts a ON a.id = d.account_id
-     WHERE ${VISIBLE} AND d.currency = ? AND d.month IN (${months})`,
+     WHERE ${VISIBLE} AND d.currency = ? AND (d.month = ? OR d.month IN (${months}))`,
     currency,
+    label,
     ...norm,
   ).map((r) => ({
     currency: r.currency,
@@ -526,6 +527,7 @@ export function companionMonth(
   const norm = budget.closedMonthNorm(rows, ref, budget.NORM_MONTHS, agg.coverage);
   const normToDate = budget.usualToDateFromRows(agg, currency, ref);
   const usualPayDay = budget.usualPayDayFromRows(agg, currency, ref);
+  const usualSalary = budget.usualSalaryFromRows(agg, currency, ref);
   const billsDue = extra.billsDue ?? D("0.00");
   const projection = budget.monthProjection({
     today: ref,
@@ -536,6 +538,13 @@ export function companionMonth(
     norm,
     normToDate,
     usualPayDay,
+    salary:
+      usualSalary === null
+        ? null
+        : {
+            usual: usualSalary,
+            largestSoFar: budget.largestIncomeSoFarFromRows(agg.day, currency, ref),
+          },
   });
   const usual = budget.categoryNormFromRows(agg, currency, ref);
   const categories = budget
@@ -674,6 +683,29 @@ export interface CompanionSearch {
 }
 
 const NUMBER_TOKEN = /^\d+(?:[.,]\d+)?$/;
+/** Digit groups of a thousands separator (space, no-break space): "1 284,00", "12 500". */
+const GROUPED_NUMBER = /(?<![\d.,])\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?!\d)/g;
+/** An amount as typed: a sign, the number, a currency glued on ("-12,50", "+7", "12,50zł"). */
+const TYPED_AMOUNT = /^[-+\u2212]?(\d+(?:[.,]\d+)?)(?:zł|zl|pln|eur|usd|gbp|chf|€|\$)?$/i;
+/** Currency words that only qualify an amount (normalized): dropped when the query holds one. */
+const CURRENCY_WORDS: ReadonlySet<string> = new Set(["ZL", "PLN", "EUR", "USD", "GBP", "CHF"]);
+
+/**
+ * The words of a search query, amounts as the index holds them: a thousands-grouped number joined
+ * ("1 284,00" -> "1284,00"), a sign or a glued currency dropped ("-12,50", "12,50zł" -> "12,50"), and
+ * a currency word dropped when the query holds an amount ("12,50 zł" -> "12,50"; the index has no
+ * currency text, so it would match nothing). Amounts are magnitudes in the index, so the sign only
+ * says which way the money went.
+ */
+export function searchWords(q: string): string[] {
+  const words = q
+    .replace(GROUPED_NUMBER, (m) => m.replace(/[ \u00a0\u202f]/g, ""))
+    .split(/\s+/)
+    .filter((w) => w !== "")
+    .map((w) => TYPED_AMOUNT.exec(w)?.[1] ?? w);
+  if (!words.some((w) => NUMBER_TOKEN.test(w))) return words;
+  return words.filter((w) => !CURRENCY_WORDS.has(normalizeText(w)));
+}
 /** A token the index can match: it holds a letter or a digit (the tokenizer drops everything else). */
 const INDEXABLE = /[\p{L}\p{N}]/u;
 
@@ -978,8 +1010,7 @@ function categoryHits(read: Read, named: readonly SearchToken[]): HitSource {
 export const budgetSearch = defineQuery({
   id: "budget.companionSearch",
   run(read, args: CompanionSearchArgs): CompanionSearch {
-    const tokens = args.q
-      .split(/\s+/)
+    const tokens = searchWords(args.q)
       .map(searchToken)
       .filter((t) => t !== null);
     if (tokens.length === 0) return { rows: [], total: 0, summary: null };
@@ -1461,7 +1492,10 @@ const BALANCE_TYPES = ["checking", "savings", budget.CASH_ACCOUNT_TYPE] as const
  * values them (`budgetNetWorth`): a bank account's newest balance snapshot (its `latest`: the
  * snapshots alone, the walk back over its rows only shapes the history), a cash pool's running sum up
  * to `today` (the month aggregates' signed sums: whole months before today's, then today's month's
- * days through today). Accounts without a known balance are left out.
+ * days through today), one balance per currency: never a sum across currencies (data-safety rule 5).
+ * A pool holds rows of its own currency only when every writer behaves; a row of another currency (a
+ * foreign or malformed event) is its own balance, after the pool's own one. Accounts without a known
+ * balance are left out.
  */
 export function accountBalances(read: Read, today: IsoDate): budget.AccountBalance[] {
   const accounts = read<{ id: number; gid: string; name: string; type: string; currency: string }>(
@@ -1481,22 +1515,29 @@ export function accountBalances(read: Read, today: IsoDate): budget.AccountBalan
     list.push({ date: b.date, amount: D(b.amount), source: b.source });
     snapshots.set(b.account, list);
   }
-  const pools = accounts.filter((a) => a.type === budget.CASH_ACCOUNT_TYPE).map((a) => a.id);
-  const running = new Map<number, Decimal>(pools.map((id) => [id, D("0.00")]));
+  const poolAccounts = accounts.filter((a) => a.type === budget.CASH_ACCOUNT_TYPE);
+  const pools = poolAccounts.map((a) => a.id);
+  // per pool, per currency: the pool's own currency first (a balance even without rows)
+  const running = new Map<number, Map<string, Decimal>>(
+    poolAccounts.map((a) => [a.id, new Map([[a.currency, D("0.00")]])]),
+  );
   if (pools.length > 0) {
     const month = today.slice(0, 7);
-    const add = (r: { account: number; net: string }) =>
-      running.set(r.account, (running.get(r.account) as Decimal).add(D(r.net)));
-    for (const r of read<{ account: number; net: string }>(
-      `SELECT account_id AS account, net FROM fold_month_cat
+    const add = (r: { account: number; currency: string; net: string }) => {
+      const sums = running.get(r.account) as Map<string, Decimal>;
+      const seen = sums.get(r.currency);
+      sums.set(r.currency, seen === undefined ? D(r.net) : seen.add(D(r.net)));
+    };
+    for (const r of read<{ account: number; currency: string; net: string }>(
+      `SELECT account_id AS account, currency, net FROM fold_month_cat
        WHERE account_id IN (${marks(pools.length)}) AND month < ?`,
       ...pools,
       month,
     )) {
       add(r);
     }
-    for (const r of read<{ account: number; net: string }>(
-      `SELECT account_id AS account, net FROM fold_month_day
+    for (const r of read<{ account: number; currency: string; net: string }>(
+      `SELECT account_id AS account, currency, net FROM fold_month_day
        WHERE account_id IN (${marks(pools.length)}) AND month = ? AND day <= ?`,
       ...pools,
       month,
@@ -1507,9 +1548,14 @@ export function accountBalances(read: Read, today: IsoDate): budget.AccountBalan
   }
   return accounts.flatMap((a) => {
     if (a.type === budget.CASH_ACCOUNT_TYPE) {
-      return [
-        { id: a.gid, name: a.name, currency: a.currency, balance: running.get(a.id) as Decimal },
-      ];
+      const sums = running.get(a.id) as Map<string, Decimal>;
+      const others = [...sums.keys()].filter((c) => c !== a.currency).sort();
+      return [a.currency, ...others].map((currency) => ({
+        id: a.gid,
+        name: a.name,
+        currency,
+        balance: sums.get(currency) as Decimal,
+      }));
     }
     const rows = snapshots.get(a.id);
     const latest = rows === undefined ? null : new core.BalanceValuation(rows).latest(null, today);

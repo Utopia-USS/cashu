@@ -7,12 +7,15 @@ import { cashflowCoverageStart, monthlyCashflow } from "./cashflow.js";
 import { closedMonthNorm, type MonthNorm, NORM_MONTHS } from "./overview.js";
 import {
   categoryNorm,
+  largestIncomeSoFar,
   type MonthProjectionInput,
   monthProjection,
+  SALARY_TOLERANCE,
   usualPayDay,
+  usualSalary,
   usualToDate,
 } from "./projection.js";
-import { Household } from "./testing/household.js";
+import { Household, type Raw } from "./testing/household.js";
 import { seedDemo } from "./testing/seedDemo.js";
 
 const eq = (a: Decimal | null | undefined, b: string) => expect(a?.eq(D(b))).toBe(true);
@@ -89,7 +92,7 @@ describe("monthProjection (prototype numbers)", () => {
     eq(p.keep, "3700");
   });
 
-  it("only the part of the usual income not in yet; nothing on or after the pay day", () => {
+  it("only the part of the usual income not in yet; nothing once the salary is in or the day passed", () => {
     const before = input({
       today: "2026-11-05",
       incomeSoFar: D("15000"),
@@ -101,6 +104,72 @@ describe("monthProjection (prototype numbers)", () => {
     eq(monthProjection({ ...before, incomeSoFar: D("800") }).incomeStillExpected, "14000");
     eq(monthProjection({ ...before, today: "2026-11-10" }).incomeStillExpected, "0");
     eq(monthProjection({ ...before, usualPayDay: null }).incomeStillExpected, "0");
+  });
+
+  it("on the usual pay day the salary counts until income of about its size is booked", () => {
+    // usual income 14800 on the 10th; 800 of other income in already
+    const at = (today: string, incomeSoFar: string) =>
+      monthProjection(
+        input({
+          today,
+          incomeSoFar: D(incomeSoFar),
+          norm: norm("14800", "13100"),
+          normToDate: D("2000"),
+          usualPayDay: 10,
+        }),
+      );
+    // the day before and the day itself, salary not booked yet: still expected
+    eq(at("2026-11-09", "800").incomeStillExpected, "14000");
+    eq(at("2026-11-10", "800").incomeStillExpected, "14000");
+    eq(at("2026-11-10", "800").expectedIncome, "14800");
+    // just under half a usual month's income is not the salary yet; half of it is
+    eq(at("2026-11-10", "7399.99").incomeStillExpected, "7400.01");
+    eq(at("2026-11-10", "7400").incomeStillExpected, "0");
+    // the day after: no longer projected, booked or not
+    eq(at("2026-11-11", "800").incomeStillExpected, "0");
+    eq(at("2026-11-11", "800").expectedIncome, "800");
+    // the day after with the salary booked: it is in the income so far
+    eq(at("2026-11-11", "15600").incomeStillExpected, "0");
+    eq(at("2026-11-11", "15600").expectedIncome, "15600");
+    // the pay day with the salary booked
+    eq(at("2026-11-10", "15600").incomeStillExpected, "0");
+  });
+
+  it("with the salary input: booked once ONE income of about the usual salary's size is in", () => {
+    // usual salary 9000 of a usual 14800 on the 10th; 7400 of other income in already (2 x 3700)
+    const at = (today: string, largestSoFar: string, incomeSoFar = "7400") =>
+      monthProjection(
+        input({
+          today,
+          incomeSoFar: D(incomeSoFar),
+          norm: norm("14800", "13100"),
+          normToDate: D("2000"),
+          usualPayDay: 10,
+          salary: { usual: D("9000"), largestSoFar: D(largestSoFar) },
+        }),
+      );
+    expect(SALARY_TOLERANCE.toString()).toBe("0.8");
+    // half a usual month's income is in, but no single income near 9000: still expected
+    eq(at("2026-11-10", "3700").incomeStillExpected, "7400");
+    // the boundary: 0.8 x 9000 = 7200
+    eq(at("2026-11-10", "7199.99").incomeStillExpected, "7400");
+    eq(at("2026-11-10", "7200").incomeStillExpected, "0");
+    // a salary a bit smaller than usual is still the salary
+    eq(at("2026-11-10", "8500", "15900").incomeStillExpected, "0");
+    // before and after the pay day the rule is unchanged
+    eq(at("2026-11-09", "9000", "16400").incomeStillExpected, "0");
+    eq(at("2026-11-09", "3700").incomeStillExpected, "7400");
+    eq(at("2026-11-11", "3700").incomeStillExpected, "0");
+    // null salary input: the month-total fallback
+    const fallback = input({
+      today: "2026-11-10",
+      incomeSoFar: D("7400"),
+      norm: norm("14800", "13100"),
+      normToDate: D("2000"),
+      usualPayDay: 10,
+      salary: null,
+    });
+    eq(monthProjection(fallback).incomeStillExpected, "0");
   });
 
   it("bills above the usual rest take over", () => {
@@ -308,5 +377,90 @@ describe("usualToDate on the last day of a short month", () => {
     eq(p.usualRest, "0");
     expect(p.daysLeft).toBe(0);
     expect(p.pace?.usualShare).toBe(1);
+  });
+});
+
+/**
+ * A household with two smaller incomes before the pay day: each month a partner's transfer of 2500 on
+ * the 2nd and a side job's 2500 on the 4th, the salary of 5000 on the 10th (June partial, July to
+ * September the norm months). On 10 October, before the salary is booked, half of a usual month's
+ * income (10000) is already in without it.
+ */
+describe("pay day with two smaller incomes before it", () => {
+  const h = new Household("PLN");
+  const acc = h.account({ name: "Konto Test", iban: "99114000000000000000000041" });
+  const rows: Raw[] = [];
+  for (const m of ["06", "07", "08", "09", "10"]) {
+    rows.push(
+      {
+        date: `2026-${m}-02`,
+        amount: "2500.00",
+        ref: "PRZELEW OD PARTNERA TEST",
+        iban: "99114000000000000000000042",
+      },
+      {
+        date: `2026-${m}-04`,
+        amount: "2500.00",
+        ref: "ZLECENIE TEST",
+        iban: "99114000000000000000000043",
+      },
+      { date: `2026-${m}-07`, amount: "-1200.00", ref: "SKLEP TEST" },
+    );
+    if (m !== "10") {
+      rows.push({
+        date: `2026-${m}-10`,
+        amount: "5000.00",
+        ref: "WYNAGRODZENIE TEST",
+        iban: "99102000000000000000000777",
+      });
+    }
+  }
+  h.ingest(acc, rows);
+  const book = h.book();
+  const today = "2026-10-10";
+  const base = (): MonthProjectionInput => {
+    const cash = monthlyCashflow(book, "PLN");
+    return input({
+      today,
+      incomeSoFar: cash.find((r) => r.label === "2026-10")?.income ?? ZERO,
+      spentSoFar: cash.find((r) => r.label === "2026-10")?.expense ?? ZERO,
+      norm: closedMonthNorm(cash, today, NORM_MONTHS, cashflowCoverageStart(book, "PLN")),
+      normToDate: usualToDate(book, "PLN", today),
+      usualPayDay: usualPayDay(book, "PLN", today),
+    });
+  };
+
+  it("the book inputs: pay day 10, usual salary 5000, largest income so far 2500", () => {
+    const b = base();
+    expect(b.usualPayDay).toBe(10);
+    eq(b.norm?.income, "10000");
+    eq(b.incomeSoFar, "5000");
+    eq(usualSalary(book, "PLN", today), "5000");
+    eq(largestIncomeSoFar(book, "PLN", today), "2500");
+    eq(largestIncomeSoFar(book, "PLN", "2026-10-03"), "2500");
+    eq(largestIncomeSoFar(book, "PLN", "2026-10-01"), "0");
+    expect(usualSalary(book, "PLN", "2026-07-20")).toBeNull(); // one whole month is not enough
+  });
+
+  it("the salary is still expected on the pay day, though half the usual income is in", () => {
+    const salary = {
+      usual: usualSalary(book, "PLN", today) ?? ZERO,
+      largestSoFar: largestIncomeSoFar(book, "PLN", today),
+    };
+    const p = monthProjection({ ...base(), salary });
+    eq(p.incomeStillExpected, "5000");
+    eq(p.expectedIncome, "10000");
+    // the month-total rule (no salary input) would drop it: the case this fixes
+    eq(monthProjection(base()).incomeStillExpected, "0");
+  });
+});
+
+describe("usualSalary over the seeded household", () => {
+  const book = seedDemo().book();
+  it("is the salary (the 1000 to savings is a transfer, not income)", () => {
+    eq(usualSalary(book, "PLN", "2026-10-05"), "9000");
+    eq(largestIncomeSoFar(book, "PLN", "2026-09-09"), "0");
+    eq(largestIncomeSoFar(book, "PLN", "2026-09-10"), "9000");
+    expect(usualSalary(book, "PLN", "2026-08-05")).toBeNull();
   });
 });

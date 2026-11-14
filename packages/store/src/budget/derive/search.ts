@@ -414,6 +414,8 @@ function derive(ctx: DeriveContext, keys: readonly string[]): void {
 
 export const searchDeriver: Deriver = {
   id: "budget.search",
+  // Only the phone reads it (companion queries): registered with `StoreOptions.companionReads`.
+  companion: true,
   // 2: rowid = booking day * 2^32 + id (date-ordered), only the rows of visible accounts
   version: 2,
   tables: [ftsTable, rowsTable, envTable],

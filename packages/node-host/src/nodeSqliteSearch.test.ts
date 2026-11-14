@@ -47,6 +47,7 @@ describe("node:sqlite with the built-in modules", () => {
       vault: "5f0c3a9e81d24b7690ae13c7d2f4b856",
       salt: vaultSalt(new Uint8Array(32).fill(7)),
       modules: builtinModules(),
+      companionReads: true,
     });
     try {
       const device = "e".repeat(32);

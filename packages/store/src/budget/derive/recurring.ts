@@ -61,6 +61,8 @@ const recurringTable: TableDef = {
   name: "fold_recurring",
   primaryKey: ["merchant_key", "currency", "typical_amount"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   wakesWith: WAKES_WITH,
   columns: [
@@ -87,6 +89,8 @@ const recurringRowsTable: TableDef = {
   name: "fold_recurring_rows",
   primaryKey: ["merchant_key", "currency", "account_id", "id"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   wakesWith: WAKES_WITH,
   columns: [
@@ -124,6 +128,8 @@ const keysTable: TableDef = {
   name: "fold_recurring_keys",
   primaryKey: ["merchant_key", "currency", "amount_key"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   columns: [
     { name: "merchant_key", type: "TEXT", notNull: true },
@@ -143,6 +149,8 @@ const groupsTable: TableDef = {
   name: "fold_recurring_groups",
   primaryKey: ["merchant_key", "currency"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   wakesWith: WAKES_WITH,
   columns: [
@@ -157,6 +165,8 @@ const envTable: TableDef = {
   name: "fold_recurring_env",
   primaryKey: ["k"],
   internal: true,
+  // a companion deriver's table: derived again on import (Deriver.companion)
+  snapshot: false,
   withoutRowid: true,
   columns: [
     { name: "k", type: "TEXT", notNull: true },
@@ -671,6 +681,8 @@ function deriveAll(ctx: DeriveContext): void {
 
 export const recurringDeriver: Deriver = {
   id: "budget.recurring",
+  // Only the phone reads it (companion queries): registered with `StoreOptions.companionReads`.
+  companion: true,
   // 2: the per-group counts (`fold_recurring_keys`, `fold_recurring_groups`)
   version: 2,
   tables: [recurringTable, recurringRowsTable, keysTable, groupsTable, envTable],

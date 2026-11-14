@@ -6,8 +6,9 @@
 // run as the spike's own benchmark) are in the cashu-ts-architecture performance reference. With
 // CASHU_PERF_DB=<path> the store runs on a database file with the spike's pragmas (WAL, synchronous
 // NORMAL); otherwise in memory. CASHU_PERF_BATCH=<n> sets the bulk apply's batch size (default 1,000;
-// 25,000 is a sync pull's chunk, `EventSink.applyBatches`). One `S23B_PERF {...}` line reports every
-// phase.
+// 25,000 is a sync pull's chunk, `EventSink.applyBatches`). CASHU_PERF_COMPANION=0 opens the store
+// without the companion derivers (the desktop host's store, `StoreOptions.companionReads`); default on
+// (the phone's). One `S23B_PERF {...}` line reports every phase.
 import { sha1 } from "@noble/hashes/legacy.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import Database from "better-sqlite3";
@@ -221,13 +222,20 @@ function since(t0: { wall: number; cpu: { user: number; system: number } }) {
 const now = () => ({ wall: performance.now(), cpu: process.cpuUsage() });
 
 /** The store's database: a file with the spike's pragmas when CASHU_PERF_DB is set, else memory. */
+const companionReads = process.env.CASHU_PERF_COMPANION !== "0";
+
 function perfStore() {
   const path = process.env.CASHU_PERF_DB;
-  if (path === undefined || path === "") return { store: openTestStore(), mode: "memory" };
+  if (path === undefined || path === "") {
+    return { store: openTestStore({ companionReads }), mode: "memory" };
+  }
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("synchronous = NORMAL");
-  return { store: openTestStore({ driver: betterSqlite3Driver(db) }), mode: "file" };
+  return {
+    store: openTestStore({ driver: betterSqlite3Driver(db), companionReads }),
+    mode: "file",
+  };
 }
 
 describe("perf: 64k events (announced benchmark)", () => {
@@ -261,7 +269,13 @@ describe("perf: 64k events (announced benchmark)", () => {
       const reopen = (modules: readonly StoreModule[]) => {
         store.detach();
         const t = now();
-        store = Store.open({ driver: store.driver, vault: TEST_VAULT, salt: TEST_SALT, modules });
+        store = Store.open({
+          driver: store.driver,
+          vault: TEST_VAULT,
+          salt: TEST_SALT,
+          modules,
+          companionReads,
+        });
         return since(t);
       };
       const opens = Array.from({ length: 5 }, () => reopen(builtinModules()).cpu).sort(
@@ -378,6 +392,7 @@ describe("perf: 64k events (announced benchmark)", () => {
       const report = {
         events: events.length,
         mode,
+        companionReads,
         batch,
         bulkWall: bulk.wall,
         bulkCpu: bulk.cpu,

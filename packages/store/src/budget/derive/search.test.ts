@@ -19,7 +19,7 @@ import {
   type TestEnvelope,
 } from "../../testing/store.js";
 import { bumpVersion } from "../../testing/upgrade.js";
-import { budgetSearch } from "../companion-queries.js";
+import { budgetSearch, searchWords } from "../companion-queries.js";
 import { ftsAmountPrefix, ftsAmountToken } from "./search.js";
 
 type Spec = [type: string, gid: string, data: Record<string, unknown>];
@@ -76,6 +76,24 @@ const HISTORY: readonly Spec[] = [
 const hits = (store: ReturnType<typeof openTestStore>, q: string) =>
   runQuery(store, budgetSearch, { q, lang: "pl" }).value.total;
 
+describe("searchWords", () => {
+  it("normalizes typed amounts to the index's numbers and keeps every other word", () => {
+    expect(searchWords("1 284,00")).toEqual(["1284,00"]);
+    expect(searchWords("12\u00a0500 zł")).toEqual(["12500"]);
+    expect(searchWords("-12,50")).toEqual(["12,50"]);
+    expect(searchWords("\u221212,50")).toEqual(["12,50"]);
+    expect(searchWords("12,50 zł")).toEqual(["12,50"]);
+    expect(searchWords("12,50zł orlen")).toEqual(["12,50", "orlen"]);
+    expect(searchWords("orlen 1284")).toEqual(["orlen", "1284"]);
+    // not a thousands grouping: two numbers stay two
+    expect(searchWords("2025 100")).toEqual(["2025", "100"]);
+    expect(searchWords("1 2345")).toEqual(["1", "2345"]);
+    // a currency word without an amount is a plain word
+    expect(searchWords("pln")).toEqual(["pln"]);
+    expect(searchWords("  ")).toEqual([]);
+  });
+});
+
 describe("budget.search deriver", () => {
   it("indexes every row, cash legs included, through account-only changes", () => {
     const store = openTestStore();
@@ -98,6 +116,19 @@ describe("budget.search deriver", () => {
       expect(hits(store, "lodz")).toBe(1);
       expect(hits(store, "1284")).toBe(1);
       expect(hits(store, "zab")).toBe(1);
+      // amounts as people type them (Polish thousands space, a sign, a currency)
+      for (const q of [
+        "1 284,00",
+        "1\u00a0284",
+        "-1284",
+        "1284 zł",
+        "1284zł",
+        "orlen 1 284",
+        "-5,12 PLN",
+      ]) {
+        expect(hits(store, q), q).toBe(1);
+      }
+      expect(hits(store, "1 285")).toBe(0);
     } finally {
       store.close();
     }
@@ -130,7 +161,13 @@ describe("budget.search deriver", () => {
       expect(Object.keys(snap.tables)).not.toContain("fold_txn_fts_rows");
       expect(Object.keys(snap.tables)).not.toContain("fold_txn_fts_env");
       const copy = importSnapshot(
-        { driver: memoryDriver(), vault: TEST_VAULT, salt: TEST_SALT, modules: builtinModules() },
+        {
+          driver: memoryDriver(),
+          vault: TEST_VAULT,
+          salt: TEST_SALT,
+          modules: builtinModules(),
+          companionReads: true,
+        },
         JSON.parse(JSON.stringify(snap)),
       );
       try {

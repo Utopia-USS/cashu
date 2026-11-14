@@ -11,7 +11,7 @@ import { type Query, type QueryArgs, runQuery, watchQuery } from "../query.js";
 import { betterSqlite3Driver } from "../sql/better-sqlite3.js";
 import { run, type TestEnv, testEnv } from "../testing/commands.js";
 import { expectMonthQueriesEqual } from "../testing/months-oracle.js";
-import { openTestStore } from "../testing/store.js";
+import { EventFactory, openTestStore, testUlid } from "../testing/store.js";
 import { removeBankAccount } from "./account-removal.js";
 import {
   addCashExpense,
@@ -225,6 +225,64 @@ describe("companionMonth", () => {
       expect(() => month({ currency: "PLN", month: "2026-13", lang: "pl" })).toThrow(RangeError);
     } finally {
       store.close();
+    }
+  });
+
+  it("on the pay day counts the salary until one income of about its size is booked", () => {
+    // Dec-Feb: one 5000.00 salary on the 10th (the usual salary and pay day), groceries; the account
+    // covered from 12-01. The oracle is by hand: a usual month's income 5000.00, so the salary still
+    // expected is 5000.00 minus the month's income so far, or 0 once it counts as booked.
+    const salaryVault = (march: readonly Row[]) => {
+      const { store, env } = vault();
+      const history: Row[] = [
+        { date: "2025-12-01", amount: "-50.00", name: "BIEDRONKA", ref: "bied-first" },
+      ];
+      for (const [i, month] of ["2025-12", "2026-01", "2026-02"].entries()) {
+        history.push(
+          { date: `${month}-05`, amount: "-200.00", name: "BIEDRONKA", ref: `bied-${i}` },
+          { date: `${month}-10`, amount: "5000.00", name: "ACME SP Z O O", ref: `pay-${i}` },
+        );
+      }
+      ingest(store, env, "PLN", OWN_A, [...history, ...march]);
+      return store;
+    };
+    const expected = (store: Store, today: string): string => {
+      const read = store.read.bind(store);
+      const args = { today, currency: "PLN", lang: "en" } as const;
+      const m = companionMonth(read, args);
+      expect(m.usualPayDay).toBe(10);
+      expect(m.norm?.income.toString()).toBe("5000.00");
+      expectMonthQueriesEqual(store, [{ today, month: null, currency: "PLN" }], [today]);
+      return m.projection.incomeStillExpected.toString();
+    };
+    const cases: { march: Row[]; today: string; still: string }[] = [
+      // No income yet on the pay day: the whole salary is still expected.
+      { march: [], today: "2026-03-10", still: "5000.00" },
+      // Two smaller incomes (4000.00 together, over half a usual month's income): still expected.
+      {
+        march: [
+          { date: "2026-03-02", amount: "2000.00", name: "PARTNER", ref: "partner" },
+          { date: "2026-03-08", amount: "2000.00", name: "SIDE JOB", ref: "side" },
+        ],
+        today: "2026-03-10",
+        still: "1000.00",
+      },
+      // One income of about the salary's size (4500.00 >= 0.8 x 5000.00): booked.
+      {
+        march: [{ date: "2026-03-10", amount: "4500.00", name: "ACME SP Z O O", ref: "pay-mar" }],
+        today: "2026-03-10",
+        still: "0",
+      },
+      // The day after the pay day without a salary: no longer projected.
+      { march: [], today: "2026-03-11", still: "0" },
+    ];
+    for (const c of cases) {
+      const store = salaryVault(c.march);
+      try {
+        expect([c.today, expected(store, c.today)]).toEqual([c.today, c.still]);
+      } finally {
+        store.close();
+      }
     }
   });
 
@@ -752,6 +810,35 @@ describe("overview inputs", () => {
       ).toEqual([
         ["Synthetic 1234", "PLN", "1000.00"],
         ["Gotówka", "PLN", "-12.00"],
+      ]);
+
+      // Rule 5: a cash expense in EUR booked on the PLN pool (a foreign or malformed event; the
+      // command routes by currency) is its own EUR balance, never added to the PLN one. One in an
+      // earlier month (the month sums), one in this month (the day sums).
+      const pool = store.read<{ gid: string }>(
+        "SELECT gid FROM accounts WHERE type = 'cash' AND currency = 'PLN'",
+      )[0]?.gid;
+      if (pool === undefined) throw new Error("missing the synthetic cash pool");
+      const f = new EventFactory("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "01KE");
+      const foreign = (n: number, bookingDate: string, amount: string) =>
+        f.make("txn.cashExpenseAdded", testUlid("01KF", n), {
+          account: pool,
+          bookingDate,
+          amount,
+          currency: "EUR",
+          title: "Synthetic euro coffee",
+          category: "dining",
+        });
+      expect(
+        store.applyEnvelopes([foreign(1, "2026-02-10", "-3.00"), foreign(2, "2026-03-17", "-5.00")])
+          .applied,
+      ).toBe(2);
+      expect(
+        accountBalances(read, TODAY).map((b) => [b.name, b.currency, b.balance.toString()]),
+      ).toEqual([
+        ["Synthetic 1234", "PLN", "1000.00"],
+        ["Gotówka", "PLN", "-12.00"],
+        ["Gotówka", "EUR", "-8.00"],
       ]);
     } finally {
       store.close();

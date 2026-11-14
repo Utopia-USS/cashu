@@ -31,7 +31,7 @@ import { type FoldDeps, LazyRefs, MaterializerRunner } from "./engine/fold.js";
 import { conflictsKey, IdentityService } from "./engine/identity.js";
 import { deviceOf, EventLog, type LogRow, storedBody } from "./engine/log.js";
 import { type StateFlip, type SuppressionRules, updateSuppression } from "./engine/suppression.js";
-import type { FoldEvent, ViewSql } from "./engine/types.js";
+import type { Deriver, FoldEvent, ViewSql } from "./engine/types.js";
 import { type Decoded, decodeEnvelope, envelopeExtra } from "./envelope.js";
 import { detPartsOf } from "./events/v1/det-parts.js";
 import { fromWire } from "./events/v1/envelope.js";
@@ -46,7 +46,14 @@ import {
   rebuildView,
   type ViewUpgradePlan,
 } from "./rebuild.js";
-import { EventRegistry, ModuleRegistry, type StoreModule, type ViewDefs } from "./registry.js";
+import {
+  type ComponentDef,
+  componentKey,
+  EventRegistry,
+  ModuleRegistry,
+  type StoreModule,
+  type ViewDefs,
+} from "./registry.js";
 import { clearTableSql, createTableSql, inSnapshot, type TableDef } from "./sql/ddl.js";
 import type { SqlDriver, SqlValue } from "./sql/driver.js";
 import { SYSTEM_SCHEMA_VERSION, SYSTEM_TABLES } from "./sql/system.js";
@@ -70,6 +77,14 @@ export interface StoreOptions {
    * is checked against RFC 4231 at open and refused when it differs (crypto/hmac.ts).
    */
   readonly hmac?: HmacSha256;
+  /**
+   * Register the companion derivers (`Deriver.companion`: the month aggregates, recurring payments and
+   * the search index) whose tables only the phone's companion queries read. Default off: the desktop
+   * host, MCP and the CLI open without them and pay nothing for them. The public view (and its hash)
+   * is the same either way; a database opened with the other setting before gains or drops their
+   * tables on open (a partial upgrade, never a whole-view rebuild).
+   */
+  readonly companionReads?: boolean;
 }
 
 export interface WireBatch {
@@ -105,6 +120,18 @@ const INVALID_GID = "invalid-gid";
 const META_SYSTEM = "system_schema";
 /** Set while a store is open on the database; a database opened with it still set was not closed. */
 const META_SESSION = "open_session";
+
+/**
+ * A companion query (month aggregates, recurring payments, search) ran on a store opened without
+ * `StoreOptions.companionReads`: its tables are not derived there, so it can only fail, never read
+ * stale or empty tables as if they were the data.
+ */
+export class CompanionReadsOffError extends Error {
+  constructor(table: string) {
+    super(`${table} is a companion table: open the store with companionReads to read it`);
+    this.name = "CompanionReadsOffError";
+  }
+}
 
 /**
  * The view database is damaged (a torn write after a power loss on storage that ignores flushes, a
@@ -153,6 +180,8 @@ export class Store {
   readonly deps: FoldDeps;
   readonly #deriveDeps: DeriveDeps;
   readonly #onRebuild: RebuildListener | undefined;
+  /** Tables of the companion derivers this store does not run (`CompanionReadsOffError`). */
+  readonly #companionOff: ReadonlySet<string>;
   #lastRebuild: RebuildReport | null = null;
 
   private constructor(opts: StoreOptions, events: EventRegistry, modules: ModuleRegistry) {
@@ -162,6 +191,9 @@ export class Store {
     this.modules = modules;
     this.#suppression = events.suppressionRules();
     this.#onRebuild = opts.onRebuild;
+    this.#companionOff = new Set(
+      inactiveCompanions(opts).flatMap((d) => (d.tables ?? []).map((t) => t.name)),
+    );
     this.#stmts = new StatementCache(opts.driver);
     this.#log = new EventLog(opts.driver);
     this.#ids = new ViewIds(this.#stmts);
@@ -184,6 +216,7 @@ export class Store {
       ids: this.#ids,
       identity: this.#identity,
       contributions: modules.contributions,
+      companionReads: opts.companionReads === true,
     };
     for (const r of this.#runners) {
       for (const t of r.mat.handles) {
@@ -238,7 +271,7 @@ export class Store {
     if (opts.hmac !== undefined) assertHmacConformance(opts.hmac);
     const events = EventRegistry.v1();
     for (const m of opts.modules) for (const d of m.events ?? []) events.define(d);
-    const modules = new ModuleRegistry(opts.modules);
+    const modules = new ModuleRegistry(registeredModules(opts));
     const db = opts.driver;
     // The view is derived from the encrypted log, which is the durable copy: WAL with synchronous
     // NORMAL (no flush per commit) may lose the last committed applies on a power loss, never tear
@@ -296,13 +329,24 @@ export class Store {
     // a half-rebuilt view is never served (rebuild.ts "Upgrade rule").
     const storedDefs = meta(META_VIEW_DEFS);
     const knownTables = meta(META_VIEW_TABLES);
-    const plan = planViewUpgrade({
+    // A database last opened with the companion derivers, now opened without them: they wrote only
+    // their own tables, so they leave by dropping those (the planner would rebuild the whole view for
+    // a removed deriver whose writes it cannot tell apart).
+    const stored = withoutInactiveCompanions(
+      storedDefs === undefined ? undefined : (JSON.parse(storedDefs) as ViewDefs),
+      inactiveCompanions(opts),
+    );
+    const planned = planViewUpgrade({
       registry: modules,
-      stored: storedDefs === undefined ? undefined : (JSON.parse(storedDefs) as ViewDefs),
+      stored: stored.defs,
       previousTables: knownTables === undefined ? [] : (JSON.parse(knownTables) as string[]),
       eventsChanged,
       viewChanged,
     });
+    const plan: ViewUpgradePlan = {
+      ...planned,
+      drop: [...new Set([...planned.drop, ...stored.drop])],
+    };
     const byName = new Map(modules.viewTables().map((t) => [t.name, t]));
     const opened = db.transaction(() => {
       for (const name of plan.drop) db.exec(`DROP TABLE IF EXISTS ${name}`);
@@ -607,16 +651,21 @@ export class Store {
   /**
    * Build the tables snapshots leave out (`inSnapshot`: the virtual tables, FTS5 indexes, and the
    * deriver tables marked `snapshot: false`) again from the view: every deriver that owns one runs its
-   * `deriveAll` (one transaction), which rebuilds all of its tables. `importSnapshot` calls this after
-   * loading the rest. A table left out that no deriver owns could never be rebuilt: refused.
+   * `deriveAll` (one transaction), which rebuilds all of its tables: the companion derivers' tables
+   * among them (all `snapshot: false`), so a snapshot taken without `companionReads` imports into a
+   * store with it. `importSnapshot` calls this after loading the rest, `except` the derivers the open
+   * already rebuilt. A table left out that no deriver owns could never be rebuilt: refused.
    */
-  rederiveSnapshotOmitted(): void {
-    const owners = this.modules.derivers.filter((d) => d.tables?.some((t) => !inSnapshot(t)));
-    const owned = new Set(owners.flatMap((d) => (d.tables ?? []).map((t) => t.name)));
+  rederiveSnapshotOmitted(options: { readonly except?: ReadonlySet<string> } = {}): void {
+    const allOwners = this.modules.derivers.filter((d) => d.tables?.some((t) => !inSnapshot(t)));
+    // The orphan check runs against every owner: an excepted deriver (already rebuilt by the open)
+    // still owns its tables. `except` only limits which owners run their `deriveAll` here.
+    const owned = new Set(allOwners.flatMap((d) => (d.tables ?? []).map((t) => t.name)));
     const orphan = this.viewTables().find((t) => !inSnapshot(t) && !owned.has(t.name));
     if (orphan !== undefined) {
       throw new Error(`table ${orphan.name} is left out of snapshots but no deriver owns it`);
     }
+    const owners = allOwners.filter((d) => options.except?.has(d.id) !== true);
     if (owners.length === 0) return;
     const touched = new TouchedTables(this.#internal);
     this.driver.transaction(() =>
@@ -741,7 +790,17 @@ export class Store {
   /** Run a read-only query on the view. */
   read<R>(sql: string, ...params: SqlValue[]): R[] {
     if (!/^\s*(SELECT|WITH)\b/i.test(sql)) throw new Error("read() accepts SELECT / WITH only");
-    return this.#stmts.get(sql).all<R>(...params);
+    try {
+      return this.#stmts.get(sql).all<R>(...params);
+    } catch (e) {
+      const missing = /no such table: (?:main\.)?(\w+)/.exec(
+        e instanceof Error ? e.message : "",
+      )?.[1];
+      if (missing !== undefined && this.#companionOff.has(missing)) {
+        throw new CompanionReadsOffError(missing);
+      }
+      throw e;
+    }
   }
 
   /**
@@ -841,6 +900,59 @@ export class Store {
     this.detach();
     this.driver.close();
   }
+}
+
+/** The companion derivers of `opts.modules` this store does not register (`companionReads` off). */
+function inactiveCompanions(opts: StoreOptions): readonly Deriver[] {
+  if (opts.companionReads === true) return [];
+  return opts.modules.flatMap((m) => (m.derivers ?? []).filter((d) => d.companion === true));
+}
+
+/**
+ * The modules a store registers: the companion derivers only with `companionReads`. Every companion
+ * deriver must come after every other one (the order of `at`: the remaining derivers keep their
+ * recorded positions either way, so a toggle never rebuilds them), write only its own tables and keep
+ * them out of snapshots.
+ */
+function registeredModules(opts: StoreOptions): readonly StoreModule[] {
+  let companionSeen: string | undefined;
+  for (const d of opts.modules.flatMap((m) => m.derivers ?? [])) {
+    if (d.companion === true) {
+      if (d.writes.length > 0 || d.tables?.some((t) => inSnapshot(t))) {
+        throw new RangeError(
+          `companion deriver ${d.id} writes outside its own snapshot-less tables`,
+        );
+      }
+      companionSeen ??= d.id;
+    } else if (companionSeen !== undefined) {
+      throw new RangeError(`deriver ${d.id} comes after the companion deriver ${companionSeen}`);
+    }
+  }
+  if (opts.companionReads === true) return opts.modules;
+  return opts.modules.map((m) =>
+    m.derivers?.some((d) => d.companion === true)
+      ? { ...m, derivers: m.derivers.filter((d) => d.companion !== true) }
+      : m,
+  );
+}
+
+/**
+ * The recorded definitions without the components of the companion derivers this store does not run,
+ * and their recorded tables to drop.
+ */
+function withoutInactiveCompanions(
+  defs: ViewDefs | undefined,
+  inactive: readonly Deriver[],
+): { readonly defs: ViewDefs | undefined; readonly drop: readonly string[] } {
+  if (defs === undefined || inactive.length === 0) return { defs, drop: [] };
+  const keys = new Set(inactive.map((d) => componentKey("deriver", d.id)));
+  const kept: Record<string, ComponentDef> = {};
+  const drop: string[] = [];
+  for (const [key, def] of Object.entries(defs)) {
+    if (keys.has(key)) drop.push(...def.tables);
+    else kept[key] = def;
+  }
+  return { defs: kept, drop };
 }
 
 function safeJson(raw: unknown): string {

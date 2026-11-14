@@ -49,6 +49,7 @@ export interface PlannedOutflow {
   readonly account: UpcomingAccount | null;
 }
 
+/** One account's balance in one currency (a cash pool can have one per currency). */
 export interface AccountBalance {
   readonly id: string;
   readonly name: string;
@@ -150,15 +151,19 @@ export function upcomingCharges(input: UpcomingInput): Upcoming {
     (a, b) => codeOrder(a.when, b.when) || a.amount.compare(b.amount) || codeOrder(a.key, b.key),
   );
 
-  const balances = new Map(input.balances.map((b) => [b.id, b]));
+  // An account's balance per currency (a cash pool may hold more than one): a charge is covered only
+  // by the balance of its own currency, never by a sum across currencies.
+  const balanceKey = (id: string, currency: string) => `${id}\u0000${currency}`;
+  const balances = new Map(input.balances.map((b) => [balanceKey(b.id, b.currency), b]));
   const spent = new Map<string, Decimal>();
   const short = new Set<string>();
   const rows: UpcomingRow[] = pending.map((p) => {
-    const balance = p.account === null ? undefined : balances.get(p.account.id);
+    const balance =
+      p.account === null ? undefined : balances.get(balanceKey(p.account.id, p.currency));
     if (p.account === null || balance === undefined || balance.currency !== p.currency) {
       return { ...p, covered: null, shortfall: null };
     }
-    const id = p.account.id;
+    const id = balanceKey(p.account.id, p.currency);
     const cumulative = (spent.get(id) ?? ZERO).add(p.amount.copyAbs());
     spent.set(id, cumulative);
     if (!short.has(id) && cumulative.lte(balance.balance)) {

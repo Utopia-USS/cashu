@@ -48,6 +48,17 @@ export function companionMonthFromBook(
   );
   const normToDate = budget.usualToDate(book, currency, ref);
   const usualPayDay = budget.usualPayDay(book, currency, ref);
+  // The salary input from the raw rows: the book twin of the usual salary, and the largest flow
+  // income of the month through `ref` counted here over every row (not over the day groups).
+  const usualSalary = budget.usualSalary(book, currency, ref);
+  const ownForSalary = budget.bookOwnIbans(book);
+  let largestSoFar = D("0");
+  for (const t of book.transactions) {
+    if (t.currency !== currency || t.bookingDate.slice(0, 7) !== label || t.bookingDate > ref) {
+      continue;
+    }
+    if (t.amount.gt(largestSoFar) && budget.isFlow(t, ownForSalary)) largestSoFar = t.amount;
+  }
   const billsDue = extra.billsDue ?? D("0.00");
   const projection = budget.monthProjection({
     today: ref,
@@ -58,6 +69,7 @@ export function companionMonthFromBook(
     norm,
     normToDate,
     usualPayDay,
+    salary: usualSalary === null ? null : { usual: usualSalary, largestSoFar },
   });
   const usual = budget.categoryNorm(book, currency, ref);
   const categories = budget

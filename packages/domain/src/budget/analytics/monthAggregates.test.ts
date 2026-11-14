@@ -22,14 +22,22 @@ import {
   categoryNormFromRows,
   coverageStartFromRows,
   currenciesFromRows,
+  largestIncomeSoFarFromRows,
   type MonthAggregates,
   type MonthCatRow,
   monthlyCashflowFromRows,
   spendingByCategoryFromRows,
   usualPayDayFromRows,
+  usualSalaryFromRows,
   usualToDateFromRows,
 } from "./monthAggregates.js";
-import { categoryNorm, usualPayDay, usualToDate } from "./projection.js";
+import {
+  categoryNorm,
+  largestIncomeSoFar,
+  usualPayDay,
+  usualSalary,
+  usualToDate,
+} from "./projection.js";
 import { spendingByCategory } from "./spending.js";
 import { seedDemo } from "./testing/seedDemo.js";
 
@@ -184,9 +192,18 @@ function expectEquivalent(book: BudgetBook): void {
     expect(monthlyCashflowFromRows(agg.cat, cur)).toEqual(monthlyCashflow(book, cur));
     expect(coverageStartFromRows(agg.firsts, cur)).toEqual(cashflowCoverageStart(book, cur));
     for (const today of days(book)) {
+      expect(decimalKey(largestIncomeSoFarFromRows(agg.day, cur, today))).toBe(
+        decimalKey(largestIncomeSoFar(book, cur, today)),
+      );
       for (const n of [6, 2]) {
         expect(usualToDateFromRows(agg, cur, today, n)).toEqual(usualToDate(book, cur, today, n));
         expect(usualPayDayFromRows(agg, cur, today, n)).toEqual(usualPayDay(book, cur, today, n));
+        // By value: the day groups keep the largest income's value only (`9000` = `9000.00`).
+        const salary = usualSalary(book, cur, today, n);
+        const salaryRows = usualSalaryFromRows(agg, cur, today, n);
+        expect(salaryRows === null ? null : decimalKey(salaryRows)).toBe(
+          salary === null ? null : decimalKey(salary),
+        );
         expect(categoryNormFromRows(agg, cur, today, n)).toEqual(categoryNorm(book, cur, today, n));
       }
     }

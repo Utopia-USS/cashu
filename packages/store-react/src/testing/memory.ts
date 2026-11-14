@@ -24,6 +24,7 @@ function openVault(vault: string, profileName: string): VaultHandle {
     vault,
     salt: vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => i + vault.charCodeAt(0))),
     modules: builtinModules(),
+    companionReads: true, // the phone's store (openVaultStore)
   });
   let now = BASE_WALL;
   const clock = { now: () => (now += 1) };

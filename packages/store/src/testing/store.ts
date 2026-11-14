@@ -22,7 +22,10 @@ export function memoryDriver(): SqlDriver {
 }
 
 /** Images of an empty test vault database (opened once by `Store.open`), one per module list. */
-const emptyVaults = new Map<string, { modules: readonly StoreModule[]; image: Buffer }>();
+const emptyVaults = new Map<
+  string,
+  { modules: readonly StoreModule[]; companionReads: boolean; image: Buffer }
+>();
 
 /**
  * A new in-memory copy of an empty TEST_VAULT database that `Store.open` already initialised with
@@ -30,8 +33,8 @@ const emptyVaults = new Map<string, { modules: readonly StoreModule[]; image: Bu
  * app start takes) instead of creating ~70 tables each time. The new-database path is covered by
  * the tests that pass `memoryDriver()`.
  */
-function emptyVaultDriver(modules: readonly StoreModule[]): SqlDriver {
-  const key = modules.map((m) => m.id).join(",");
+function emptyVaultDriver(modules: readonly StoreModule[], companionReads: boolean): SqlDriver {
+  const key = `${modules.map((m) => m.id).join(",")}|${String(companionReads)}`;
   let t = emptyVaults.get(key);
   if (t === undefined || t.modules.some((m, i) => m !== modules[i])) {
     const db = new Database(":memory:");
@@ -40,8 +43,9 @@ function emptyVaultDriver(modules: readonly StoreModule[]): SqlDriver {
       vault: TEST_VAULT,
       salt: TEST_SALT,
       modules,
+      companionReads,
     }).detach();
-    t = { modules, image: db.serialize() };
+    t = { modules, companionReads, image: db.serialize() };
     db.close();
     emptyVaults.set(key, t);
   }
@@ -49,15 +53,40 @@ function emptyVaultDriver(modules: readonly StoreModule[]): SqlDriver {
   return betterSqlite3Driver(new Database(t.image));
 }
 
+/** The `companionReads` of an `openTestStore` that does not pass it (see `inDesktopConfiguration`). */
+let defaultCompanionReads = true;
+
+/**
+ * Run `fn` with `openTestStore` defaulting to the desktop's configuration (`companionReads: false`, the
+ * one holding the owner's real data), so a shared suite (the convergence property) runs there too.
+ * Synchronous only; the default is restored after `fn`, also when it throws.
+ */
+export function inDesktopConfiguration<T>(fn: () => T): T {
+  const before = defaultCompanionReads;
+  defaultCompanionReads = false;
+  try {
+    return fn();
+  } finally {
+    defaultCompanionReads = before;
+  }
+}
+
+/**
+ * A test store. `companionReads` defaults to ON here (unlike `Store.open`): most store tests read or
+ * check the companion derivers too; a test of the desktop's store passes `false` (or runs inside
+ * `inDesktopConfiguration`).
+ */
 export function openTestStore(
-  options: { driver?: SqlDriver; modules?: readonly StoreModule[] } = {},
+  options: { driver?: SqlDriver; modules?: readonly StoreModule[]; companionReads?: boolean } = {},
 ): Store {
   const modules = options.modules ?? builtinModules();
+  const companionReads = options.companionReads ?? defaultCompanionReads;
   return Store.open({
-    driver: options.driver ?? emptyVaultDriver(modules),
+    driver: options.driver ?? emptyVaultDriver(modules, companionReads),
     vault: TEST_VAULT,
     salt: TEST_SALT,
     modules,
+    companionReads,
   });
 }
 

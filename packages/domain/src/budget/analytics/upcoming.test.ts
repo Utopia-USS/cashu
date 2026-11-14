@@ -175,6 +175,27 @@ describe("upcomingCharges", () => {
     expect(u.uncovered).toHaveLength(0);
   });
 
+  it("an account with a balance per currency covers each charge from its own currency only", () => {
+    // a cash pool holding 50 PLN and 20 EUR: 40 PLN then 30 PLN overruns the PLN side (a sum
+    // across currencies, 70, would cover it), 15 EUR is covered by the EUR side alone
+    const u = upcomingCharges(
+      input({
+        planned: [
+          plan("pln-1", "2026-11-12", "40"),
+          plan("eur-1", "2026-11-13", "15", { currency: "EUR" }),
+          plan("pln-2", "2026-11-14", "30"),
+        ],
+        balances: [bal("a1", "50"), bal("a1", "20", "EUR")],
+      }),
+    );
+    expect(u.rows.map((r) => [r.key, r.covered])).toEqual([
+      ["pln-1", true],
+      ["eur-1", true],
+      ["pln-2", false],
+    ]);
+    eq(u.rows[2]?.shortfall, "20");
+  });
+
   it("totals per currency, never summed across", () => {
     const u = upcomingCharges(
       input({

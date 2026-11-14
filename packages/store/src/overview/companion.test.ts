@@ -1,7 +1,7 @@
 // The phone companion's cross-module reads over real in-memory vaults: upcoming charges against the
 // paying accounts, the month with its bills, the attention list and the month close with a synced
 // strategy. Every row is invented.
-import { D, parseDateTime } from "@cashu/domain";
+import { addDays, D, parseDateTime } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
 import { strategyTemplate } from "@cashu/domain/investments/strategy";
 import { describe, expect, it } from "vitest";
@@ -12,7 +12,11 @@ import { saveStrategyVersion } from "../investments/commands/strategy.js";
 import { applyRaw, raw, rawGid } from "../investments/commands/testing/fixtures.js";
 import { strategySnapshot } from "../investments/desktop/sources.js";
 import { signalsOwnerCommands } from "../investments/desktop-signals/commands.js";
-import { movingPortfolio } from "../investments/research/testing/fixtures.js";
+import {
+  TODAY as INV_TODAY,
+  movingPortfolio,
+  putBars,
+} from "../investments/research/testing/fixtures.js";
 import { addLoan } from "../loans/commands.js";
 import type { Store } from "../materialize.js";
 import { type Read, runQuery } from "../query.js";
@@ -423,6 +427,136 @@ describe("core.attention positions (tier 2)", () => {
     } finally {
       v.store.close();
     }
+  });
+
+  // S18: a holding's week move in its own weekly standard deviations (designer item 4b). ABC (PLN,
+  // ~5 % of the portfolio) gets a year of closes that step 0.4 % up for a week and back down for a
+  // week, so every week moves 0.4 % (its weekly sigma) while most days do not move (a daily sigma
+  // would be far smaller, about 0.15 %: a wrong scale shows); `fall` makes its last five sessions lose 1.5 % each (a -7 % week, every day
+  // under the 5 % day rule). No alert, no verdict: only the week rule can rank it.
+  /**
+   * ABC's close on `day`: 50 for a week, 0.4 % higher the next week, and so on; with `fall` (the
+   * per-session factor) its last five sessions each multiply it by `fall` once more.
+   */
+  function abcClose(day: string, fall: number | null): string {
+    const k = Math.round((Date.parse(day) - Date.parse(INV_TODAY)) / 86_400_000);
+    const swing = ((k % 14) + 14) % 14 < 7 ? 1 : 1.004;
+    const fallFrom = addDays(INV_TODAY, -4);
+    const falls =
+      fall !== null && day >= fallFrom
+        ? 5 - (Date.parse(INV_TODAY) - Date.parse(day)) / 86_400_000
+        : 0;
+    return (50 * swing * (fall ?? 1) ** falls).toFixed(4);
+  }
+
+  /**
+   * The oracle of ABC's week move in weekly sigmas, written from the definition (not the code under
+   * test): the closes of the year up to today (one per calendar day here), every close's return over
+   * the close 7 days before it, their sample standard deviation, and this week's return over it.
+   */
+  function abcWeekZ(fall: number | null): number {
+    const closes: number[] = [];
+    for (let i = 365; i >= 0; i--) closes.push(Number(abcClose(addDays(INV_TODAY, -i), fall)));
+    const returns = closes.slice(7).map((c, i) => c / (closes[i] as number) - 1);
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const sd = Math.sqrt(returns.reduce((a, b) => a + (b - mean) ** 2, 0) / (returns.length - 1));
+    return (returns.at(-1) as number) / sd;
+  }
+
+  /** The per-session fall factor whose week is `z` weekly sigmas (bisection over the oracle). */
+  function fallForZ(z: number): number {
+    let lo = 0.98; // a deep fall: |z| well over 2
+    let hi = 0.99999; // almost none: |z| near 0
+    for (let n = 0; n < 60; n++) {
+      const mid = (lo + hi) / 2;
+      if (Math.abs(abcWeekZ(mid)) > z) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  function weekly(fall: boolean | number) {
+    const fixture = movingPortfolio();
+    const { v, cache } = fixture;
+    const factor = fall === false ? null : fall === true ? 0.985 : fall;
+    v.value(createProfile, {
+      slug: "synthetic-weekly",
+      name: "Synthetic weekly",
+      baseCurrency: "PLN",
+      modules: ["budget", "investments"],
+    });
+    const template = strategyTemplate("passive_etf");
+    if (!template) throw new Error("missing passive_etf template");
+    putBars(cache, "ABC.WA", INV_TODAY, 400, (day) => abcClose(day, factor), "PLN");
+    const changes = { subscribe: () => () => {} };
+    const sources = {
+      strategy: {
+        changes,
+        current: (read: Read) =>
+          strategySnapshot(read, {
+            vault: v.store.vault,
+            generation: "test",
+            revision: "one",
+            files: { yaml: template.yaml, md: template.markdown, readError: null },
+          }),
+      },
+      market: { changes, current: () => ({ prices: cache }), newestRateDate: () => null },
+      clock: {
+        changes,
+        current: () => ({ now: parseDateTime(INV_NOW), timeZone: "Europe/Warsaw" }),
+      },
+    };
+    return { ...fixture, sources };
+  }
+
+  it("ranks a holding whose week moved 2+ weekly sigmas though no day moved 5 %", () => {
+    const { v, abc, sources } = weekly(true);
+    try {
+      const attention = runQuery(v.store, companionQueries({}, sources).attention, args).value;
+      const row = attention.rows.find((r) => r.tier === 2 && r.subject.id === abc);
+      if (row?.reason.kind !== "position") throw new Error("expected the ABC position row");
+      expect(row.reason).toMatchObject({ alertFired: false, researchVerdict: null });
+      // the day fell under 2 %: the 5 % day rule alone would not rank it
+      expect(row.reason.dayMove).toBeLessThan(0);
+      expect(row.reason.dayMove).toBeGreaterThan(-0.05);
+      expect(attention.positions[abc]?.week).toBeLessThan(-0.06);
+    } finally {
+      v.store.close();
+    }
+  });
+
+  it("does not rank the same holding in a usual week", () => {
+    const { v, abc, sources } = weekly(false);
+    try {
+      const attention = runQuery(v.store, companionQueries({}, sources).attention, args).value;
+      expect(attention.rows.some((r) => r.subject.id === abc)).toBe(false);
+      expect(attention.positions[abc]).toBeUndefined();
+    } finally {
+      v.store.close();
+    }
+  });
+
+  it("pins the 2-sigma boundary: a week just over 2 weekly sigmas ranks, just under does not", () => {
+    const ranked = (fall: number) => {
+      const { v, abc, sources } = weekly(fall);
+      try {
+        const attention = runQuery(v.store, companionQueries({}, sources).attention, args).value;
+        return attention.rows.some((r) => r.subject.id === abc);
+      } finally {
+        v.store.close();
+      }
+    };
+    const over = fallForZ(2.05);
+    const under = fallForZ(1.95);
+    // the oracle's own check: the two weeks sit on either side of 2 sigma, both a fall under 1 %
+    expect(Math.abs(abcWeekZ(over))).toBeGreaterThan(2.02);
+    expect(Math.abs(abcWeekZ(under))).toBeLessThan(1.98);
+    expect(Math.abs(abcWeekZ(under))).toBeGreaterThan(1.9);
+    expect(
+      Number(abcClose(INV_TODAY, over)) / Number(abcClose(addDays(INV_TODAY, -7), over)),
+    ).toBeGreaterThan(0.99);
+    expect(ranked(over)).toBe(true);
+    expect(ranked(under)).toBe(false);
   });
 
   it("without the investments sources only the fired alert ranks (no weights)", () => {

@@ -25,7 +25,7 @@ import {
 } from "@cashu/domain/core/attention";
 import { asProfileId } from "@cashu/domain/investments";
 import { strategyStatus, usableConfig } from "@cashu/domain/investments/strategy";
-import { hiddenFromOwner } from "@cashu/domain/investments/views";
+import { hiddenFromOwner, positionsView, reviewWeeklySigma } from "@cashu/domain/investments/views";
 import { budgetCliCushionEnv, budgetCliSettings } from "../budget/cli-queries.js";
 import {
   accountBalances,
@@ -54,7 +54,7 @@ import { openSignals } from "../investments/queries/signals.js";
 import { latestStrategyVersion } from "../investments/queries/strategy.js";
 import { notes } from "../investments/research/queries.js";
 import { eventInstant } from "../investments/research/rows.js";
-import { readPositions } from "../investments/views/positions.js";
+import { portfolioViewInputs } from "../investments/views/portfolio.js";
 import { mcpLoanRows } from "../loans/mcp-queries.js";
 import { loanPayingAccount } from "../loans/screen.js";
 import { type ChangeSource, defineQuery, type Query, type Read } from "../query.js";
@@ -222,18 +222,45 @@ const RESEARCH_DAYS = 14;
 const DAY_MS = 86_400_000;
 const VERDICT_RANK: Readonly<Record<string, number>> = { invalidates: 2, weakens: 1 };
 
-/** The day's and the week's move from a position's recent closes (oldest first); null when too short. */
-function movesOf(closes: readonly { readonly date: string; readonly close: Decimal }[]): {
+/** How far back the weekly sigma of a holding looks (the review deck's year of points). */
+const SIGMA_DAYS = 365;
+
+/**
+ * The day's and the week's move from a position's recent closes (oldest first), and the week's move
+ * in the holding's own weekly standard deviations over the last year of its closes (`history`, oldest
+ * first): the review deck's `reviewWeeklySigma` over the closes as a return series (close / first
+ * close - 1, so a point's weekly return is the ratio of the closes a week apart). Null when too short
+ * (the sigma needs about 8 weeks of daily closes).
+ */
+function movesOf(
+  closes: readonly { readonly date: string; readonly close: Decimal }[],
+  history: readonly { readonly date: string; readonly close: Decimal }[],
+): {
   readonly day: number | null;
   readonly week: number | null;
+  readonly weekSigma: number | null;
 } {
   const last = closes.at(-1);
-  if (last === undefined || last.close.isZero()) return { day: null, week: null };
+  if (last === undefined || last.close.isZero()) return { day: null, week: null, weekSigma: null };
   const change = (from: Decimal | undefined) =>
     from === undefined || from.isZero() ? null : last.close.div(from).toFloat() - 1;
   const weekAgo = addDays(last.date as IsoDate, -7);
   const base = closes.filter((c) => c.date <= weekAgo).at(-1);
-  return { day: change(closes.at(-2)?.close), week: change(base?.close) };
+  const week = change(base?.close);
+  const since = addDays(last.date as IsoDate, -SIGMA_DAYS);
+  const year = history.filter((c) => c.date >= since && c.date <= last.date && !c.close.isZero());
+  const first = year[0]?.close;
+  const sigma =
+    first === undefined
+      ? null
+      : reviewWeeklySigma(
+          year.map((c) => ({ date: c.date, twr: c.close.div(first).toFloat() - 1 })),
+        );
+  return {
+    day: change(closes.at(-2)?.close),
+    week,
+    weekSigma: week === null || sigma === null ? null : week / sigma,
+  };
 }
 
 /**
@@ -293,12 +320,19 @@ function companionPositions(
   // Weights and moves of the holdings, when the strategy and the market are bound.
   const held = new Map<
     string,
-    { name: string; weight: number; day: number | null; week: number | null }
+    {
+      name: string;
+      weight: number;
+      day: number | null;
+      week: number | null;
+      weekSigma: number | null;
+    }
   >();
   const strategy = investments.strategy?.current(read);
   const market = investments.market?.current(read);
   if (strategy?.status === "current" && market) {
-    const positions = readPositions(read, {
+    // `readPositions`, keeping the inputs: each holding's whole price history is in them (its sigma).
+    const input = portfolioViewInputs(read, {
       ...market,
       vault: asProfileId(strategy.vault),
       asOf: args.today,
@@ -312,9 +346,10 @@ function companionPositions(
       forOwner: true,
       accounts: null,
     });
-    if (positions.ok)
-      for (const row of positions.value.positions) {
-        const moves = movesOf(row.closes_30d);
+    if (input.ok)
+      for (const row of positionsView(input.value).positions) {
+        const history = input.value.state.historyBars.get(row.instrument.id) ?? [];
+        const moves = movesOf(row.closes_30d, history);
         held.set(row.instrument.id, {
           name: row.instrument.name || row.instrument.label,
           weight: row.weight ?? 0,
@@ -341,7 +376,7 @@ function companionPositions(
       weight: position?.weight ?? 0,
       alert: alert === undefined ? null : { severity: "action", title: alert.title },
       research: verdict === undefined ? null : { verdict },
-      move: position === undefined ? null : { day: position.day, weekSigma: null },
+      move: position === undefined ? null : { day: position.day, weekSigma: position.weekSigma },
     });
     details[id] = { signal: alert?.gid ?? null, week: position?.week ?? null };
   }
