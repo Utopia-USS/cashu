@@ -36,6 +36,12 @@
         {
           "faceIDPermission": "cashU uses Face ID to unlock the app."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "cashU uses the camera to scan the pairing code shown on your Mac."
+        }
       ]
     ],
     "experiments": {

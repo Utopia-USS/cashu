@@ -27,6 +27,7 @@ it("updates exact mobile net worth from a committed quote without appending a va
     vault: "de000000000000000000000000000041",
     salt: vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => (i * 7 + 3) & 0xff)),
     modules: builtinModules(),
+    companionReads: true, // the phone's store (openVaultStore)
   });
   try {
     const device = "d2000000000000000000000000000077";

@@ -122,6 +122,49 @@ describe("wipe", () => {
     off();
     expect(beforeWipeTasks()).not.toContain(task);
   });
+
+  it("settles a first before-wipe task before any other starts, whatever the registration order", async () => {
+    const log: string[] = [];
+    let release: () => void = () => undefined;
+    const offLater = onBeforeWipe(() => void log.push("forget"));
+    const offFirst = onBeforeWipe(
+      () =>
+        new Promise<void>((resolve) => {
+          log.push("quiesce:start");
+          release = () => {
+            log.push("quiesce:end");
+            resolve();
+          };
+        }),
+      { first: true },
+    );
+    const { steps } = recorder();
+    const wipe = wipeDevice({ ...steps, beforeWipe: beforeWipeTasks() });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(log).toEqual(["quiesce:start"]);
+    release();
+    expect(await wipe).toBe("ready");
+    expect(log).toEqual(["quiesce:start", "quiesce:end", "forget"]);
+    offFirst();
+    offLater();
+    expect(beforeWipeTasks()).toEqual([]);
+  });
+
+  it("goes on with the other tasks when a first task fails", async () => {
+    const log: string[] = [];
+    const { steps } = recorder();
+    const first = Object.assign(
+      () => {
+        log.push("first");
+        throw new Error("synthetic quiesce failure");
+      },
+      { first: true as const },
+    );
+    expect(await wipeDevice({ ...steps, beforeWipe: [() => void log.push("later"), first] })).toBe(
+      "ready",
+    );
+    expect(log).toEqual(["first", "later"]);
+  });
 });
 
 describe("root phases", () => {

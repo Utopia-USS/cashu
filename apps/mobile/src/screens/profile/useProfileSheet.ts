@@ -1,12 +1,15 @@
 // The profile sheet's hook: this device's profiles (from the services, read at boot), the current one,
-// incognito and what waits for the owner on the Mac. Switching runs the device command and closes.
+// incognito and what waits for the owner on the Mac. Switching goes through the app's one profile switch
+// (`useSwitchProfile`), which dismisses this sheet with every other one before the vault changes: no
+// close after it (a `router.back()` then would pop a route of the new profile's tabs); a switch that
+// fails says so in an alert, since the sheet is already gone.
 // "Remove this phone" asks first (a native alert), then runs the wipe without navigating: the wipe
 // unmounts the app's tree (the sheet with it) and remounts it on Today, so a close here would reach the
 // navigator only after it is gone (expo-router drains navigation after the next commit). The app
 // lock's switch checks the owner (Face ID / Touch ID / passcode) before it writes either way: the phone
 // must prove it can unlock before it locks, and only its owner turns the lock off.
 import { pendingProposalsCount } from "@cashu/store/core/profile";
-import { setCurrentVault, setDeviceLock } from "@cashu/store/device";
+import { setDeviceLock } from "@cashu/store/device";
 import { useCommand, useProfile, useQuery } from "@cashu/store-react";
 import Constants from "expo-constants";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
@@ -19,6 +22,7 @@ import { initialOf } from "../../shell/tabs";
 import { useIncognito } from "../../shell/useAppEnv";
 import { lockPrompt, useLockEnabled } from "../../shell/useAppLock";
 import { S } from "./Profile.strings";
+import { useSwitchProfile } from "./switchProfile";
 
 export type ProfileSheetState = {
   kind: "ready";
@@ -79,7 +83,7 @@ export function useProfileSheet(args: {
   const current = useProfile();
   const pending = useQuery(pendingProposalsCount);
   const incognito = useIncognito();
-  const switchVault = useCommand(setCurrentVault);
+  const switchProfile = useSwitchProfile();
   const [switchFailed, setSwitchFailed] = useState(false);
   const lock = useLockSwitch();
   const [notificationsOff, setNotificationsOff] = useState(false);
@@ -104,7 +108,7 @@ export function useProfileSheet(args: {
       }),
     })),
     incognito: incognito.on,
-    isSwitching: switchVault.isPending,
+    isSwitching: switchProfile.isPending,
     switchFailed,
     waiting: pending > 0 ? { kind: "proposals", count: pending } : { kind: "nothing" },
     notificationsOff,
@@ -116,13 +120,13 @@ export function useProfileSheet(args: {
     onProfilePicked: (vault) => {
       if (vault === current) return args.close();
       setSwitchFailed(false);
-      void switchVault.run({ vault }).then(
-        (outcome) => {
-          if (outcome.kind === "completed") args.close();
-          else setSwitchFailed(true);
-        },
-        () => setSwitchFailed(true),
-      );
+      const failed = () => {
+        setSwitchFailed(true);
+        Alert.alert(S.couldNotSwitch);
+      };
+      void switchProfile.run(vault).then((outcome) => {
+        if (outcome.kind !== "completed") failed();
+      }, failed);
     },
     onIncognitoToggle: incognito.toggle,
     lock: lock.state,

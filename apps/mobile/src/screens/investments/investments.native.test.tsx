@@ -18,6 +18,7 @@ import {
   type InvestmentsStoreOptions,
   investmentsStore,
 } from "../testing/investmentsStore";
+import { dayRange } from "./format";
 import { InvestmentsView } from "./InvestmentsView";
 import investmentsMeta, * as investmentsStories from "./InvestmentsView.stories";
 import type {
@@ -41,8 +42,9 @@ import { useInvestmentsScreen } from "./useInvestmentsScreen";
 
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
 
-// Each test builds the synthetic vault through the real commands (about a quarter second alone, more
-// under a full parallel run): the default 5 s can run out on a loaded machine.
+// The kit builds the synthetic vault through the real commands once per file and option set, and each
+// test gets its own copy; the first build is slow under a full parallel run, so the default 5 s can run
+// out on a loaded machine.
 jest.setTimeout(30_000);
 
 const NOT_DATE = [
@@ -178,7 +180,11 @@ describe("the Investments shell", () => {
     expect(seen.shell?.review).toMatchObject({ kind: "due", title: "Weekly review" });
     const review = seen.shell?.review;
     if (review?.kind !== "due") throw new Error("review not due");
-    expect(review.meta).toMatch(/^9-15 Nov · 6 cards · due Sunday$/);
+    // The range comes from the runtime's Intl.formatRange, whose spacing differs by ICU version
+    // ("9-15 Nov" / "9 - 15 Nov"): expect what the same formatter gives here.
+    expect(review.meta).toBe(
+      `${dayRange("2026-11-09", "2026-11-15", "en-GB")} · 6 cards · due Sunday`,
+    );
     expect(review.teaser).toContain("one decision waiting");
     expect(review.teaser).toContain("one idea outside the portfolio");
     expect(seen.shell?.signalsCount).toBe(1);

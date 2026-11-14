@@ -5,6 +5,10 @@ export const S = catalog({
   byCategory: { pl: "Wydatki według kategorii", en: "Spending by category" },
   period: { pl: "Okres", en: "Period" },
   currency: { pl: "Waluta", en: "Currency" },
+  currencyChip: {
+    pl: (current: string, next: string) => `Waluta: ${current}. Zmień na ${next}`,
+    en: (current: string, next: string) => `Currency: ${current}. Switch to ${next}`,
+  },
   month: { pl: "Miesiąc", en: "Month" },
   quarter: { pl: "Kwartał", en: "Quarter" },
   year: { pl: "Rok", en: "Year" },

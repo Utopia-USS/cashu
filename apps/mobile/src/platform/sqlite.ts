@@ -1,15 +1,17 @@
 // The stores' SQLite on the phone: expo-sqlite's synchronous API behind the store's expo adapter, so
 // the store engine runs in-process on the JS thread (cashu-ts-architecture layers.md, "Which process
-// runs what"). One database file per vault plus the device store and the market price cache, in
-// expo-sqlite's directory under the app's private documents (`<Documents>/SQLite/`). Every file is
-// encrypted at rest with SQLCipher under the one device key (`dbKey.ts`), which is readable after the
-// first unlock like the KeyStore's Keychain item, so background work can open the files while the phone
-// is locked; iOS data protection (complete until first user authentication) sits under that.
+// runs what"). One view database and one private log database per vault, the device store and the
+// market price cache, in expo-sqlite's directory under the app's private documents
+// (`<Documents>/SQLite/`). Every file is encrypted at rest with SQLCipher under the one device key
+// (`dbKey.ts`), which is readable after the first unlock like the KeyStore's Keychain item, so
+// background work can open the files while the phone is locked; iOS data protection (complete until
+// first user authentication) sits under that.
 
 import { DeviceStore } from "@cashu/store/device";
 import type { VaultSalt } from "@cashu/store/gid";
 import { SqlPriceCache } from "@cashu/store/investments/local";
 import { builtinModules, expoSqliteDriver, Store } from "@cashu/store/runtime";
+import type { SqlDriver } from "@cashu/store/sync";
 import { getRandomBytes } from "expo-crypto";
 import { Directory, File, Paths } from "expo-file-system";
 import * as SecureStore from "expo-secure-store";
@@ -55,6 +57,8 @@ export function openVaultStore(vault: string, salt: VaultSalt, keyHex: string): 
     vault,
     salt,
     modules: builtinModules(),
+    // the phone reads the companion tables (month aggregates, recurring payments, search)
+    companionReads: true,
   });
 }
 
@@ -71,6 +75,34 @@ export function recreateVaultStore(
   store.close();
   deleteDatabaseSync(vaultFile(vault));
   return openVaultStore(vault, salt, keyHex);
+}
+
+const logFile = (vault: string) => `log-${vault}.db`;
+
+/**
+ * Open (or create) the private log database of `vault` (`log-<vault>.db`): the sync engine's own log,
+ * the command journal, key provenance and the pairing bootstrap. WAL with synchronous FULL: unlike the
+ * view, a commit here must survive a power loss (the view can be rebuilt from it, not the reverse).
+ */
+export function openVaultLog(vault: string, keyHex: string): SqlDriver {
+  const driver = expoSqliteDriver(openEncrypted(logFile(vault), keyHex));
+  try {
+    driver.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL");
+  } catch (error) {
+    driver.close();
+    throw error;
+  }
+  return driver;
+}
+
+/**
+ * Close `driver` (the log of `vault`), delete its file with the sidecars and open a fresh empty one.
+ * TRANSITIONAL(S44): only for a half-built companion demo vault.
+ */
+export function recreateVaultLog(driver: SqlDriver, vault: string, keyHex: string): SqlDriver {
+  driver.close();
+  deleteDatabaseSync(logFile(vault));
+  return openVaultLog(vault, keyHex);
 }
 
 /** Open (or create) the device-local store (current profile, device settings; never synced). */
@@ -100,4 +132,12 @@ export function deleteDatabaseFiles(): string[] {
   const names = databaseFiles();
   for (const name of names) deleteDatabaseSync(name);
   return names;
+}
+
+/**
+ * Delete one database file (`vault-<id>.db`, `log-<id>.db`, `device.db`, `market.db`) with its sidecars:
+ * a per-file key mismatch, a half-built demo vault. The file must be closed first.
+ */
+export function deleteDatabaseFile(name: string): void {
+  deleteDatabaseSync(name);
 }

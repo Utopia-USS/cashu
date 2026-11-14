@@ -5,7 +5,7 @@ import { D } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
 import { setLanguageForTests } from "@cashu/i18n";
 import { importStatement, setLlmCategories } from "@cashu/store";
-import { ProfileProvider, StoreProvider } from "@cashu/store-react";
+import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import type { VaultHandle } from "@cashu/store-react/local";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
@@ -18,6 +18,8 @@ import {
   type MoneyStore,
   moneyStore,
 } from "../testing/moneyStore";
+import { unknownOnce } from "../testing/unknownOnce";
+import { S } from "./Payment.strings";
 import { PaymentSheetView } from "./PaymentSheetView";
 import paymentMeta, {
   CategorizedRuleFixed,
@@ -140,7 +142,13 @@ function PaymentSheet({
   gid: string;
   observed: (props: PaymentSheetState) => void;
 }) {
-  const props = usePaymentSheet({ gid, lang: "en", today: "2026-11-12", close: closed });
+  const props = usePaymentSheet({
+    vault: useProfile(),
+    gid,
+    lang: "en",
+    today: "2026-11-12",
+    close: closed,
+  });
   useEffect(() => observed(props));
   return <PaymentSheetView {...props} />;
 }
@@ -269,4 +277,70 @@ it.each(stories)("renders the %s story", async (_name, args) => {
     </UiEnvProvider>,
   );
   expect(screen.root).toBeOnTheScreen();
+});
+
+describe("a category write whose outcome was unknown (K2)", () => {
+  async function showUnknownOnce(ref: string) {
+    const fixture = moneyStore();
+    closers.push(() => fixture.close());
+    seed(fixture);
+    const durable = unknownOnce(fixture);
+    closers.push(() => durable.client.dispose());
+    let props: PaymentSheetState | undefined;
+    await render(
+      <ServicesProvider services={durable.services}>
+        <StoreProvider client={durable.client}>
+          <ProfileProvider>
+            <UiEnvProvider locale="en-US" privacy={false}>
+              <PaymentSheet
+                gid={gidOf(fixture, ref)}
+                observed={(p) => {
+                  props = p;
+                }}
+              />
+            </UiEnvProvider>
+          </ProfileProvider>
+        </StoreProvider>
+      </ServicesProvider>,
+    );
+    const ready = () => {
+      if (props?.kind !== "ready") throw new Error("the payment sheet is not ready");
+      return props;
+    };
+    const category = () =>
+      fixture.a.store.read("SELECT category FROM transactions WHERE reference = ?", ref);
+    return { durable, ready, category };
+  }
+
+  it("picking the same category again reports the first write and writes nothing twice", async () => {
+    const { durable, ready, category } = await showUnknownOnce("foobar");
+    await act(async () => ready().category?.onPick("travel"));
+    expect(ready().error).toBe("Could not save. Try again.");
+    await act(async () => ready().category?.onPick("travel"));
+    expect(ready().error).toBeNull();
+    expect(category()).toEqual([{ category: "travel" }]);
+    expect(durable.executed).toHaveLength(1);
+  });
+
+  it("a different pick is not written on top: the sheet says the first one went through", async () => {
+    const { durable, ready, category } = await showUnknownOnce("foobar");
+    await act(async () => ready().category?.onPick("travel"));
+    await act(async () => ready().category?.onPick("groceries"));
+    expect(ready().error).toBe("The first save went through. Check the entry before saving again.");
+    // The saved state shows: the first pick is the payment's category.
+    expect(ready().category?.selected).toBe("travel");
+    expect(category()).toEqual([{ category: "travel" }]);
+    expect(durable.executed).toHaveLength(1);
+    // Picking it again on purpose writes it.
+    await act(async () => ready().category?.onPick("groceries"));
+    expect(ready().error).toBeNull();
+    expect(category()).toEqual([{ category: "groceries" }]);
+  });
+
+  it("says it in Polish too", () => {
+    setLanguageForTests("pl");
+    expect(S.firstSaveWent).toBe(
+      "Pierwszy zapis się udał. Sprawdź wpis przed ponownym zapisaniem.",
+    );
+  });
 });

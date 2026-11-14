@@ -20,7 +20,7 @@ import {
   type ReadySignals,
   signalsOwnerCommands,
 } from "@cashu/store/investments/signals-screen";
-import { useCommand, useProfile, useQuery } from "@cashu/store-react";
+import { useCommand, useQuery } from "@cashu/store-react";
 import type { TagTone } from "@cashu/ui/native";
 import { useUiEnv } from "@cashu/ui/native";
 import { useRef, useState } from "react";
@@ -170,6 +170,8 @@ function tagOf(signal: Signal): { text: string; tone: Tone } {
 }
 
 export function useAlertSheet(args: {
+  /** The vault the sheet was opened with (`usePinnedVault`): every write goes there, never to a later profile. */
+  readonly vault: string;
   readonly gid: string;
   readonly lang: core.UiLang;
   readonly today: IsoDate;
@@ -199,16 +201,16 @@ export function useAlertSheet(args: {
     instrument: instrumentGid ?? "",
   });
   const markdown = useQuery(strategyMarkdown);
-  const vault = useProfile();
+  const { vault } = args;
   const fetchedAt = useQuery(pricesFetchedAt, { vault });
   const marked = useQuery(markedAlerts, { vault });
   const prefs = useQuery(notificationPrefs, { vault });
-  const mark = useCommand(setAlertMarked);
-  const choose = useCommand(setNotificationPrefs);
+  const mark = useCommand(setAlertMarked, { vault: args.vault });
+  const choose = useCommand(setNotificationPrefs, { vault: args.vault });
   const owner = profiles.find((p) => p.vault === vault)?.role !== "partner";
-  const decidePosition = useCommand(signalsOwnerCommands.positionDecision);
-  const decideSignal = useCommand(signalsOwnerCommands.decide);
-  const acknowledge = useCommand(conditionalOwnerAcknowledge);
+  const decidePosition = useCommand(signalsOwnerCommands.positionDecision, { vault: args.vault });
+  const decideSignal = useCommand(signalsOwnerCommands.decide, { vault: args.vault });
+  const acknowledge = useCommand(conditionalOwnerAcknowledge, { vault: args.vault });
   const [choice, setChoice] = useState<DecisionChoice | null>(null);
   const [reason, setReason] = useState("");
   const [failed, setFailed] = useState(false);

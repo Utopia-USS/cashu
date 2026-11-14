@@ -287,14 +287,15 @@ describe("profile sheet", () => {
     );
     expect(screen.getByText("Profiles and this phone")).toBeOnTheScreen();
     expect(screen.getAllByText("Budget")).toHaveLength(2);
-    expect(screen.getByText("Nothing waiting")).toBeOnTheScreen();
+    expect(screen.queryByText("Waiting for you on the Mac")).toBeNull();
     expect(screen.getByRole("button", { name: "Synthetic A, current profile" })).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Switch to profile Synthetic B" }));
     expect(currentVault.run((sql, ...p) => fixture.device.read(sql, ...p), undefined)).toBe(
       MONEY_VAULT_B,
     );
     expect(screen.getByTestId("current-profile")).toHaveTextContent(MONEY_VAULT_B);
-    expect(close).toHaveBeenCalledTimes(1);
+    // The switch dismisses every sheet itself (`useSwitchProfile`); a close after it would pop a route.
+    expect(close).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Synthetic B, current profile" })).toBeOnTheScreen();
   });
 

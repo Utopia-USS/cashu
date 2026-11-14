@@ -101,6 +101,8 @@ function dayLabel(date: string, locale: string): string {
 }
 
 export function useTriageScreen(args: {
+  /** The vault the modal was opened with (`usePinnedVault`): every write goes there, never to a later profile. */
+  readonly vault: string;
   readonly lang: core.UiLang;
   readonly today: IsoDate;
   readonly scope: TriageScope;
@@ -123,8 +125,8 @@ export function useTriageScreen(args: {
   const [ruleOn, setRuleOn] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  const fileTxn = useCommand(setTransactionCategory);
-  const pinMerchant = useCommand(setMerchantCategory);
+  const fileTxn = useCommand(setTransactionCategory, { vault: args.vault });
+  const pinMerchant = useCommand(setMerchantCategory, { vault: args.vault });
 
   const byGid = new Map(live.rows.map((r) => [r.gid, r]));
   const open = order.flatMap((gid) => {

@@ -48,7 +48,6 @@ export const S = catalog({
     en: "Set up Face ID or a passcode in iOS Settings first",
   },
   waitingOnMac: { pl: "Czeka na Ciebie na Macu", en: "Waiting for you on the Mac" },
-  nothingWaiting: { pl: "Nic nie czeka", en: "Nothing waiting" },
   proposals: {
     pl: (n: number) => `${plCount(n, "propozycja", "propozycje", "propozycji")} do zatwierdzenia`,
     en: (n: number) => `${enCount(n, "suggestion", "suggestions")} to approve`,

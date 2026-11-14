@@ -42,11 +42,13 @@ export function servicesCloser(parts: ServicesParts): () => void {
 }
 
 /**
- * What the root shows: the app (`ready`), the full-screen "Removing this phone's copy" state while a wipe
- * runs (`wiping`; the app's tree is unmounted, so nothing reads a store being closed), or the fatal
- * "close cashU and open it again" state when a wipe could not close, delete or rebuild (`failed`).
+ * What the root shows: the app (`ready`), nothing while the services open their paired vaults' keys
+ * (`opening`, a fraction of a second at launch or after a pairing), the full-screen "Removing this
+ * phone's copy" state while a wipe runs (`wiping`; the app's tree is unmounted, so nothing reads a store
+ * being closed), or the fatal "close cashU and open it again" state when a wipe could not close, delete
+ * or rebuild (`failed`).
  */
-export type RootPhase = "ready" | "wiping" | "failed";
+export type RootPhase = "ready" | "opening" | "wiping" | "failed";
 
 let epoch = 0;
 let phase: RootPhase = "ready";
@@ -68,6 +70,12 @@ export function getEpoch(): number {
 
 export function getRootPhase(): RootPhase {
   return phase;
+}
+
+/** The services are (re)opening: the root unmounts the app until `bumpEpoch`. */
+export function showOpening(): void {
+  phase = "opening";
+  notify();
 }
 
 /** The wipe started: the root shows the "Removing" state instead of the app. */

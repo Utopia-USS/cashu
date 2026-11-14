@@ -74,6 +74,54 @@ describe("crypto self-test", () => {
     expect(r.nativeAead).toBe("supported");
   });
 
+  it("cross-checks the native Ed25519 verification against @noble", async () => {
+    const real = await lib();
+    const signLib = real as unknown as crypto.LibsodiumSignLike;
+    const r = await runCryptoSelfTest({ lib: real, signLib, keyStore: memoryKeyStore });
+    expect(r.ok).toBe(true);
+    expect(r.checks.at(-1)).toEqual({ name: "nativeVerify", ok: true });
+    // A native verify that accepts a changed signature disagrees with @noble.
+    const lenient: crypto.LibsodiumSignLike = {
+      crypto_sign_verify_detached: (sig, msg, pk) =>
+        signLib.crypto_sign_verify_detached(sig, msg, pk) ||
+        signLib.crypto_sign_verify_detached(
+          Uint8Array.from(sig, (b, i) => (i === 18 ? b ^ 1 : b)),
+          msg,
+          pk,
+        ),
+    };
+    const loose = await runCryptoSelfTest({
+      lib: real,
+      signLib: lenient,
+      keyStore: memoryKeyStore,
+    });
+    expect(loose.ok).toBe(false);
+    expect(loose.checks.at(-1)).toEqual({ name: "nativeVerify", ok: false, code: "mismatch" });
+    // One that skips the small-order key check fails (its known answers already catch it).
+    const smallOrder = await runCryptoSelfTest({
+      lib: real,
+      signLib: {
+        crypto_sign_verify_detached: (sig, msg, pk) =>
+          (pk[0] === 1 && pk.subarray(1).every((b) => b === 0)) ||
+          signLib.crypto_sign_verify_detached(sig, msg, pk),
+      },
+      keyStore: memoryKeyStore,
+    });
+    expect(smallOrder.ok).toBe(false);
+    expect(smallOrder.checks.at(-1)).toMatchObject({ name: "nativeVerify", ok: false });
+    // One that fails its known answers is a runtime fault.
+    const dead = await runCryptoSelfTest({
+      lib: real,
+      signLib: { crypto_sign_verify_detached: () => false },
+      keyStore: memoryKeyStore,
+    });
+    expect(dead.checks.at(-1)).toEqual({
+      name: "nativeVerify",
+      ok: false,
+      code: "unsupported_runtime",
+    });
+  });
+
   it("fails closed when a primitive is broken", async () => {
     const real = await lib();
     const broken = { ...real, crypto_generichash: () => new Uint8Array(32) };

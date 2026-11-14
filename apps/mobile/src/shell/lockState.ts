@@ -10,7 +10,11 @@ export const LOCK_AFTER_MS = 30_000;
 
 export type LockEvent =
   | { kind: "boot"; enabled: boolean }
-  | { kind: "appState"; from: AppStateStatus; to: AppStateStatus; at: number }
+  /**
+   * `at` is the wall clock (ms), `mono` a monotonic reading (ms, `performance.now()`) taken with it: the
+   * owner can set the wall clock back, never the monotonic one.
+   */
+  | { kind: "appState"; from: AppStateStatus; to: AppStateStatus; at: number; mono: number }
   | { kind: "unlocked" }
   | { kind: "setting"; enabled: boolean }
   /** A prompt started (the automatic one or the Unlock button). */
@@ -21,8 +25,10 @@ export type LockEvent =
 export interface LockState {
   enabled: boolean;
   locked: boolean;
-  /** When the app went to the background (null while it is in the foreground). */
+  /** When the app went to the background, wall clock (null while it is in the foreground). */
   backgroundedAt: number | null;
+  /** The monotonic reading taken with `backgroundedAt`. */
+  backgroundedMono: number | null;
   /** A prompt is open: nothing prompts again until it ends. */
   prompting: boolean;
   /** The app's state as the last event left it. */
@@ -38,6 +44,7 @@ export function initialLock(appState: AppStateStatus): LockState {
     enabled: false,
     locked: false,
     backgroundedAt: null,
+    backgroundedMono: null,
     prompting: false,
     appState,
     autoPrompted: false,
@@ -53,6 +60,7 @@ export function reduceLock(state: LockState, event: LockEvent): LockState {
         enabled: event.enabled,
         locked: event.enabled,
         backgroundedAt: null,
+        backgroundedMono: null,
         prompting: false,
         autoPrompted: false,
         failure: null,
@@ -61,15 +69,22 @@ export function reduceLock(state: LockState, event: LockEvent): LockState {
       const next = { ...state, appState: event.to };
       // iOS goes active -> inactive -> background: the first arrival in the background counts.
       if (event.to === "background")
-        return { ...next, backgroundedAt: state.backgroundedAt ?? event.at };
+        return state.backgroundedAt === null
+          ? { ...next, backgroundedAt: event.at, backgroundedMono: event.mono }
+          : next;
       if (event.to !== "active") return next;
       // inactive -> active without a background spell never locks.
       if (state.backgroundedAt === null) return next;
-      const expired = state.enabled && event.at - state.backgroundedAt >= LOCK_AFTER_MS;
+      // The absence is the larger of the two clocks' readings: setting the wall clock back by less than
+      // the time away cannot shorten it below the monotonic one. A negative wall spell (the clock set back
+      // past the departure) is never proof of a short absence either, so it locks like an expired one.
+      const wall = event.at - state.backgroundedAt;
+      const mono = state.backgroundedMono === null ? 0 : event.mono - state.backgroundedMono;
+      const away = Math.max(wall, mono);
+      const expired = state.enabled && (wall < 0 || away >= LOCK_AFTER_MS);
       const locked = state.locked || expired;
-      return locked
-        ? { ...next, backgroundedAt: null, locked, autoPrompted: false, failure: null }
-        : { ...next, backgroundedAt: null };
+      const back = { ...next, backgroundedAt: null, backgroundedMono: null };
+      return locked ? { ...back, locked, autoPrompted: false, failure: null } : back;
     }
     case "unlocked":
       return { ...state, locked: false, prompting: false, failure: null };

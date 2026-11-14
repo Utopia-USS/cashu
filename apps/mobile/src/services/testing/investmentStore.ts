@@ -44,6 +44,7 @@ export function investmentStore(options: {
     vault: options.vault ?? TEST_VAULT,
     salt: vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => (i * 5 + 1) & 0xff)),
     modules: builtinModules(),
+    companionReads: true, // the phone's store (openVaultStore)
   });
   const clock = { now: () => Date.parse(`${options.tradeDate}T12:00:00Z`) };
   let seed = 42;

@@ -1,23 +1,42 @@
-// The app's stable services, built once at startup: the device store and the two companion demo
-// vaults' stores (in-process, sync SQLite encrypted with the device key) behind @cashu/store-react's
-// synchronous client, the first-launch fixture build, the device-local price cache, the read-only money
-// queries and the crypto self-test. Rebuilt only by `resetServices` (the phone wipe), which the root
-// follows by remounting its tree (`bumpEpoch`). S41 scaffold: the vaults, salts and device id are
-// synthetic; pairing, the real keyring and the sync engine's local append arrive with S29.
+// The app's stable services, built once at startup: the device store, one view store per vault
+// (in-process, sync SQLite encrypted with the device key) behind @cashu/store-react's synchronous
+// client, each vault's sync session (its private log database, the engine and the durable command
+// boundary, `vaultEngine.ts`), the sync triggers' runner, the device-local price cache, the read-only
+// money queries and the crypto self-test. Rebuilt by `resetServices` (the phone wipe) and
+// `reopenServices` (a vault paired or forgotten), which the root follows by remounting its tree.
+//
+// Which vaults: the paired ones (`pairedVaults` in the device store) when there is any, else the
+// companion demo (two synthetic vaults built on the phone, local only). A paired vault's view needs its
+// gid salt, which lives in its keyring in the KeyStore (asynchronous), so a phone with paired vaults
+// first runs `prepareServices` (the root shows the "opening" phase meanwhile) and then builds the
+// services synchronously. Every vault's engine opens in the background after that; a command sent
+// before it is open waits for it in the vault's queue.
 
 import type { ProfileRole } from "@cashu/domain/core/notifications";
 import { enabledModules, profileIdentity } from "@cashu/store/core/profile";
 import {
   currentVault,
   type DeviceStore,
+  type PairedVault,
+  pairedVaults,
+  savePairedVault,
   setAlertMarked,
   setCurrentVault,
   setNotificationPrefs,
 } from "@cashu/store/device";
+import { type VaultSalt, vaultSalt } from "@cashu/store/gid";
 import type { SqlPriceCache } from "@cashu/store/investments/local";
-import { HybridClock, type Store, storeWriter } from "@cashu/store/runtime";
+import type { Store } from "@cashu/store/runtime";
+import { initializeMetaClockGuard, type SqlDriver } from "@cashu/store/sync";
 import type { StoreClient } from "@cashu/store-react";
-import { createSyncClient, type VaultHandle } from "@cashu/store-react/local";
+import { createSyncClient, type DurableVaultHandle } from "@cashu/store-react/local";
+import {
+  AnonymousAuth,
+  crypto,
+  FirestoreRest,
+  FirestoreTransport,
+  type Transport,
+} from "@cashu/sync/engine";
 import {
   buildCompanionVault,
   COMPANION_VAULTS,
@@ -27,30 +46,57 @@ import {
 } from "../fixture/companionDemo";
 import { companionMarkedAlert } from "../fixture/companionInvestments";
 import { appendBenchLog, deleteBenchLogs } from "../platform/benchLog";
-import { createMobileKeyStore, deleteKeyStoreFiles, deleteKeyStoreKek } from "../platform/keystore";
+import {
+  createMobileKeyStore,
+  deleteKeyStoreFiles,
+  deleteKeyStoreKek,
+  deletePhoneSecrets,
+  discardWithoutDbKey,
+  keyStoreFilesExist,
+} from "../platform/keystore";
 import { deleteLanguagePin } from "../platform/language";
 import { localAuthenticator } from "../platform/localAuth";
-import { nativeLibsodium } from "../platform/sodium";
+import { keyStoreAuthStore } from "../platform/relayAuthStore";
+import { relayConfig } from "../platform/relayConfig";
+import { nativeLibsodium, nativeSignLibsodium } from "../platform/sodium";
 import {
   databaseFiles,
+  deleteDatabaseFile,
   deleteDatabaseFiles,
   openDeviceStore,
   openPriceCache,
+  openVaultLog,
   openVaultStore,
   phoneDbKey,
+  recreateVaultLog,
   recreateVaultStore,
   storageInfo,
 } from "../platform/sqlite";
-import { openWithKeyRecovery } from "../platform/sqliteKeying";
+import {
+  isDbKeyMismatch,
+  MARKET_DB,
+  openBaseFiles,
+  openVaultFiles,
+  vaultOfFile,
+} from "../platform/sqliteKeying";
 import { localToday } from "../screens/screenContext";
 import { type CryptoSelfTest, runCryptoSelfTest } from "../selftest/cryptoSelfTest";
 import type { Authenticator } from "../shell/auth";
+import { createSyncRunner, type SyncRunner } from "../sync/syncRunner";
+import { createVaultQueue } from "./commandQueue";
 import { isDemoVault } from "./demo";
 import { SCAFFOLD_DEVICE } from "./device";
 import { phoneInvestmentSources } from "./investments";
-import { bumpEpoch, servicesCloser, showWiping } from "./lifecycle";
+import { bumpEpoch, servicesCloser, showOpening, showWiping } from "./lifecycle";
 import { createMoneyQueries, type MoneyQueries } from "./moneyQueries";
-import { beforeWipeTasks, wipeDevice } from "./wipe";
+import {
+  readPairedEntry,
+  readVaultBootstrap,
+  restorePairedVaults,
+  savePairedEntry,
+} from "./vaultBootstrap";
+import { createVaultSession, type VaultSession, type VaultSyncStatus } from "./vaultEngine";
+import { beforeWipeTasks, onBeforeWipe, wipeDevice } from "./wipe";
 
 interface ServicesProfile {
   readonly vault: string;
@@ -67,6 +113,28 @@ interface StorageInfo {
   readonly cipherVersion: string | null;
 }
 
+/** A paired vault this launch could not open: no session, store or profile (the pairing screens list it). */
+interface UnavailableVault {
+  readonly vault: string;
+  /** Its name as `pairedVaults` last knew it. */
+  readonly name: string;
+  /**
+   * Why, value-free: `needs_repair` (its files do not open under the key; nothing was deleted) or the
+   * keyring's code (`keyring_unreadable`, `vault_keyring_missing`, `keystore_*`).
+   */
+  readonly failure: string;
+}
+
+/** This phone's vault sessions, one per vault the client holds. */
+interface PhoneVaults {
+  get(vault: string): VaultSession | undefined;
+  list(): readonly VaultSession[];
+  /** The status of a paired vault this launch could not open: `failed` with its code (stable object). */
+  unavailable(vault: string): VaultSyncStatus | undefined;
+  /** Every paired vault this launch could not open, in pairing order. */
+  unavailableVaults(): readonly UnavailableVault[];
+}
+
 export interface Services {
   /** The store client of every screen (`StoreProvider`). */
   readonly client: StoreClient;
@@ -74,12 +142,16 @@ export interface Services {
   readonly device: DeviceStore;
   /** Vault queries over this device's price cache and the phone's investments sources. */
   readonly moneyQueries: MoneyQueries;
-  /** Anna's store (the default vault), for the debug screen's engine-level status and rebuild. */
+  /** The current default vault's store, for the debug screen's engine-level status and rebuild. */
   readonly store: Store;
   /** The store of one of this device's vaults; throws for a vault the device does not hold. */
   readonly storeOf: (vault: string) => Store;
   /** This device's profiles (one per vault), read at boot. */
   readonly profiles: readonly ServicesProfile[];
+  /** Each vault's sync session: status, engine, passes. */
+  readonly vaults: PhoneVaults;
+  /** The sync triggers' runner (`PhoneSync`, the background task). */
+  readonly sync: SyncRunner;
   /** This device's market price cache (prices and FX rates; device-local, never synced). */
   readonly prices: SqlPriceCache;
   /** Store open time (ms, every vault), including the integrity check after an unclean session. */
@@ -96,11 +168,13 @@ export interface Services {
    * paired phone holds real vaults and the lock defaults to on.
    */
   readonly isDemo: boolean;
-  /** Close every database (client, vaults, price cache, device store); a second call does nothing. */
+  /** Close every engine after its queued work (before `close` when the caller can wait). */
+  closeSessions(): Promise<void>;
+  /** Close every database (client, vaults, logs, price cache, device store); a second call does nothing. */
   close(): void;
 }
 
-// TRANSITIONAL(S44): the demo's roles; a paired phone learns its role from pairing.
+// TRANSITIONAL(S44): the demo's roles; a paired phone's role comes from its `pairedVaults` entry.
 const COMPANION_ROLES: Readonly<Record<"anna" | "home", ProfileRole>> = {
   anna: "owner",
   home: "partner",
@@ -111,148 +185,500 @@ let services: Services | undefined;
 const now = () => performance.now();
 
 /**
- * Database files without the device key cannot be read, so they are deleted before the key is
- * created: the leftovers of an interrupted wipe (which deletes the key first). The plaintext files of a
- * demo install from before encryption land here too, once (TRANSITIONAL(S44): a paired phone creates
- * encrypted files from day one).
+ * This launch's sodium (the native library, the AEAD from @noble), built on first use. Building it also
+ * binds the native Ed25519 verification (`crypto.libsodiumEd25519Verifier`: the same answers as @noble,
+ * natively, so a vault open does not verify every frame head in pure JS); a library that fails its
+ * known answers leaves @noble bound (correct, only slower; the crypto self-test reports `nativeVerify`).
  */
-function discardFilesWithoutKey(): void {
-  if (phoneDbKey.exists()) return;
-  const files = databaseFiles().length;
-  if (files === 0) return;
-  deleteDatabaseFiles();
-  appendBenchLog({ kind: "storage_reset", reason: "interrupted_wipe", files });
-}
-
-/** The databases of one launch, opened before anything is built. */
-interface OpenDatabases {
-  readonly device: DeviceStore;
-  readonly vaults: Readonly<Record<"anna" | "home", Store>>;
-  readonly prices: SqlPriceCache;
-  /** Open time of the device store and the vaults (ms). */
-  readonly openMs: number;
+let sodiumInstance: crypto.Sodium | undefined;
+function phoneSodium(): crypto.Sodium {
+  if (sodiumInstance === undefined) {
+    sodiumInstance = crypto.fromLibsodium(nativeLibsodium, { aead: "noble" });
+    try {
+      crypto.bindEd25519Verifier(crypto.libsodiumEd25519Verifier(nativeSignLibsodium));
+    } catch {
+      // Keeps @noble.
+    }
+  }
+  return sodiumInstance;
 }
 
 /**
- * Open every database under `key`. On a failure the ones already open are closed again, so a key
- * mismatch can discard every file (`openWithKeyRecovery`).
+ * This launch's KeyStore, one instance for every reader and writer (the paired vaults' salts, the
+ * sessions, the relay identity, the crypto self-test): its key-encryption key is created single-flight
+ * per instance, so two instances could each create one on a fresh install. Dropped by the wipe, whose
+ * new key-encryption key the next instance creates.
  */
-function openDatabases(key: string): OpenDatabases {
-  const open: { close(): void }[] = [];
-  const track = <T extends { close(): void }>(db: T): T => {
-    open.push(db);
-    return db;
-  };
+let keyStoreInstance: crypto.KeyStore | undefined;
+function phoneKeyStore(): crypto.KeyStore {
+  keyStoreInstance ??= createMobileKeyStore(phoneSodium());
+  return keyStoreInstance;
+}
+
+/**
+ * Database files and sealed values without the device key cannot be read, so they are deleted before
+ * the key is created: the leftovers of an interrupted wipe (which deletes the key first), with the
+ * KeyStore's key-encryption key (`discardWithoutDbKey`). Returns that key's delete, which the prepare
+ * awaits before the KeyStore is used. The plaintext files of a demo install from before encryption land
+ * here too, once (TRANSITIONAL(S44): a paired phone creates encrypted files from day one).
+ */
+function discardFilesWithoutKey(): Promise<void> | undefined {
+  const left = discardWithoutDbKey({
+    dbKeyExists: () => phoneDbKey.exists(),
+    databaseFiles,
+    deleteDatabaseFiles: () => void deleteDatabaseFiles(),
+    keyStoreFilesExist,
+    deleteKeyStoreFiles,
+    deleteKek: deleteKeyStoreKek,
+  });
+  if (left === undefined) return undefined;
+  // A cached KEK would outlive its delete: the next KeyStore reads (or creates) the key afresh.
+  keyStoreInstance = undefined;
+  appendBenchLog({
+    kind: "storage_reset",
+    reason: "interrupted_wipe",
+    files: left.databaseFiles,
+    keys: left.keyStoreFiles,
+  });
+  // Nothing sealed is left for a surviving KEK to open: a failed delete is logged, not fatal.
+  return left.kek.catch((error: unknown) => {
+    appendBenchLog({ kind: "storage_reset", reason: "kek_delete_failed", error });
+  });
+}
+
+/** The device-wide databases, opened first (the vault list lives in the device store). */
+interface Base {
+  readonly key: string;
+  readonly device: DeviceStore;
+  readonly prices: SqlPriceCache;
+  readonly openMs: number;
+}
+
+/** What `prepareServices` leaves for `bootServices`: the base and every paired vault's gid salt. */
+interface Prepared {
+  readonly base: Base;
+  readonly paired: readonly PairedVault[];
+  readonly salts: ReadonlyMap<string, VaultSalt>;
+  /** Paired vaults whose keyring did not read this launch, with a value-free code (`unavailable`). */
+  readonly unreadable: ReadonlyMap<string, string>;
+  /**
+   * The list of paired vaults is empty, yet vault files on the phone may belong to paired vaults that
+   * could not be restored (`restorePairedVaults`): the demo must not take their place.
+   */
+  readonly unlisted: boolean;
+}
+
+let prepared: Prepared | undefined;
+let preparing: Promise<void> | undefined;
+
+/** Open `file` under `key` and close it again: false only when the key does not open it. */
+function keyOpens(file: string, key: string): boolean {
   try {
-    const t0 = now();
-    const device = track(openDeviceStore(key));
-    const anna = track(
-      openVaultStore(COMPANION_VAULTS.anna.vault, COMPANION_VAULTS.anna.salt, key),
-    );
-    const home = track(
-      openVaultStore(COMPANION_VAULTS.home.vault, COMPANION_VAULTS.home.salt, key),
-    );
-    const openMs = now() - t0;
-    const prices = track(openPriceCache(key));
-    return { device, vaults: { anna, home }, prices, openMs };
+    if (file === MARKET_DB) {
+      openPriceCache(key).close();
+      return true;
+    }
+    const vault = vaultOfFile(file);
+    // A view needs its salt to open; the vault's log tells the same about the key.
+    if (vault === undefined || !file.startsWith("log-")) return false;
+    openVaultLog(vault, key).close();
+    return true;
   } catch (error) {
-    for (const db of open.reverse()) {
+    // Any failure but a mismatch got past the key check: the key opens the file.
+    return !isDbKeyMismatch(error);
+  }
+}
+
+/**
+ * Open the device store and the price cache under the device key (created when missing, after
+ * `discardFilesWithoutKey`), a key mismatch handled per file
+ * (`openBaseFiles`). TRANSITIONAL(S44): a key that opens no file rebuilds the demo; a paired phone's
+ * vault files stay for a re-pairing.
+ */
+function openBase(): Base {
+  const key = phoneDbKey.loadOrCreate();
+  const t0 = now();
+  const { device, prices } = openBaseFiles({
+    openDevice: () => openDeviceStore(key),
+    openPrices: () => openPriceCache(key),
+    files: databaseFiles,
+    opens: (file) => keyOpens(file, key),
+    remove: deleteDatabaseFile,
+    isDemo: isDemoVault,
+    report: (reason, files) => appendBenchLog({ kind: "storage_reset", reason, files }),
+  });
+  return { key, device, prices, openMs: now() - t0 };
+}
+
+function pairedOf(device: DeviceStore): readonly PairedVault[] {
+  return pairedVaults.run((sql, ...p) => device.read(sql, ...p), undefined);
+}
+
+/**
+ * The paired vaults of this phone. An empty list while vault logs of paired vaults are on disk (the
+ * device store was recreated, or a kill between the log's entry copy and the list) is rebuilt from
+ * those logs' copies (`restorePairedVaults`); `unlisted` when files remain that might be paired
+ * vaults but could not be restored.
+ */
+function pairedOrRestored(base: Base): { paired: readonly PairedVault[]; unlisted: boolean } {
+  const listed = pairedOf(base.device);
+  if (listed.length > 0) return { paired: listed, unlisted: false };
+  const vaults = databaseFiles().flatMap((file) => {
+    const vault = file.startsWith("log-") ? vaultOfFile(file) : undefined;
+    return vault === undefined || isDemoVault(vault) ? [] : [vault];
+  });
+  if (vaults.length === 0) return { paired: listed, unlisted: false };
+  const { restored, unreadable } = restorePairedVaults({
+    vaults,
+    openLog: (vault) => openVaultLog(vault, base.key),
+    save: (entry) => base.device.run(savePairedVault, entry as PairedVault).ok,
+  });
+  appendBenchLog({ kind: "paired_restore", restored, unreadable });
+  const paired = pairedOf(base.device);
+  return { paired, unlisted: paired.length === 0 && unreadable > 0 };
+}
+
+/**
+ * The asynchronous first phase: open the device store and read each paired vault's gid salt from its
+ * keyring. Returns undefined when it finished synchronously (no paired vault: the demo needs no key);
+ * a vault whose keyring cannot be read is left out of this launch (a bench line says so).
+ */
+function prepareServices(): Promise<void> | undefined {
+  if (prepared !== undefined) return undefined;
+  if (preparing !== undefined) return preparing;
+  const leftoverKek = discardFilesWithoutKey();
+  const base = openBase();
+  const { paired, unlisted } = pairedOrRestored(base);
+  if (paired.length === 0 && leftoverKek === undefined) {
+    prepared = { base, paired, salts: new Map(), unreadable: new Map(), unlisted };
+    return undefined;
+  }
+  preparing = (async () => {
+    // An interrupted wipe's key-encryption key goes before anything reads or seals with the KeyStore.
+    await leftoverKek;
+    if (paired.length === 0) {
+      prepared = { base, paired, salts: new Map(), unreadable: new Map(), unlisted };
+      return;
+    }
+    const keyStore = phoneKeyStore();
+    const salts = new Map<string, VaultSalt>();
+    const unreadable = new Map<string, string>();
+    for (const entry of paired) {
       try {
-        db.close();
-      } catch {
-        // The open failure is the one to report.
+        const ring = await crypto.loadKeyring(keyStore, phoneSodium(), entry.vaultId);
+        if (ring === null) throw new Error("vault_keyring_missing");
+        const salt = ring.gidSalt();
+        salts.set(entry.vaultId, vaultSalt(salt.expose().slice()));
+        salt.wipe();
+        ring.wipe();
+      } catch (error) {
+        // `keyring_unreadable` unless the KeyStore named it (a value-free code either way).
+        const code = codeOf(error) === "unknown" ? "keyring_unreadable" : codeOf(error);
+        unreadable.set(entry.vaultId, code);
+        appendBenchLog({ kind: "vault_unavailable", reason: code });
       }
     }
+    prepared = { base, paired, salts, unreadable, unlisted: false };
+  })().finally(() => {
+    preparing = undefined;
+  });
+  return preparing;
+}
+
+/** Prepare (when needed) and build the services: the background task's way in. */
+export async function servicesReady(): Promise<Services> {
+  await prepareServices();
+  return bootServices();
+}
+
+/**
+ * The root's start: build the services before the first render when that is synchronous (the demo;
+ * the native splash covers its first-launch fixture build), else show the opening phase until the
+ * paired vaults' keys are read.
+ */
+export function startServices(): void {
+  let pending: Promise<void> | undefined;
+  try {
+    pending = prepareServices();
+    if (pending === undefined) {
+      bootServices();
+      return;
+    }
+  } catch (error) {
+    // No vault to show (`paired_vaults_unlisted`, `no_vault`): the fatal state instead of a crash.
+    appendBenchLog({ kind: "services_failed", reason: codeOf(error) });
+    bumpEpoch("failed");
+    return;
+  }
+  showOpening();
+  pending
+    .then(() => {
+      bootServices();
+      bumpEpoch("ready");
+    })
+    .catch((error: unknown) => {
+      // No usable vault (every paired vault's keys unreadable): the fatal "open it again" state.
+      appendBenchLog({ kind: "services_failed", reason: codeOf(error) });
+      bumpEpoch("failed");
+    });
+}
+
+/** One vault's open databases and how it was set up this launch. */
+interface OpenedVault {
+  readonly vault: string;
+  readonly device: string;
+  readonly kind: "paired" | "demo";
+  readonly store: Store;
+  readonly log: SqlDriver;
+  readonly name: string;
+  readonly role: ProfileRole;
+}
+
+/**
+ * The demo vaults, each with a finished fixture build and a ready log; a vault without both (first
+ * launch, a build or an engine setup that stopped halfway, a demo from before the engine) is built
+ * again into fresh files: a half-built demo is never kept.
+ */
+function openDemoVaults(key: string, firstLoad: CompanionBuild[]): OpenedVault[] {
+  const today = localToday();
+  const opened: OpenedVault[] = [];
+  try {
+    for (const which of ["anna", "home"] as const) {
+      const spec = COMPANION_VAULTS[which];
+      const files = openVaultFiles(
+        "demo",
+        () => openVaultPair(spec.vault, spec.salt, key),
+        () => {
+          deleteDatabaseFile(`vault-${spec.vault}.db`);
+          deleteDatabaseFile(`log-${spec.vault}.db`);
+          appendBenchLog({ kind: "storage_reset", reason: "demo_key_mismatch", files: 2 });
+        },
+      );
+      if (files.kind !== "opened") throw new Error("demo_unavailable");
+      let { store, log } = files.value;
+      let ready = false;
+      try {
+        ready = readVaultBootstrap(log)?.state === "ready";
+      } catch {
+        ready = false;
+      }
+      if (!ready || !companionVaultComplete(store, which)) {
+        store = recreateVaultStore(store, spec.vault, spec.salt, key);
+        log = recreateVaultLog(log, spec.vault, key);
+        // The guard is seeded on the empty view, before the fixture's first event.
+        initializeMetaClockGuard(store.driver, SCAFFOLD_DEVICE);
+        const build = buildCompanionVault(store, which, today, now);
+        firstLoad.push(build);
+        appendBenchLog({ kind: "fixture", ...build });
+      }
+      opened.push({
+        vault: spec.vault,
+        device: SCAFFOLD_DEVICE,
+        kind: "demo",
+        store,
+        log,
+        name: spec.name,
+        role: COMPANION_ROLES[which],
+      });
+    }
+    return opened;
+  } catch (error) {
+    closeOpened(opened);
     throw error;
   }
 }
 
+/** One vault's view and log; the view is closed again when the log does not open. */
+function openVaultPair(
+  vault: string,
+  salt: VaultSalt,
+  key: string,
+): { store: Store; log: SqlDriver } {
+  const store = openVaultStore(vault, salt, key);
+  try {
+    return { store, log: openVaultLog(vault, key) };
+  } catch (error) {
+    store.close();
+    throw error;
+  }
+}
+
+/**
+ * The paired vaults with readable keys. A vault whose view or log the key does not open keeps its
+ * files and is reported in `needsRepair` (its status reads `failed` / `needs_repair`), never deleted.
+ */
+function openPairedVaults(prepared: Prepared, needsRepair: Set<string>): OpenedVault[] {
+  const opened: OpenedVault[] = [];
+  try {
+    for (const entry of prepared.paired) {
+      const salt = prepared.salts.get(entry.vaultId);
+      if (salt === undefined) continue;
+      const files = openVaultFiles(
+        "paired",
+        () => openVaultPair(entry.vaultId, salt, prepared.base.key),
+        () => undefined,
+      );
+      if (files.kind === "needs_repair") {
+        needsRepair.add(entry.vaultId);
+        appendBenchLog({ kind: "vault_unavailable", reason: "needs_repair" });
+        continue;
+      }
+      const { store, log } = files.value;
+      opened.push({
+        vault: entry.vaultId,
+        device: entry.deviceId,
+        kind: "paired",
+        store,
+        log,
+        name: entry.name,
+        role: entry.role,
+      });
+    }
+    return opened;
+  } catch (error) {
+    closeOpened(opened);
+    throw error;
+  }
+}
+
+function closeOpened(opened: readonly OpenedVault[]): void {
+  for (const v of opened) {
+    try {
+      v.store.close();
+    } catch {
+      // The open failure is the one to report.
+    }
+    try {
+      v.log.close();
+    } catch {
+      // Same.
+    }
+  }
+}
+
+/** The relay transport of this build (one per phone, every paired vault), or none without a config. */
+function relayRemote(keyStore: crypto.KeyStore): FirestoreTransport | undefined {
+  const config = relayConfig();
+  if (config === undefined) return undefined;
+  const auth = new AnonymousAuth({
+    endpoint: { apiKey: config.apiKey },
+    store: keyStoreAuthStore(keyStore),
+  });
+  const rest = new FirestoreRest({ endpoint: { projectId: config.projectId }, auth });
+  return new FirestoreTransport({ rest, uid: () => auth.uid() });
+}
+
+const nextFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** Write the log's copy of its `pairedVaults` entry when it differs (backfills logs from before it). */
+function keepPairedEntry(log: SqlDriver, entry: PairedVault): void {
+  try {
+    if (JSON.stringify(readPairedEntry(log)) === JSON.stringify(entry)) return;
+  } catch {
+    // An unreadable copy is replaced.
+  }
+  savePairedEntry(log, entry);
+}
+
 export function bootServices(): Services {
   if (services) return services;
-  discardFilesWithoutKey();
-  const key = phoneDbKey.loadOrCreate();
-  // A key that does not open the files (a Keychain item that outlived an app delete, a restore from
-  // another phone) is treated like files without a key: every file is discarded and built again.
-  // TRANSITIONAL(S44): a paired phone re-pairs and resyncs instead of building the demo.
-  const {
-    device,
-    vaults: openVaults,
-    prices,
-    openMs,
-  } = openWithKeyRecovery(
-    () => openDatabases(key),
-    () => {
-      const files = deleteDatabaseFiles().length;
-      appendBenchLog({ kind: "storage_reset", reason: "key_mismatch", files });
-    },
-  );
-  const today = localToday();
-  const firstLoad: CompanionBuild[] = [];
-  // A vault without a finished build (first launch, or a build that stopped halfway) is built again
-  // into a fresh database: a half-built demo is never kept.
-  const opened = (["anna", "home"] as const).map((which) => {
-    const spec = COMPANION_VAULTS[which];
-    let store = openVaults[which];
-    if (!companionVaultComplete(store, which)) {
-      const empty =
-        (store.read<{ n: number }>("SELECT COUNT(*) AS n FROM accounts")[0]?.n ?? 0) === 0;
-      if (!empty) store = recreateVaultStore(store, spec.vault, spec.salt, key);
-      const build = buildCompanionVault(store, which, today, now);
-      firstLoad.push(build);
-      appendBenchLog({ kind: "fixture", ...build });
-    }
-    return { which, spec, store };
-  });
-  const anna = COMPANION_VAULTS.anna.vault;
-  // Unset, or a vault this device no longer holds (the S41 scaffold's demo vault): Anna.
-  const current = currentVault.run((sql, ...p) => device.read(sql, ...p), undefined);
-  if (current === null || !opened.some(({ spec }) => spec.vault === current)) {
-    device.run(setCurrentVault, { vault: anna });
+  if (prepared === undefined && prepareServices() !== undefined) {
+    // Paired vaults need their keys first (`startServices`, `servicesReady`).
+    throw new Error("services_not_prepared");
   }
-  const clock = { now: () => Date.now() };
-  const vaults = new Map<string, VaultHandle>(
-    opened.map(({ spec, store }) => [
-      spec.vault,
+  const ready = prepared as Prepared;
+  // Files of paired vaults the list lost and could not restore: never the demo in their place.
+  if (ready.unlisted) throw new Error("paired_vaults_unlisted");
+  const { key, device, prices } = ready.base;
+  const firstLoad: CompanionBuild[] = [];
+  const t0 = now();
+  const needsRepair = new Set<string>();
+  const opened =
+    ready.paired.length > 0 ? openPairedVaults(ready, needsRepair) : openDemoVaults(key, firstLoad);
+  const openMs = ready.base.openMs + (now() - t0);
+  const fallback = opened[0]?.vault ?? null;
+  const missing = new Map<string, string>([
+    ...[...needsRepair].map((vault) => [vault, "needs_repair"] as const),
+    ...ready.unreadable,
+  ]);
+  // Unset, or a vault this device no longer holds (the S41 scaffold's demo vault): the first one. A
+  // paired vault that merely did not open this launch stays the user's choice for the next one.
+  const current = currentVault.run((sql, ...p) => device.read(sql, ...p), undefined);
+  if (current === null || (!opened.some((v) => v.vault === current) && !missing.has(current))) {
+    device.run(setCurrentVault, { vault: fallback });
+  }
+  const keyStore = phoneKeyStore();
+  const relay = opened.some((v) => v.kind === "paired") ? relayRemote(keyStore) : undefined;
+  const queue = createVaultQueue();
+  const sessions = new Map<string, VaultSession>(
+    opened.map((v) => {
+      const remotes: Transport[] = v.kind === "paired" && relay !== undefined ? [relay] : [];
+      return [
+        v.vault,
+        createVaultSession({
+          vault: v.vault,
+          device: v.device,
+          kind: v.kind,
+          store: v.store,
+          log: v.log,
+          keyStore,
+          sodium: phoneSodium(),
+          remotes,
+          ...(relay !== undefined && remotes.length > 0
+            ? { relayStatus: () => relay.status() }
+            : {}),
+          queue,
+          now: () => Date.now(),
+          yieldToUi: nextFrame,
+        }),
+      ];
+    }),
+  );
+  const handles = new Map<string, DurableVaultHandle>(
+    [...sessions.values()].map((s) => [
+      s.vault,
       {
-        store,
-        // TRANSITIONAL(S43): straight into the store until commands go through the engine's local append.
-        writer: storeWriter(store),
-        env: {
-          device: SCAFFOLD_DEVICE,
-          clock,
-          // TRANSITIONAL(S43): the HLC state is not persisted until the sync engine owns it; commands run
-          // with a fresh clock each launch.
-          hlc: new HybridClock(SCAFFOLD_DEVICE, { physical: clock }),
-          lease: { isHolder: () => true },
-        },
+        store: s.store,
+        execute: (command, input, attemptKey) => s.execute(command, input, attemptKey),
+        reconcile: (attemptKey) => s.reconcile(attemptKey),
       },
     ]),
   );
-  const client = createSyncClient({ device, vaults });
-  const profiles = opened.flatMap(({ which, spec, store }) => {
-    const read = store.read.bind(store);
-    const identity = profileIdentity.run(read, undefined);
-    return identity === null
-      ? []
-      : [
-          {
-            vault: spec.vault,
-            slug: identity.slug,
-            name: identity.name,
-            modules: enabledModules.run(read, undefined),
-            role: COMPANION_ROLES[which],
-          },
-        ];
+  const client = createSyncClient({ device, vaults: handles });
+  const identities = new Map(
+    opened.map((v) => [v.vault, profileIdentity.run(v.store.read.bind(v.store), undefined)]),
+  );
+  const profiles = opened.map((v) => {
+    const identity = identities.get(v.vault) ?? null;
+    return {
+      vault: v.vault,
+      // Before the first sync a paired vault has no profile yet: its stored name ("New profile").
+      slug: identity?.slug ?? v.vault,
+      name: identity?.name ?? v.name,
+      modules: identity === null ? [] : enabledModules.run(v.store.read.bind(v.store), undefined),
+      role: v.role,
+    };
   });
+  // A paired vault's stored name follows its profile once that arrived (the pairing list, the sheet);
+  // its log keeps a copy of the entry (`savePairedEntry`), written before the list.
+  for (const entry of ready.paired) {
+    const name = identities.get(entry.vaultId)?.name;
+    const next =
+      name !== undefined && name !== entry.name ? { ...entry, name: name.slice(0, 200) } : entry;
+    const log = opened.find((v) => v.vault === entry.vaultId)?.log;
+    if (log !== undefined) keepPairedEntry(log, next);
+    if (next !== entry) device.run(savePairedVault, next);
+  }
   const storeOf = (vault: string): Store => {
-    const handle = vaults.get(vault);
-    if (handle === undefined) throw new Error(`no store for vault ${vault} on this device`);
-    return handle.store;
+    const session = sessions.get(vault);
+    if (session === undefined) throw new Error(`no store for vault ${vault} on this device`);
+    return session.store;
   };
+  const anna = COMPANION_VAULTS.anna.vault;
   // TRANSITIONAL(S44): a freshly built Anna comes with her demo prices (the phone's own refresh skips
   // the demo vaults, so they stay) and follows her CD Projekt alert on this phone ("tell my phone").
   if (firstLoad.some((b) => b.vault === anna)) {
-    seedCompanionDemoPrices(prices, today);
+    seedCompanionDemoPrices(prices, localToday());
     const annaStore = storeOf(anna);
     const alert = companionMarkedAlert(annaStore.read.bind(annaStore), new Date().toISOString());
     if (alert !== null) {
@@ -261,14 +687,44 @@ export function bootServices(): Services {
     }
   }
   const cryptoSelfTest = new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() =>
-    runCryptoSelfTest({ lib: nativeLibsodium, keyStore: createMobileKeyStore }),
+    runCryptoSelfTest({
+      lib: nativeLibsodium,
+      signLib: nativeSignLibsodium,
+      keyStore: phoneKeyStore,
+    }),
   );
+  const list = [...sessions.values()];
+  const closeSessions = async () => {
+    await Promise.allSettled(list.map((s) => s.close()));
+    await queue.close();
+  };
+  // One object per vault, so `useSyncExternalStore` sees a stable snapshot.
+  const unavailable = new Map<string, VaultSyncStatus>(
+    [...missing].map(([vault, failure]) => [
+      vault,
+      { vault, phase: "failed", syncing: false, remote: true, unpushed: false, failure },
+    ]),
+  );
+  const unavailableVaults = ready.paired.flatMap((entry) => {
+    const failure = missing.get(entry.vaultId);
+    return failure === undefined ? [] : [{ vault: entry.vaultId, name: entry.name, failure }];
+  });
+  const fallbackStore = fallback === null ? undefined : storeOf(fallback);
+  // TRANSITIONAL(S44): no vault opened at all lands in the fatal state; the pairing screens take it.
+  if (fallbackStore === undefined) throw new Error("no_vault");
   services = {
     client,
     device,
-    store: storeOf(anna),
+    store: fallbackStore,
     storeOf,
     profiles,
+    vaults: {
+      get: (vault) => sessions.get(vault),
+      list: () => list,
+      unavailable: (vault) => unavailable.get(vault),
+      unavailableVaults: () => unavailableVaults,
+    },
+    sync: createSyncRunner({ targets: () => list, now: () => Date.now() }),
     prices,
     moneyQueries: createMoneyQueries(
       { prices, changes: prices },
@@ -279,10 +735,11 @@ export function bootServices(): Services {
     cryptoSelfTest,
     storage: storageInfo(),
     auth: localAuthenticator,
-    isDemo: opened.every(({ spec }) => isDemoVault(spec.vault)),
+    isDemo: opened.every((v) => isDemoVault(v.vault)),
+    closeSessions,
     close: servicesCloser({
       client,
-      vaults: opened.map(({ spec }) => storeOf(spec.vault)),
+      vaults: opened.flatMap((v) => [v.store, v.log]),
       prices,
       device,
     }),
@@ -290,22 +747,74 @@ export function bootServices(): Services {
   return services;
 }
 
+// Removing this phone closes every engine (after its queued pass or command) before the databases go.
+onBeforeWipe(async () => {
+  await services?.closeSessions();
+});
+
+/** Forget the current services: the next boot opens every database again. */
+function dropServices(): void {
+  const current = services;
+  services = undefined;
+  prepared = undefined;
+  current?.close();
+}
+
 /**
  * Close the current services and build them again (the phone wipe). The caller remounts the tree with
  * `bumpEpoch()`; until then nothing may read the old services.
  */
 function resetServices(): Services {
-  services?.close();
-  services = undefined;
+  dropServices();
   return bootServices();
 }
 
 /**
- * "Remove this phone": cancel and dismiss our notifications, delete every database, key and file this
- * app wrote on the phone, then rebuild the services and remount (or show the fatal state when that
- * could not be done safely). Rejects only when the rebuilt app is shown although a step failed; the fatal
- * state is its own report. TRANSITIONAL(S44): the rebuild lands on the companion demo; a paired phone
- * lands on the pairing screen.
+ * Close every engine and database and open them again over the current vault list (a vault was paired
+ * or forgotten), then remount the root. The root shows the opening phase meanwhile.
+ */
+async function reopenServices(): Promise<void> {
+  showOpening();
+  try {
+    await services?.closeSessions();
+    dropServices();
+    await prepareServices();
+    bootServices();
+    bumpEpoch("ready");
+  } catch (error) {
+    bumpEpoch("failed");
+    throw error;
+  }
+}
+
+/**
+ * Add a freshly paired vault to this phone (after `storeJoinedVault` resolved) and reopen the services
+ * over it: the root remounts, `PhoneSync`'s start trigger waits for the vault's open and runs its first
+ * sync (`syncRunner.ts`), and `useVaultSyncStatus(vault)` shows the progress (`receiving`) until the
+ * profile has arrived (`ready`).
+ * TRANSITIONAL(S44): unused and unexported until the pairing screens call it (exported with them).
+ */
+async function addPairedVault(entry: PairedVault): Promise<void> {
+  const base = prepared?.base;
+  if (base === undefined) throw new Error("services_not_prepared");
+  // The log's copy first: a device store recreated later rebuilds the list from it.
+  const log = openVaultLog(entry.vaultId, base.key);
+  try {
+    savePairedEntry(log, entry);
+  } finally {
+    log.close();
+  }
+  const saved = base.device.run(savePairedVault, entry);
+  if (!saved.ok) throw new Error(saved.reason);
+  await reopenServices();
+}
+
+/**
+ * "Remove this phone": cancel and dismiss our notifications, close every engine, delete every
+ * database, key and file this app wrote on the phone, then rebuild the services and remount (or show
+ * the fatal state when that could not be done safely). Rejects only when the rebuilt app is shown
+ * although a step failed; the fatal state is its own report. TRANSITIONAL(S44): the rebuild lands on
+ * the companion demo; a paired phone lands on the pairing screen.
  */
 export async function wipeThisPhone(): Promise<void> {
   const current = bootServices();
@@ -313,18 +822,28 @@ export async function wipeThisPhone(): Promise<void> {
     showWiping,
     beforeWipe: beforeWipeTasks(),
     deleteSecrets: async () => {
-      // The Keychain items, both service "cashu": the database key `cashu.db.key` and the KeyStore's
-      // key-encryption key `cashu.keystore.kek`.
-      await Promise.all([phoneDbKey.delete(), deleteKeyStoreKek()]);
+      // The Keychain items, both service "cashu", one after the other (`deletePhoneSecrets`: a kill
+      // between them is finished by the next launch): the database key `cashu.db.key`, then the
+      // KeyStore's key-encryption key `cashu.keystore.kek` (which seals the identities, keyrings and
+      // the relay identity under `keys/`).
+      try {
+        await deletePhoneSecrets({
+          deleteDbKey: () => phoneDbKey.delete(),
+          deleteKek: deleteKeyStoreKek,
+        });
+      } finally {
+        // The instance caches the deleted key: the rebuild seals under a new one.
+        keyStoreInstance = undefined;
+      }
     },
     // A macrotask, so React has committed the "Removing" state and the UI thread can draw it while the
     // synchronous close and rebuild hold the JS thread.
-    nextFrame: () => new Promise((resolve) => setTimeout(resolve, 0)),
+    nextFrame,
     close: () => current.close(),
     // Everything the app writes under <Documents>: `SQLite/` (every `*.db` with its -wal, -shm and
-    // -journal sidecars: the vaults, `device.db`, `market.db`), `keys/` (the KeyStore's sealed values),
-    // `bench/` (the measurement log) and `language-pin.txt` (the language choice). The rebuild writes
-    // the demo's databases (and a bench line) again.
+    // -journal sidecars: the vault views and logs, `device.db`, `market.db`), `keys/` (the KeyStore's
+    // sealed values), `bench/` (the measurement log) and `language-pin.txt` (the language choice). The
+    // rebuild writes the demo's databases (and a bench line) again.
     deleteFiles: () => {
       deleteKeyStoreFiles();
       deleteBenchLogs();
@@ -334,4 +853,10 @@ export async function wipeThisPhone(): Promise<void> {
     reset: () => void resetServices(),
     remount: bumpEpoch,
   });
+}
+
+/** A value-free code for a bench line. */
+function codeOf(error: unknown): string {
+  if (error instanceof Error && /^[a-z0-9_-]{1,64}$/u.test(error.message)) return error.message;
+  return "unknown";
 }

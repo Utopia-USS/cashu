@@ -7,7 +7,7 @@
 import { setLanguageForTests } from "@cashu/i18n";
 import { markedAlerts, notificationPrefs } from "@cashu/store/device";
 import type { Read } from "@cashu/store/query";
-import { ProfileProvider, StoreProvider } from "@cashu/store-react";
+import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import { type ComponentType, type ReactNode, useEffect } from "react";
@@ -91,7 +91,14 @@ function Sheet({
   close(): void;
   observed(props: AlertSheetState): void;
 }) {
-  const props = useAlertSheet({ gid, lang: "en", today: fixture.today, now: fixture.now, close });
+  const props = useAlertSheet({
+    vault: useProfile(),
+    gid,
+    lang: "en",
+    today: fixture.today,
+    now: fixture.now,
+    close,
+  });
   useEffect(() => observed(props));
   return <AlertSheetView {...props} />;
 }

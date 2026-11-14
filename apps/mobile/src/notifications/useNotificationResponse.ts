@@ -1,14 +1,15 @@
 // A tap on one of this phone's notifications: switch to its profile when it is the other one, then
-// open its screen (`taps.ts`). On a cold start from a tap the hook runs before the root navigator is
-// ready, so it waits for three things first: the root navigation state (expo-router refuses or drops a
-// navigation before it), the start route's redirect to Today (a link pushed before it would be
-// replaced), and a free navigation (`navigationHold.ts`: never under the app lock). The tap is cleared
-// only once it was handled, so a tap that had to wait is not lost.
-import { setCurrentVault } from "@cashu/store/device";
-import { useCommand, useProfile } from "@cashu/store-react";
+// open its screen (`taps.ts`). The switch is the app's one profile switch (`useSwitchProfile`): every
+// sheet and modal of the previous profile is dismissed before the vault changes. On a cold start from a
+// tap the hook runs before the root navigator is ready, so it waits for three things first: the root
+// navigation state (expo-router refuses or drops a navigation before it), the start route's redirect to
+// Today (a link pushed before it would be replaced), and a free navigation (`navigationHold.ts`: never
+// under the app lock). The tap is cleared only once it was handled, so a tap that had to wait is not lost.
+import { useProfile } from "@cashu/store-react";
 import { usePathname, useRootNavigationState, useRouter } from "expo-router";
 import { useEffect, useEffectEvent, useRef, useSyncExternalStore } from "react";
 import { clearNotificationTap, useNotificationTap } from "../platform/notifications";
+import { useSwitchProfile } from "../screens/profile/switchProfile";
 import { useServices } from "../services/ServicesProvider";
 import {
   isNavigationHeld,
@@ -30,7 +31,7 @@ export function useNotificationResponse(): void {
   const tap = useNotificationTap();
   const { profiles } = useServices();
   const current = useProfile();
-  const switchVault = useCommand(setCurrentVault);
+  const switchProfile = useSwitchProfile();
   const router = useRouter();
   const ready = useRootNavigationState()?.key !== undefined;
   const started = usePathname() !== "/";
@@ -66,7 +67,7 @@ export function useNotificationResponse(): void {
     if (target !== null) {
       const { switchTo, destination } = target;
       if (switchTo === null) open(destination);
-      else if ((await switchVault.run({ vault: switchTo })).kind === "completed") open(destination);
+      else if ((await switchProfile.run(switchTo)).kind === "completed") open(destination);
     }
     clearNotificationTap();
   });

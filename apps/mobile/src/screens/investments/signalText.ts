@@ -7,7 +7,6 @@
 // rules as on the desktop (`safeText`).
 import { Decimal, type IsoDate } from "@cashu/domain";
 import { planLabel } from "@cashu/domain/investments";
-import { expr } from "@cashu/domain/investments/rules";
 import { inEveryLang, lang } from "@cashu/i18n";
 import { formatDecimalValue } from "@cashu/i18n/values";
 import { maskDigits } from "@cashu/ui-logic/core/incognito";
@@ -100,68 +99,21 @@ function plain(value: number, locale: string, fractionDigits: number): string {
 
 // ---- custom rules and alerts
 
-/** Amount metrics whose sign is the fact (a loss, an amount to buy or to sell). */
-const SIGNED_AMOUNTS = new Set(["unrealized_value", "drift_value"]);
-
-/** One measured value of a custom condition, formatted by its metric's unit. */
-function customValue(
-  label: string,
-  value: unknown,
-  subject: SignalSubject,
-  env: DisplayEnv,
-): string {
-  if (value === null || value === undefined) return S.unknown;
-  if (typeof value === "boolean") return value ? S.yes : S.no;
-  const metric = label.split("(", 1)[0] ?? label;
-  // The evaluated bucket: its generic label or "a bucket", never the owner's own id (F7).
-  if (metric === "bucket_id") return bucketDisplayName(typeof value === "string" ? value : null);
-  if (typeof value === "string" && decimal(value) === null) return value;
-  const amount = decimal(value);
-  if (amount === null) return String(value);
-  const unit = expr.METRICS.get(metric)?.unit;
-  switch (unit) {
-    case expr.Unit.RATIO:
-      return formatDecimalValue(amount, env.locale, { percent: true, fractionDigits: 1 }).text;
-    case expr.Unit.PP:
-      return `${formatDecimalValue(amount, env.locale, { fractionDigits: 1 }).text} pp`;
-    case expr.Unit.AMOUNT:
-      return own(amount, subject.baseCurrency, env, {
-        fractionDigits: 0,
-        signed: SIGNED_AMOUNTS.has(metric),
-      });
-    case expr.Unit.PRICE:
-      return price(amount, subject.currency, env.locale);
-    case expr.Unit.DAYS:
-    case expr.Unit.COUNT:
-      return formatDecimalValue(amount, env.locale, { fractionDigits: 0 }).text;
-    default:
-      return plain(amount.toFloat(), env.locale, 2);
-  }
-}
-
 /**
  * A custom rule's or a custom alert's sentence, or null when the engine's text carries the owner's own
- * message (then that message is the better text) or the payload lacks the expression.
+ * message (then that message, made safe, is the better text) or the payload lacks the expression. The
+ * sentence names only who it is about: no expression, no metric names and no measured values (dev
+ * feedback 21.2: the phone shows sentences, never engine text), so incognito has nothing to mask in it.
  */
-function customText(row: SignalTextRow, subject: SignalSubject, env: DisplayEnv): string | null {
+function customText(row: SignalTextRow, subject: SignalSubject): string | null {
   const p = row.payload;
-  const when = str(p.when);
-  if (when === null) return null;
+  if (str(p.when) === null) return null;
   // The engine writes "Condition met" only when the owner gave the rule no message of its own.
   if (!inEveryLang(() => S.conditionMet).some((t) => row.message.includes(t))) return null;
   const bucket = str(p.bucket_id);
   const who =
     bucket !== null ? bucketDisplayName(bucket) : p.scope === "instrument" ? subject.name : "";
-  const values =
-    p.values !== null && typeof p.values === "object"
-      ? Object.entries(p.values as Record<string, unknown>)
-          .map(
-            ([label, value]) =>
-              `${unnameBuckets(label)}: ${customValue(label, value, subject, env)}`,
-          )
-          .join(", ")
-      : "";
-  return S.custom(who, unnameBuckets(when), values);
+  return S.custom(who);
 }
 
 // ---- research and plan checks
@@ -383,7 +335,7 @@ function sentenceOf(row: SignalTextRow, subject: SignalSubject, env: DisplayEnv)
     }
     case "custom":
     case "alert:custom":
-      return customText(row, subject, env);
+      return customText(row, subject);
     case "plan:plan_no_exit":
     case "plan:plan_vs_thesis":
       return planText(row, subject, env);
@@ -393,7 +345,12 @@ function sentenceOf(row: SignalTextRow, subject: SignalSubject, env: DisplayEnv)
     const strength = num(p.strength);
     const sources = num(p.sources);
     if (title !== null && strength !== null && sources !== null)
-      return S.research(title, relationWords(p.relation ?? p.thesis_relation), strength, sources);
+      return S.research(
+        safeText(title, env),
+        relationWords(p.relation ?? p.thesis_relation),
+        strength,
+        sources,
+      );
   }
   return null;
 }

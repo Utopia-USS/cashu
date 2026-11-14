@@ -365,9 +365,9 @@ describe("spending with the real synchronous store", () => {
     expect(props?.rows.every((r) => r.vsUsual === null)).toBe(true);
     expect(props?.total.amount.toString()).toBe("450.00");
 
-    // The vault holds PLN and EUR: the compact currency choice in the period row switches the view.
+    // The vault holds PLN and EUR: the compact currency chip in the period row switches the view.
     expect(props?.currencies).toEqual(["PLN", "EUR"]);
-    await fireEvent.press(screen.getByRole("tab", { name: "EUR" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Currency: PLN. Switch to EUR" }));
     expect(props?.currency).toBe("EUR");
   });
 

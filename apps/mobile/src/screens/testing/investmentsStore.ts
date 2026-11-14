@@ -31,11 +31,14 @@ import { phoneInvestmentSources } from "../../services/investments";
 import { servicesCloser } from "../../services/lifecycle";
 import { createMoneyQueries } from "../../services/moneyQueries";
 import type { Services } from "../../services/services";
+import { LOCAL_ONLY } from "../../services/testing/localOnly";
 import { memoryAuthenticator } from "../../shell/testing/auth";
 
 /** The kit's calendar day (a Thursday; the review is due on Sunday the 15th). */
 export const INVESTMENTS_TODAY: IsoDate = "2026-11-12";
-const INVESTMENTS_VAULT = "1a000000000000000000000000000c01";
+export const INVESTMENTS_VAULT = "1a000000000000000000000000000c01";
+/** The second profile of `otherProfile: true`: a household with no data at all. */
+export const INVESTMENTS_OTHER_VAULT = "2b000000000000000000000000000c03";
 const DEVICE = "1d000000000000000000000000000c02";
 
 export interface InvestmentsStoreOptions {
@@ -48,6 +51,8 @@ export interface InvestmentsStoreOptions {
   readonly today?: IsoDate;
   /** The phone's own price fetch time (`pricesFetchedAt` of the vault); unset = never fetched. */
   readonly pricesFetchedAt?: string;
+  /** A second, empty profile on the phone (`INVESTMENTS_OTHER_VAULT`), for profile-switch tests. */
+  readonly otherProfile?: boolean;
 }
 
 /** Local wall time of `iso` at `hour`:`minute` (ms), as the fixture's `at`. */
@@ -67,31 +72,58 @@ function historyStartOf(today: IsoDate): IsoDate {
   return d.toISOString().slice(0, 10);
 }
 
-export function investmentsStore(options: InvestmentsStoreOptions = {}) {
-  const content = options.content ?? "portfolio";
-  const today = options.today ?? INVESTMENTS_TODAY;
-  const historyStart = historyStartOf(today);
-  const store = Store.open({
-    driver: betterSqlite3Driver(new Database(":memory:")),
-    vault: INVESTMENTS_VAULT,
+/**
+ * The built vault and price cache of one `content` + `today`, as database images: built once per test file
+ * (jest gives each file its own module registry) and copied into every kit, with the clock, HLC and id
+ * seed where the build left them, so a copy behaves exactly like a fresh build.
+ */
+type HlcState = HybridClock["state"];
+
+interface Template {
+  readonly vault: Buffer;
+  readonly prices: Buffer;
+  readonly hlc: HlcState;
+  readonly seed: number;
+}
+const templates = new Map<string, Template>();
+
+function openVault(db: Database.Database, vault = INVESTMENTS_VAULT): Store {
+  return Store.open({
+    driver: betterSqlite3Driver(db),
+    vault,
     salt: vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => (i * 3 + 9) & 0xff)),
     modules: builtinModules(),
+    companionReads: true,
   });
-  let wall = 0;
-  const clock = { now: () => wall };
-  let seed = 0xc01;
+}
+
+function vaultEnv(clock: { now: () => number }, hlc: HlcState | null, seed: { value: number }) {
   const env: CommandEnv = {
     device: DEVICE,
     clock,
-    hlc: new HybridClock(DEVICE, { physical: clock }),
+    hlc: new HybridClock(DEVICE, {
+      physical: clock,
+      ...(hlc === null ? {} : { restore: hlc }),
+    }),
     // Test owner only. This is not a production authority provider.
     lease: { isHolder: () => true },
     random: (n) =>
       Uint8Array.from({ length: n }, () => {
-        seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
-        return seed >>> 24;
+        seed.value = (Math.imul(seed.value, 1_664_525) + 1_013_904_223) >>> 0;
+        return seed.value >>> 24;
       }),
   };
+  return env;
+}
+
+function buildTemplate(content: "portfolio" | "strategy" | "none", today: IsoDate): Template {
+  const historyStart = historyStartOf(today);
+  const db = new Database(":memory:");
+  const store = openVault(db);
+  let wall = 0;
+  const clock = { now: () => wall };
+  const seed = { value: 0xc01 };
+  const env = vaultEnv(clock, null, seed);
   const writer = storeWriter(store);
   const apply = <I, R>(command: Command<I, R>, input: unknown): R => {
     const result = runCommand(store, writer, command, input, env);
@@ -131,19 +163,73 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
     wall = s.at;
     s.run();
   }
-  // Commands the tests run happen this morning, one millisecond apart.
-  wall = at(today, 9, 40);
-  clock.now = () => wall++;
-
-  const prices = new SqlPriceCache(betterSqlite3Driver(new Database(":memory:")));
+  const pricesDb = new Database(":memory:");
+  const prices = new SqlPriceCache(betterSqlite3Driver(pricesDb));
   if (content === "portfolio") seedCompanionPrices(prices, today, historyStart);
+  // A clean shutdown recorded before the image is taken (the copies open as a reopened vault).
+  store.detach();
+  const template: Template = {
+    vault: db.serialize(),
+    prices: pricesDb.serialize(),
+    hlc: env.hlc.state,
+    seed: seed.value,
+  };
+  db.close();
+  prices.close();
+  return template;
+}
+
+/** The second profile: a fresh vault with only its profile created (no strategy, no data). */
+function openOther(clock: { now: () => number }): VaultHandle {
+  const store = openVault(new Database(":memory:"), INVESTMENTS_OTHER_VAULT);
+  const env = vaultEnv(clock, null, { value: 0xc03 });
+  const writer = storeWriter(store);
+  const created = runCommand(
+    store,
+    writer,
+    createProfile,
+    {
+      slug: "synthetic-household",
+      name: "Synthetic household",
+      baseCurrency: "PLN",
+      modules: ["budget", "investments"],
+    },
+    env,
+  );
+  if (!created.ok) throw new Error(`synthetic profile refused: ${created.reason}`);
+  return { store, writer, env };
+}
+
+export function investmentsStore(options: InvestmentsStoreOptions = {}) {
+  const content = options.content ?? "portfolio";
+  const today = options.today ?? INVESTMENTS_TODAY;
+  const key = `${content}:${today}`;
+  const template = templates.get(key) ?? buildTemplate(content, today);
+  templates.set(key, template);
+  // This kit's own copy: a deserialized database lives in memory, apart from every other copy.
+  const store = openVault(new Database(template.vault));
+  // Commands the tests run happen this morning, one millisecond apart.
+  let wall = at(today, 9, 40);
+  const clock = { now: () => wall++ };
+  const env = vaultEnv(clock, template.hlc, { value: template.seed });
+  const writer = storeWriter(store);
+  const apply = <I, R>(command: Command<I, R>, input: unknown): R => {
+    const result = runCommand(store, writer, command, input, env);
+    if (!result.ok) throw new Error(`synthetic ${command.id} refused: ${result.reason}`);
+    return result.value;
+  };
+
+  const prices = new SqlPriceCache(betterSqlite3Driver(new Database(template.prices)));
   const device = DeviceStore.open(betterSqlite3Driver(new Database(":memory:")));
   device.run(setCurrentVault, { vault: INVESTMENTS_VAULT });
   if (options.pricesFetchedAt !== undefined)
     device.run(setPricesFetchedAt, { vault: INVESTMENTS_VAULT, at: options.pricesFetchedAt });
   const vault: VaultHandle = { store, writer, env };
+  const other = options.otherProfile === true ? openOther(clock) : null;
+  const handles = new Map<string, VaultHandle>([[INVESTMENTS_VAULT, vault]]);
+  if (other !== null) handles.set(INVESTMENTS_OTHER_VAULT, other);
   const client = createSyncClient(
-    { device, vaults: new Map([[INVESTMENTS_VAULT, vault]]) },
+    { device, vaults: handles },
     {
       lingerMs: 0,
     },
@@ -151,6 +237,7 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
   /** The query sources' moment: this morning 09:40 local (the screens' `now`). */
   const now = new Date(at(today, 9, 40)).toISOString();
   const services: Services = {
+    ...LOCAL_ONLY,
     client,
     device,
     moneyQueries: createMoneyQueries(
@@ -159,8 +246,9 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
     ),
     store,
     storeOf: (id) => {
-      if (id !== INVESTMENTS_VAULT) throw new Error(`no synthetic store for ${id}`);
-      return store;
+      if (id === INVESTMENTS_VAULT) return store;
+      if (other !== null && id === INVESTMENTS_OTHER_VAULT) return other.store;
+      throw new Error(`no synthetic store for ${id}`);
     },
     profiles: [
       {
@@ -170,6 +258,17 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
         modules: ["budget", "investments"],
         role: "owner",
       },
+      ...(other === null
+        ? []
+        : [
+            {
+              vault: INVESTMENTS_OTHER_VAULT,
+              slug: "synthetic-household",
+              name: "Synthetic household",
+              modules: ["budget", "investments"],
+              role: "owner" as const,
+            },
+          ]),
     ],
     prices,
     openMs: 0,
@@ -181,7 +280,12 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
     // The lock prompts nothing unless a test scripts it; off by default like the demo.
     auth: memoryAuthenticator(),
     isDemo: true,
-    close: servicesCloser({ client, vaults: [store], prices, device }),
+    close: servicesCloser({
+      client,
+      vaults: other === null ? [store] : [store, other.store],
+      prices,
+      device,
+    }),
   };
   /** An instrument's gid by its ticker (the fixture's keys: CDR, VWCE, EDO, DBND, VT, BETA, ETFBM40TR). */
   const instrument = (symbol: string): string => {
@@ -197,6 +301,8 @@ export function investmentsStore(options: InvestmentsStoreOptions = {}) {
     now,
     store,
     vault,
+    /** The second profile's store (`otherProfile: true`), else null. */
+    other: other?.store ?? null,
     device,
     client,
     prices,

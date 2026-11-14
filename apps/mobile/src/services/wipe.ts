@@ -4,7 +4,8 @@
 // rebuilt app is shown (the fatal state already says the wipe failed, so nothing more is thrown then).
 //
 // Order: the root shows "Removing this phone's copy" (the app's tree unmounts, so no render reads a
-// store from here on), the before-wipe tasks (our scheduled and delivered notifications), the Keychain
+// store from here on), the first before-wipe tasks (the notification plans stop: nothing schedules any
+// more), then the other before-wipe tasks (our scheduled and delivered notifications), the Keychain
 // items (async only: expo-secure-store has no synchronous delete), one frame so the "Removing" state
 // reaches the screen, then synchronously close every database, delete the files and rebuild the
 // services (the demo's fixture build), and remount. Deleting the key before the files is safe: an
@@ -14,18 +15,26 @@
 // root then shows the fatal "close cashU and open it again" state, as it does when the rebuild throws;
 // the next launch discards the files without a key and starts clean.
 
-export type BeforeWipeTask = () => Promise<void> | void;
+/** A before-wipe task; a `first` one settles before any other starts. */
+export type BeforeWipeTask = (() => Promise<void> | void) & { readonly first?: true };
 
 const beforeWipe = new Set<BeforeWipeTask>();
 
 /**
  * Register a task to run before a wipe (the notification scheduler cancels what it scheduled). Kept
- * outside the services, so a registration made once at startup survives the services' rebuild.
- * Returns the unregister function.
+ * outside the services, so a registration made once at startup survives the services' rebuild. A
+ * `first` task (the notification plans stopping) settles before the others start, so they never race
+ * it. Returns the unregister function.
  */
-export function onBeforeWipe(task: BeforeWipeTask): () => void {
-  beforeWipe.add(task);
-  return () => beforeWipe.delete(task);
+export function onBeforeWipe(
+  task: () => Promise<void> | void,
+  options: { readonly first?: boolean } = {},
+): () => void {
+  const entry: BeforeWipeTask = options.first
+    ? Object.assign(() => task(), { first: true as const })
+    : task;
+  beforeWipe.add(entry);
+  return () => beforeWipe.delete(entry);
 }
 
 /** The registered before-wipe tasks, in registration order. */
@@ -36,7 +45,7 @@ export function beforeWipeTasks(): BeforeWipeTask[] {
 export interface WipeSteps {
   /** The root shows the "Removing" state instead of the app. */
   showWiping(): void;
-  /** Best effort: a failing task does not stop or fail the wipe. */
+  /** Best effort: a failing task does not stop or fail the wipe. The `first` ones settle before the rest start. */
   readonly beforeWipe: readonly BeforeWipeTask[];
   /** Delete the database key and the KeyStore's key-encryption key from the Keychain. */
   deleteSecrets(): Promise<void>;
@@ -62,7 +71,8 @@ export async function wipeDevice(steps: WipeSteps): Promise<"ready" | "failed"> 
   const failures: unknown[] = [];
   let usable = true;
   try {
-    await Promise.allSettled(steps.beforeWipe.map((task) => Promise.resolve().then(task)));
+    await settleAll(steps.beforeWipe.filter((task) => task.first === true));
+    await settleAll(steps.beforeWipe.filter((task) => task.first !== true));
     try {
       await steps.deleteSecrets();
     } catch (error) {
@@ -91,4 +101,9 @@ export async function wipeDevice(steps: WipeSteps): Promise<"ready" | "failed"> 
   if (!usable) return "failed";
   if (failures.length > 0) throw failures[0];
   return "ready";
+}
+
+/** Run the tasks together and wait for every one; a failure is swallowed (best effort). */
+async function settleAll(tasks: readonly BeforeWipeTask[]): Promise<void> {
+  await Promise.allSettled(tasks.map((task) => Promise.resolve().then(task)));
 }

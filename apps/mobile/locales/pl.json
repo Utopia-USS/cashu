@@ -1,3 +1,4 @@
 {
-  "NSFaceIDUsageDescription": "cashU używa Face ID, żeby odblokować aplikację."
+  "NSFaceIDUsageDescription": "cashU używa Face ID, żeby odblokować aplikację.",
+  "NSCameraUsageDescription": "cashU używa aparatu, żeby zeskanować kod parowania pokazany na Macu."
 }

@@ -36,9 +36,9 @@ import {
 } from "@cashu/ui-logic/investments/v2/reviewDeckState";
 import { useRef, useState } from "react";
 import { useServices } from "../../services/ServicesProvider";
-import { type SignalTextRow, signalText } from "../investments/signalText";
 import { useInvestmentSignals } from "../investments/useInvestmentSignals";
 import type { DisplayEnv } from "../today/display";
+import { type DecideTextContext, decideFacts, decideTitle, decideWhy } from "./decideText";
 import { S } from "./Review.strings";
 
 const research = researchScreenCommands();
@@ -418,6 +418,8 @@ export function shownDecideItems(
 // --------------------------------------------------------------------------- the hook
 
 export function useReviewDeck(args: {
+  /** The vault the modal was opened with (`usePinnedVault`): every write goes there, never to a later profile. */
+  readonly vault: string;
   readonly today: string;
   readonly lang: UiLang;
   /** Open at this card index (deep link `?step=N`, dev and tests). */
@@ -445,11 +447,11 @@ export function useReviewDeck(args: {
   // `saving` reaches the buttons and the stack only on the next render: a double tap (or a swipe and
   // a tap) before that must not journal the choices twice.
   const busy = useRef(false);
-  const decidePosition = useCommand(reviewPositionDecision);
-  const decideSignal = useCommand(signalsOwnerCommands.decide);
-  const save = useCommand(saveReview);
-  const watch = useCommand(research.acceptCandidate);
-  const dismiss = useCommand(research.dismissNote);
+  const decidePosition = useCommand(reviewPositionDecision, { vault: args.vault });
+  const decideSignal = useCommand(signalsOwnerCommands.decide, { vault: args.vault });
+  const save = useCommand(saveReview, { vault: args.vault });
+  const watch = useCommand(research.acceptCandidate, { vault: args.vault });
+  const dismiss = useCommand(research.dismissNote, { vault: args.vault });
 
   if (frozen === null) return { kind: "unavailable", onClose: args.close };
   const result = frozen;
@@ -464,16 +466,12 @@ export function useReviewDeck(args: {
     signals.status === "ready" && signals.context.status === "ready"
       ? signals.context.allocation.base_currency
       : null;
-  const say = (
-    row: SignalTextRow & { instrument: string | null; instrumentLabel: string | null },
-  ) => {
-    const instrument = instruments.find((i) => i.id === row.instrument);
-    const name = instrument?.name || instrument?.symbol || row.instrumentLabel || "";
-    return signalText(row, { name, currency: instrument?.currency ?? null, baseCurrency }, env);
+  const textCtx: DecideTextContext = {
+    instruments,
+    signals: signals.status === "ready" ? signals.signals : [],
+    baseCurrency,
+    env,
   };
-  /** A decide item's title with the instrument's display name in place of the ticker. */
-  const titleOf = (item: ReviewDecideItem): string =>
-    instruments.find((i) => i.id === item.instrument)?.name || item.title;
   // The deck starts from the frozen result on the first render that has one (and at `step`, if given).
   const initial = (): DeckState => {
     const { cards, skipped } = deckCardsOf(result);
@@ -540,7 +538,10 @@ export function useReviewDeck(args: {
 
   const now = currentCard(deck);
   if (now.id === "summary") {
-    const summary = summaryOf(deck, decideItems);
+    const summary = summaryOf(
+      deck,
+      decideItems.map((item) => ({ ...item, title: decideTitle(item, textCtx) })),
+    );
     return {
       kind: "summary",
       progress: deckProgressModel,
@@ -623,7 +624,7 @@ export function useReviewDeck(args: {
         eyebrow: S.eyebrowDecide(decideItems.length),
         title:
           decideItems.length === 1
-            ? S.decideOne(decideItems[0] === undefined ? "" : titleOf(decideItems[0]))
+            ? S.decideOne(decideItems[0] === undefined ? "" : decideTitle(decideItems[0], textCtx))
             : S.decideMany(decideItems.length),
         body: {
           kind: "decide",
@@ -634,10 +635,9 @@ export function useReviewDeck(args: {
           ],
           rows: decideItems.map((item) => ({
             key: item.key,
-            title: item.title,
-            why:
-              item.lead !== undefined && item.whySource !== "research" ? say(item.lead) : item.why,
-            facts: item.supporting?.map(say) ?? item.facts,
+            title: decideTitle(item, textCtx),
+            why: decideWhy(item, textCtx),
+            facts: decideFacts(item, textCtx),
             mode: item.kind === "proposal" ? "mac" : needsChoice(item) ? "choose" : "info",
             choice: deck.choices[item.key] ?? null,
             saved: written.has(item.key),

@@ -280,7 +280,7 @@ describe("signalText", () => {
       "CD Projekt traded 3.4x its 20-session average volume",
       "CD Projekt: wolumen 3,4x średniej z 20 sesji",
     ),
-    // A custom rule without the owner's own message: the condition as written, the measures by unit.
+    // A custom rule without the owner's own message: a neutral sentence, no expression and no measures.
     cases(
       "custom",
       {
@@ -288,8 +288,8 @@ describe("signalText", () => {
         when: 'bucket_drift_pp("global_equity") <= -3 and cash_value >= 5000',
         values: { 'bucket_drift_pp("global_equity")': -4.2, cash_value: "6200.00" },
       },
-      'Condition met (bucket_drift_pp("global_equity") <= -3 and cash_value >= 5000), bucket_drift_pp("global_equity"): -4.2 pp, cash_value: PLN 6,200',
-      'Warunek spełniony (bucket_drift_pp("global_equity") <= -3 and cash_value >= 5000), bucket_drift_pp("global_equity"): -4,2 pp, cash_value: 6200 zł',
+      "Your own rule fired",
+      "Zadziałała Twoja reguła",
       portfolio,
       "Condition met: ... (...)",
     ),
@@ -301,13 +301,12 @@ describe("signalText", () => {
         when: "weight > 5% and unrealized_pct < 0",
         values: { weight: 0.075, unrealized_pct: -0.12, flagged: true, missing: null },
       },
-      "CD Projekt: condition met (weight > 5% and unrealized_pct < 0), weight: 7.5%, unrealized_pct: -12.0%, flagged: yes, missing: unknown",
-      "CD Projekt: warunek spełniony (weight > 5% and unrealized_pct < 0), weight: 7,5%, unrealized_pct: -12,0%, flagged: tak, missing: brak danych",
+      "CD Projekt: your own rule fired",
+      "CD Projekt: zadziałała Twoja reguła",
       cdr,
       "Warunek spełniony: ... (...)",
     ),
-    // The owner's own bucket: no id in the subject, the condition or the measures (F7), the bucket
-    // functions read as phrases as on the desktop.
+    // The owner's own bucket: no id in the subject (F7), no condition and no measures.
     cases(
       "alert:custom",
       {
@@ -317,12 +316,12 @@ describe("signalText", () => {
         when: 'bucket_drift_pp("core") <= -3 and cash_weight >= 5%',
         values: { 'bucket_drift_pp("core")': -4.2, cash_weight: 0.07 },
       },
-      "Bucket: condition met (bucket drift <= -3 and cash_weight >= 5%), bucket drift: -4.2 pp, cash_weight: 7.0%",
-      "Koszyk: warunek spełniony (dryf koszyka <= -3 and cash_weight >= 5%), dryf koszyka: -4,2 pp, cash_weight: 7,0%",
+      "Bucket: your own rule fired",
+      "Koszyk: zadziałała Twoja reguła",
       portfolio,
       "Core lagging: Condition met (cash_weight 7.0%)",
     ),
-    // A bucket-scope rule measures `bucket_id`: the evaluated bucket by its name, never its id (F7).
+    // A bucket-scope rule names the evaluated bucket generically, never by its id (F7).
     cases(
       "custom",
       {
@@ -331,8 +330,8 @@ describe("signalText", () => {
         when: 'drift_pp < -3 and bucket_id != "cash"',
         values: { bucket_id: "core", drift_pp: -4.2 },
       },
-      'Bucket: condition met (drift_pp < -3 and bucket_id != "cash"), bucket_id: Bucket, drift_pp: -4.2 pp',
-      'Koszyk: warunek spełniony (drift_pp < -3 and bucket_id != "cash"), bucket_id: Koszyk, drift_pp: -4,2 pp',
+      "Bucket: your own rule fired",
+      "Koszyk: zadziałała Twoja reguła",
       portfolio,
       "Condition met: ... (...)",
     ),
@@ -345,12 +344,12 @@ describe("signalText", () => {
         when: 'drift_pp < -3 and bucket_id == "bonds"',
         values: { bucket_id: "bonds", drift_pp: -4.2, drift_value: "-1200", value: "8000" },
       },
-      'Bonds: condition met (drift_pp < -3 and bucket_id == "bonds"), bucket_id: Bonds, drift_pp: -4.2 pp, drift_value: -PLN\u00a01,200, value: PLN\u00a08,000',
-      'Obligacje: warunek spełniony (drift_pp < -3 and bucket_id == "bonds"), bucket_id: Obligacje, drift_pp: -4,2 pp, drift_value: -1200\u00a0zł, value: 8000\u00a0zł',
+      "Bonds: your own rule fired",
+      "Obligacje: zadziałała Twoja reguła",
       portfolio,
       "Condition met: ... (...)",
     ),
-    // A signed amount keeps its sign: a loss reads as one.
+    // An instrument rule measuring the owner's amounts: none of them in the sentence.
     cases(
       "custom",
       {
@@ -358,8 +357,8 @@ describe("signalText", () => {
         when: "unrealized_value < -1000",
         values: { unrealized_value: "-1200", market_value: "5400" },
       },
-      "CD Projekt: condition met (unrealized_value < -1000), unrealized_value: -PLN\u00a01,200, market_value: PLN\u00a05,400",
-      "CD Projekt: warunek spełniony (unrealized_value < -1000), unrealized_value: -1200\u00a0zł, market_value: 5400\u00a0zł",
+      "CD Projekt: your own rule fired",
+      "CD Projekt: zadziałała Twoja reguła",
       cdr,
       "Condition met: ... (...)",
     ),
@@ -440,7 +439,7 @@ describe("signalText", () => {
     expect(signalText(drop, cdr, hidden)).toBe(
       "CD Projekt fell 9.4% in 5 sessions (PLN 236.87 → PLN 214.60)",
     );
-    // The owner's amounts in a custom rule's measures, and the plan without a base currency.
+    // A custom rule's sentence carries nothing to mask, and the plan without a base currency.
     expect(
       signalText(
         {
@@ -455,7 +454,19 @@ describe("signalText", () => {
         portfolio,
         hidden,
       ),
-    ).toBe("Condition met (cash_value >= 5000), cash_value: •••, cash_weight: 7.0%");
+    ).toBe("Your own rule fired");
+    // An owner-written research title may carry the owner's amounts: masked like the engine's text.
+    const research = {
+      kind: "research:news",
+      message: "raw",
+      payload: { title: "Cash at 120k", relation: "weakens", strength: 2, sources: 4 },
+    };
+    expect(signalText(research, cdr, hidden)).toBe(
+      "Analysis: Cash at •••k - weakens the thesis (strength 2/3, 4 sources)",
+    );
+    expect(signalText(research, cdr, { ...hidden, privacy: false })).toBe(
+      "Analysis: Cash at 120k - weakens the thesis (strength 2/3, 4 sources)",
+    );
     expect(
       signalText(
         { kind: "contribution_gap", message: "raw", payload: gap },
@@ -548,6 +559,27 @@ describe("signalText", () => {
         enUS,
       ),
     ).toBe("raw");
+  });
+  it("never shows a custom rule's expression, metric names or values", () => {
+    for (const language of ["en", "pl"] as const) {
+      setLanguageForTests(language);
+      const text = signalText(
+        {
+          kind: "custom",
+          message: "Condition met: ...",
+          payload: {
+            scope: "portfolio",
+            when: "cash_value >= 5000",
+            values: { cash_value: "6200.00" },
+          },
+        },
+        portfolio,
+        language === "en" ? enUS : plPL,
+      );
+      expect(text).not.toContain(">=");
+      expect(text).not.toContain("cash_value");
+      expect(text).not.toMatch(/\d/);
+    }
   });
 });
 

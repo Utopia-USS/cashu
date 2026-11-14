@@ -34,4 +34,8 @@ export const S = catalog({
     pl: "Nie udało się zapisać. Spróbuj jeszcze raz.",
     en: "Could not save. Try again.",
   },
+  firstSaveWent: {
+    pl: "Pierwszy zapis się udał. Sprawdź wpis przed ponownym zapisaniem.",
+    en: "The first save went through. Check the entry before saving again.",
+  },
 });

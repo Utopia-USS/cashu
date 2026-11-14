@@ -2,7 +2,16 @@
 // device): the key is the first statement, the cipher's presence is checked, plain SQLite throws, one
 // probe read proves the key, a NOTADB answer is a key mismatch, and the boot's recovery discards the
 // files and opens once more.
-import { isDbKeyMismatch, keyDatabase, openWithKeyRecovery } from "./sqliteKeying";
+import {
+  DEVICE_DB,
+  deviceStoreMismatch,
+  isDbKeyMismatch,
+  keyDatabase,
+  MARKET_DB,
+  openBaseFiles,
+  openVaultFiles,
+  openWithKeyRecovery,
+} from "./sqliteKeying";
 
 const KEY = "0123456789abcdef".repeat(4);
 const PROBE = "SELECT count(*) AS n FROM sqlite_master";
@@ -114,5 +123,147 @@ describe("key mismatch recovery", () => {
       ),
     ).toThrow("db_key_mismatch");
     expect(opens).toBe(2);
+  });
+});
+
+// Per-file decisions over a fake disk: each file remembers the key it was written under; opening it
+// under another key is a mismatch, opening a missing file creates it under the current key.
+const DEMO = "ca000000000000000000000000000a11";
+const PAIRED = "5f0c3a9e81d24b7690ae13c7d2f4b856";
+
+function fakeDisk(files: Record<string, string>, key: string) {
+  const disk = new Map(Object.entries(files));
+  const reports: [string, number][] = [];
+  const open = (file: string) => {
+    const held = disk.get(file);
+    if (held !== undefined && held !== key)
+      throw new Error("db_key_mismatch: the key does not open this file");
+    disk.set(file, key);
+    return { file, close: () => {} };
+  };
+  return {
+    disk,
+    reports,
+    open,
+    ports: {
+      openDevice: () => open(DEVICE_DB),
+      openPrices: () => open(MARKET_DB),
+      files: () => [...disk.keys()],
+      opens: (file: string) =>
+        file.startsWith("log-") || file === MARKET_DB ? disk.get(file) === key : false,
+      remove: (file: string) => void disk.delete(file),
+      isDemo: (vault: string) => vault === DEMO,
+      report: (reason: string, n: number) => void reports.push([reason, n]),
+    },
+  };
+}
+
+describe("per-file key mismatch", () => {
+  const all = (k: string) => ({
+    [DEVICE_DB]: k,
+    [MARKET_DB]: k,
+    [`vault-${DEMO}.db`]: k,
+    [`log-${DEMO}.db`]: k,
+    [`vault-${PAIRED}.db`]: k,
+    [`log-${PAIRED}.db`]: k,
+  });
+
+  it("recreates a market cache the key does not open, and only it", () => {
+    const fake = fakeDisk({ ...all("K"), [MARKET_DB]: "torn" }, "K");
+    openBaseFiles(fake.ports);
+    expect(fake.disk).toEqual(new Map(Object.entries(all("K"))));
+    expect(fake.reports).toEqual([["market_key_mismatch", 1]]);
+  });
+
+  it("rebuilds the device store alone when the key opens another file", () => {
+    const fake = fakeDisk({ ...all("K"), [DEVICE_DB]: "torn" }, "K");
+    openBaseFiles(fake.ports);
+    expect(fake.disk).toEqual(new Map(Object.entries(all("K"))));
+    expect(fake.reports).toEqual([["device_key_mismatch", 1]]);
+  });
+
+  it("discards everything but a non-demo vault's files when the key opens no file", () => {
+    const fake = fakeDisk(all("OLD"), "NEW");
+    openBaseFiles(fake.ports);
+    // The device store and the cache are new; the demo is gone; the other vault's files stay.
+    expect(Object.fromEntries(fake.disk)).toEqual({
+      [`vault-${PAIRED}.db`]: "OLD",
+      [`log-${PAIRED}.db`]: "OLD",
+      [DEVICE_DB]: "NEW",
+      [MARKET_DB]: "NEW",
+    });
+    expect(fake.reports).toEqual([["key_mismatch", 4]]);
+  });
+
+  it("discards every file of a demo-only phone when the key opens none", () => {
+    expect(
+      deviceStoreMismatch(
+        [DEVICE_DB, MARKET_DB, `vault-${DEMO}.db`, `log-${DEMO}.db`],
+        () => false,
+        (v) => v === DEMO,
+      ),
+    ).toEqual([DEVICE_DB, MARKET_DB, `vault-${DEMO}.db`, `log-${DEMO}.db`]);
+  });
+
+  it("closes the device store when the price cache fails otherwise", () => {
+    let closed = false;
+    expect(() =>
+      openBaseFiles({
+        ...fakeDisk({}, "K").ports,
+        openDevice: () => ({
+          close: () => {
+            closed = true;
+          },
+        }),
+        openPrices: () => {
+          throw new Error("disk_full");
+        },
+      }),
+    ).toThrow("disk_full");
+    expect(closed).toBe(true);
+  });
+
+  it("rebuilds a demo vault the key does not open", () => {
+    const fake = fakeDisk({ [`vault-${DEMO}.db`]: "torn", [`log-${DEMO}.db`]: "K" }, "K");
+    const opened = openVaultFiles(
+      "demo",
+      () => [fake.open(`vault-${DEMO}.db`), fake.open(`log-${DEMO}.db`)],
+      () => {
+        fake.disk.delete(`vault-${DEMO}.db`);
+        fake.disk.delete(`log-${DEMO}.db`);
+      },
+    );
+    expect(opened.kind).toBe("opened");
+    expect(fake.disk.get(`vault-${DEMO}.db`)).toBe("K");
+  });
+
+  it("leaves a paired vault's files alone and reports needs_repair", () => {
+    const fake = fakeDisk({ [`vault-${PAIRED}.db`]: "K", [`log-${PAIRED}.db`]: "torn" }, "K");
+    let recreated = false;
+    const opened = openVaultFiles(
+      "paired",
+      () => [fake.open(`vault-${PAIRED}.db`), fake.open(`log-${PAIRED}.db`)],
+      () => {
+        recreated = true;
+      },
+    );
+    expect(opened).toEqual({ kind: "needs_repair" });
+    expect(recreated).toBe(false);
+    expect(Object.fromEntries(fake.disk)).toEqual({
+      [`vault-${PAIRED}.db`]: "K",
+      [`log-${PAIRED}.db`]: "torn",
+    });
+  });
+
+  it("passes any other failure of a vault open through", () => {
+    expect(() =>
+      openVaultFiles(
+        "paired",
+        () => {
+          throw new Error("disk_full");
+        },
+        () => {},
+      ),
+    ).toThrow("disk_full");
   });
 });

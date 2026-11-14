@@ -3,6 +3,7 @@
 // transfers and other currencies. Exact Money rows and the prebuilt chart arrive from the screen hook.
 
 import {
+  Button,
   Donut,
   Icon,
   ListRow,
@@ -48,7 +49,10 @@ function Stepper(props: SpendingViewProps) {
   );
 }
 
-/** Month / Quarter / Year; with more than one currency, a compact currency choice at the row's end. */
+/**
+ * Month / Quarter / Year; with more than one currency, a compact currency chip at the row's end (designer
+ * #18.6): it shows the current currency and a tap moves to the next one (a profile holds two or three).
+ */
 function PeriodRow(props: SpendingViewProps) {
   const many = props.currencies.length > 1;
   const period = (
@@ -65,15 +69,20 @@ function PeriodRow(props: SpendingViewProps) {
     />
   );
   if (!many) return period;
+  const at = props.currencies.indexOf(props.currency);
+  const next = props.currencies[(at + 1) % props.currencies.length] ?? props.currency;
   return (
     <View className="flex-row items-center justify-between gap-2">
       {period}
-      <Seg<string>
-        label={S.currency}
-        items={props.currencies.map((code) => [code, code] as const)}
-        value={props.currency}
-        onChange={props.onCurrencyChange}
-      />
+      <Button
+        variant="secondary"
+        size="sm"
+        className="self-center"
+        label={S.currencyChip(props.currency, next)}
+        onPress={() => props.onCurrencyChange(next)}
+      >
+        {props.currency}
+      </Button>
     </View>
   );
 }

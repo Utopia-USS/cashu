@@ -21,6 +21,7 @@ import Database from "better-sqlite3";
 import { servicesCloser } from "../../services/lifecycle";
 import { createMoneyQueries, type MoneyQueryContext } from "../../services/moneyQueries";
 import type { Services } from "../../services/services";
+import { LOCAL_ONLY } from "../../services/testing/localOnly";
 import { memoryAuthenticator } from "../../shell/testing/auth";
 
 export const MONEY_VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaa261";
@@ -46,6 +47,7 @@ function openMoneyVault(vault: string, name: string): VaultHandle {
     vault,
     salt: vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => i)),
     modules: builtinModules(),
+    companionReads: true,
   });
   let wall = Date.UTC(2026, 9, 31, 12);
   const clock = { now: () => wall++ };
@@ -97,6 +99,7 @@ export function moneyStore(context: MoneyQueryContext = { prices: null }) {
   // Unused by money screens (their queries take `context`); an empty in-memory cache.
   const prices = new SqlPriceCache(betterSqlite3Driver(new Database(":memory:")));
   const services: Services = {
+    ...LOCAL_ONLY,
     client,
     device,
     moneyQueries: createMoneyQueries(context),

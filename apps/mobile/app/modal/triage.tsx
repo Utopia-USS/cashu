@@ -5,6 +5,7 @@ import { lang } from "@cashu/i18n";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePinnedVault } from "../../src/screens/profile/switchProfile";
 import { TriageView } from "../../src/screens/triage/TriageView";
 import { useTriageScreen } from "../../src/screens/triage/useTriageScreen";
 import { useNow } from "../../src/shell/useNow";
@@ -12,12 +13,18 @@ import { useNow } from "../../src/shell/useNow";
 export { ErrorBoundary } from "expo-router";
 
 export default function TriageRoute() {
+  // Pinned to the profile it opened with: nothing renders once the current profile is another one.
+  const vault = usePinnedVault();
+  return vault === null ? null : <Triage vault={vault} />;
+}
+
+function Triage({ vault }: { vault: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { today } = useNow();
   const { month, currency } = useLocalSearchParams<{ month?: string; currency?: string }>();
   const scope = month && /^\d{4}-\d{2}$/u.test(month) && currency ? { month, currency } : null;
-  const props = useTriageScreen({ lang: lang(), today, scope, close: () => router.back() });
+  const props = useTriageScreen({ vault, lang: lang(), today, scope, close: () => router.back() });
   return (
     <View
       className="flex-1 bg-surface"

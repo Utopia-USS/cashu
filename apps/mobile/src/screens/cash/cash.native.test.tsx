@@ -4,12 +4,14 @@
 import { setLanguageForTests } from "@cashu/i18n";
 import { addCashExpense } from "@cashu/store";
 import { overviewCashWallet } from "@cashu/store/overview/cash";
-import { ProfileProvider, StoreProvider } from "@cashu/store-react";
+import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
 import { type ComponentType, useEffect } from "react";
 import { ServicesProvider } from "../../services/ServicesProvider";
 import { applyMoneyCommand, type MoneyStore, moneyStore } from "../testing/moneyStore";
+import { unknownOnce } from "../testing/unknownOnce";
+import { S } from "./Cash.strings";
 import { CashSheetView } from "./CashSheetView";
 import cashMeta, { EmptyWallet, Incognito, NotSaved, TypedAmount } from "./CashSheetView.stories";
 import { type CashSheetState, useCashSheet } from "./useCashSheet";
@@ -36,7 +38,7 @@ function setup(): MoneyStore {
 }
 
 function Sheet({ observed }: { observed: (state: CashSheetState) => void }) {
-  const state = useCashSheet({ today: TODAY, lang: "en", close });
+  const state = useCashSheet({ vault: useProfile(), today: TODAY, lang: "en", close });
   useEffect(() => observed(state));
   return <CashSheetView {...state} />;
 }
@@ -181,4 +183,78 @@ it("renders the incognito story with the typed digits and no amount on the butto
   expect(screen.getByText("PLN 45.5")).toBeOnTheScreen();
   expect(screen.getByText("Add expense")).toBeOnTheScreen();
   expect(screen.getAllByLabelText("Amount hidden").length).toBeGreaterThan(0);
+});
+
+describe("a save whose outcome was unknown (K2)", () => {
+  async function openUnknownOnce() {
+    const fixture = setup();
+    const durable = unknownOnce(fixture);
+    closers.push(() => durable.client.dispose());
+    const seen: { state?: CashSheetState } = {};
+    await render(
+      <ServicesProvider services={durable.services}>
+        <StoreProvider client={durable.client}>
+          <ProfileProvider>
+            <UiEnvProvider locale="en-US" privacy={false}>
+              <Sheet
+                observed={(state) => {
+                  seen.state = state;
+                }}
+              />
+            </UiEnvProvider>
+          </ProfileProvider>
+        </StoreProvider>
+      </ServicesProvider>,
+    );
+    const state = () => {
+      if (seen.state === undefined) throw new Error("the sheet did not render");
+      return seen.state;
+    };
+    const rows = () =>
+      overviewCashWallet
+        .run(fixture.a.store.read.bind(fixture.a.store), {})
+        .transactions.map((r) => r.amount.toString());
+    return { durable, state, rows };
+  }
+
+  it("saving the same input again reports the first save and writes nothing twice", async () => {
+    const { durable, state, rows } = await openUnknownOnce();
+    for (const k of ["4", "2"]) await key(k);
+    await fireEvent.changeText(screen.getByLabelText("What it was"), "Synthetic kiosk");
+    await key("Add -PLN 42.00");
+    expect(state().error).toBe("Could not save. Try again.");
+    expect(close).not.toHaveBeenCalled();
+    await key("Add -PLN 42.00");
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(rows()).toEqual(["-42"]);
+    expect(durable.executed).toHaveLength(1);
+  });
+
+  it("a corrected input is neither reported as saved nor written on top; the sheet keeps it", async () => {
+    const { durable, state, rows } = await openUnknownOnce();
+    for (const k of ["4", "2"]) await key(k);
+    await fireEvent.changeText(screen.getByLabelText("What it was"), "Synthetic kiosk");
+    await key("Add -PLN 42.00");
+    expect(state().error).toBe("Could not save. Try again.");
+    // The owner corrects the amount after "Could not save".
+    await key("5");
+    await key("Add -PLN 425.00");
+    expect(close).not.toHaveBeenCalled();
+    expect(state().error).toBe("The first save went through. Check the entry before saving again.");
+    expect(state().amount.text).toBe("425");
+    expect(rows()).toEqual(["-42"]);
+    expect(durable.executed).toHaveLength(1);
+    // Saving the correction on purpose writes it once.
+    await key("Add -PLN 425.00");
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(rows().sort()).toEqual(["-42", "-425"]);
+    expect(durable.executed).toHaveLength(2);
+  });
+
+  it("says it in Polish too", () => {
+    setLanguageForTests("pl");
+    expect(S.firstSaveWent).toBe(
+      "Pierwszy zapis się udał. Sprawdź wpis przed ponownym zapisaniem.",
+    );
+  });
 });

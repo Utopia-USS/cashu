@@ -6,7 +6,7 @@ import { setLanguageForTests } from "@cashu/i18n";
 import { lastReview } from "@cashu/store/investments/queries";
 import { readReviewDue, undoSavedReview } from "@cashu/store/investments/review-screen";
 import { runQuery } from "@cashu/store/query";
-import { ProfileProvider, StoreProvider } from "@cashu/store-react";
+import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, render, screen } from "@testing-library/react-native";
 import { type ComponentType, type ReactNode, useEffect } from "react";
@@ -18,6 +18,8 @@ import reviewMeta, * as stories from "./ReviewDeckView.stories";
 import { type ReviewDeckState, shownDecideItems, useReviewDeck } from "./useReviewDeck";
 
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
+// The first kit of the file builds the synthetic vault (the rest copy it): slow on a loaded machine.
+jest.setTimeout(30_000);
 
 const closers: (() => void)[] = [];
 beforeEach(() => setLanguageForTests("en"));
@@ -52,7 +54,7 @@ function Deck({
   step: number | null;
   observed: (state: ReviewDeckState) => void;
 }) {
-  const state = useReviewDeck({ today, lang: "en", step, close });
+  const state = useReviewDeck({ vault: useProfile(), today, lang: "en", step, close });
   useEffect(() => observed(state));
   return <ReviewDeckView {...state} />;
 }
@@ -172,7 +174,7 @@ describe("weekly review deck with the real synchronous store", () => {
       (journalBefore ?? 0) + 1,
     );
     expect(journal[0]).toEqual({ action: "held", reason: "Waiting for the Q4 call" });
-    expect(deck.summary.summary.decisions).toEqual([{ title: "CDR", choice: "Nothing" }]);
+    expect(deck.summary.summary.decisions).toEqual([{ title: "CD Projekt", choice: "Nothing" }]);
   });
 
   it("journals the decide card once for a double tap, and saves the review once", async () => {
@@ -212,7 +214,7 @@ describe("weekly review deck with the real synchronous store", () => {
       title: "Saved",
       clear: 4,
       waiting: "2 cards wait for you on your Mac",
-      decisions: [{ title: "CDR", choice: "no decision yet" }],
+      decisions: [{ title: "CD Projekt", choice: "no decision yet" }],
       skipped: "Skipped this week: calendar",
     });
     expect(summary.primaryLabel).toBe("Done");

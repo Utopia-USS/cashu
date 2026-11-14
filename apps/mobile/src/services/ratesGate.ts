@@ -13,18 +13,21 @@ export interface RatesGate {
 }
 
 export function createRatesGate(intervalMs = HOUR_MS): RatesGate {
-  let last: { readonly key: string; readonly at: number } | null = null;
-  let running: string | null = null;
+  // One timestamp and one in-flight flag per key: switching profiles A -> B -> A inside the interval does not
+  // fetch A again, and A and B can each run once at the same time.
+  const last = new Map<string, number>();
+  const running = new Set<string>();
   return {
     begin(key, now) {
-      if (running === key) return false;
-      if (last !== null && last.key === key && now - last.at < intervalMs) return false;
-      running = key;
+      if (running.has(key)) return false;
+      const at = last.get(key);
+      if (at !== undefined && now - at < intervalMs) return false;
+      running.add(key);
       return true;
     },
     finish(key, at, offline) {
-      if (running === key) running = null;
-      if (!offline) last = { key, at };
+      running.delete(key);
+      if (!offline) last.set(key, at);
     },
   };
 }

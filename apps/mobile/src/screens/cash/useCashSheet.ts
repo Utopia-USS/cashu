@@ -9,6 +9,7 @@ import { applyKeypadKey, type CategoryOption, type KeypadKey, useUiEnv } from "@
 import { useState } from "react";
 import { useServices } from "../../services/ServicesProvider";
 import { categoryOptionsOf } from "../categories";
+import { PREVIOUS_ATTEMPT_COMPLETED } from "../commandOutcomes";
 import { S } from "./Cash.strings";
 
 /** The category of the first cash expense, when the wallet has none to copy. */
@@ -85,6 +86,8 @@ const REFUSALS: Readonly<Record<string, () => string>> = {
 };
 
 export function useCashSheet(args: {
+  /** The vault the sheet was opened with (`usePinnedVault`): every write goes there, never to a later profile. */
+  readonly vault: string;
   readonly today: IsoDate;
   readonly lang: core.UiLang;
   close(): void;
@@ -108,7 +111,7 @@ export function useCashSheet(args: {
   const [date, setDate] = useState<IsoDate>(args.today);
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const add = useCommand(addCashExpense);
+  const add = useCommand(addCashExpense, { vault: args.vault });
 
   const currency = wallet.currency;
   const number = amountText(text);
@@ -126,6 +129,10 @@ export function useCashSheet(args: {
       onDate: date,
     });
     if (outcome.kind === "completed") return args.close();
+    // The earlier save whose outcome was unknown went through and this input differs from it: the
+    // sheet stays open with the owner's correction (the wallet already shows the first one).
+    if (outcome.kind === "not_started" && outcome.reason === PREVIOUS_ATTEMPT_COMPLETED)
+      return setError(S.firstSaveWent);
     setError(
       outcome.kind === "refused"
         ? (REFUSALS[outcome.reason]?.() ?? S.couldNotSave)

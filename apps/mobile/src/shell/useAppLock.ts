@@ -53,7 +53,14 @@ function holdsNavigation(state: LockState): boolean {
   return state.locked || (state.enabled && state.backgroundedAt !== null);
 }
 
-function createLockStore(enabled: boolean): LockStore {
+/** The lock's clocks: the wall clock and a monotonic one (not set back with the phone's time). */
+interface LockClocks {
+  wall(): number;
+  mono(): number;
+}
+const DEVICE_CLOCKS: LockClocks = { wall: () => Date.now(), mono: () => performance.now() };
+
+function createLockStore(enabled: boolean, clocks: LockClocks = DEVICE_CLOCKS): LockStore {
   let state = reduceLock(initialLock(currentAppState()), { kind: "boot", enabled });
   const listeners = new Set<() => void>();
   let app: { remove(): void } | null = null;
@@ -79,12 +86,24 @@ function createLockStore(enabled: boolean): LockStore {
       syncHold();
       if (app === null) {
         app = AppState.addEventListener("change", (to) =>
-          dispatch({ kind: "appState", from: state.appState, to, at: Date.now() }),
+          dispatch({
+            kind: "appState",
+            from: state.appState,
+            to,
+            at: clocks.wall(),
+            mono: clocks.mono(),
+          }),
         );
         // A change between the render that read the state and this subscription is not lost.
         const now = currentAppState();
         if (now !== state.appState)
-          dispatch({ kind: "appState", from: state.appState, to: now, at: Date.now() });
+          dispatch({
+            kind: "appState",
+            from: state.appState,
+            to: now,
+            at: clocks.wall(),
+            mono: clocks.mono(),
+          });
       }
       return () => {
         listeners.delete(listener);

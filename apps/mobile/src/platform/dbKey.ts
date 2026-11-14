@@ -4,7 +4,7 @@
 // after the first unlock, because background work opens the databases while the phone is locked, and
 // never biometric-gated for the same reason; never backed up, never moved to another device.
 // Pure over the secure store and randomness ports; `phoneDbKey` in sqlite.ts binds them to Expo.
-import { type SecureStoreOptions, secureStoreOptions } from "@cashu/sync/crypto";
+import { crypto } from "@cashu/sync/engine";
 import { DB_KEY_PATTERN } from "./sqliteKeying";
 
 /** The Keychain item of the database key (service "cashu"). */
@@ -14,9 +14,9 @@ const KEY_BYTES = 32;
 
 /** The part of expo-secure-store the database key uses (its synchronous read and write). */
 export interface SyncSecureStore {
-  getItem(key: string, options?: SecureStoreOptions): string | null;
-  setItem(key: string, value: string, options?: SecureStoreOptions): void;
-  deleteItemAsync(key: string, options?: SecureStoreOptions): Promise<void>;
+  getItem(key: string, options?: crypto.SecureStoreOptions): string | null;
+  setItem(key: string, value: string, options?: crypto.SecureStoreOptions): void;
+  deleteItemAsync(key: string, options?: crypto.SecureStoreOptions): Promise<void>;
   AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: number;
 }
 
@@ -39,7 +39,7 @@ export function createDbKey(
   secureStore: SyncSecureStore,
   randomBytes: (count: number) => Uint8Array,
 ): DbKey {
-  const options = secureStoreOptions(secureStore);
+  const options = crypto.secureStoreOptions(secureStore);
   const read = (): string | null => {
     const value = secureStore.getItem(DB_KEY_ITEM, options);
     if (value !== null && !DB_KEY_PATTERN.test(value)) throw new Error("db_key_corrupt");

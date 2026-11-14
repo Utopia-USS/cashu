@@ -5,12 +5,13 @@
 import { budget, type core, D, type IsoDate, Money } from "@cashu/domain";
 import { formatCalendarDate } from "@cashu/i18n/values";
 import { setMerchantCategory, setTransactionCategory } from "@cashu/store/budget/commands";
-import { useCommand, useQuery } from "@cashu/store-react";
+import { type CommandOutcome, useCommand, useQuery } from "@cashu/store-react";
 import { type CategoryOption, useUiEnv } from "@cashu/ui/native";
 import { useRef, useState } from "react";
 import { useServices } from "../../services/ServicesProvider";
 import { categoryOptionsOf } from "../categories";
 import { S as Rule } from "../categories.strings";
+import { PREVIOUS_ATTEMPT_COMPLETED } from "../commandOutcomes";
 import { localToday } from "../screenContext";
 import { S } from "./Payment.strings";
 
@@ -72,7 +73,19 @@ const SOURCES: Readonly<Record<string, () => string>> = {
   connector: () => S.sourceConnector,
 };
 
+/** What the sheet says after a write: nothing once it completed. */
+function noticeOf(outcome: CommandOutcome<unknown>): string | null {
+  if (outcome.kind === "completed") return null;
+  // The earlier pick whose outcome was unknown is saved (the grid shows it live); the newer one was not
+  // written, so the owner checks before picking again.
+  if (outcome.kind === "not_started" && outcome.reason === PREVIOUS_ATTEMPT_COMPLETED)
+    return S.firstSaveWent;
+  return S.couldNotSave;
+}
+
 export function usePaymentSheet(args: {
+  /** The vault the sheet was opened with (`usePinnedVault`): every write goes there, never to a later profile. */
+  readonly vault: string;
   gid: string;
   lang: core.UiLang;
   today: IsoDate;
@@ -83,10 +96,12 @@ export function usePaymentSheet(args: {
   const today = args.today;
   const detail = useQuery(moneyQueries.activity.detail, { txn: args.gid, lang: args.lang });
   const options = useQuery(moneyQueries.activity.categories, { lang: args.lang, today });
-  const setCategory = useCommand(setTransactionCategory);
-  const pinMerchant = useCommand(setMerchantCategory);
+  const setCategory = useCommand(setTransactionCategory, { vault: args.vault });
+  const pinMerchant = useCommand(setMerchantCategory, { vault: args.vault });
   const [expandedByOwner, setExpanded] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // The last write's message: it failed, or an earlier save went through and the newer pick was not
+  // written (`PREVIOUS_ATTEMPT_COMPLETED`); null when the last write completed.
+  const [notice, setNotice] = useState<string | null>(null);
   // The owner's latest pick and whether a category write runs; read only in callbacks.
   const wanted = useRef<string | null>(null);
   const writing = useRef(false);
@@ -114,12 +129,12 @@ export function usePaymentSheet(args: {
       if (next !== null && next !== key) return write(txn, next);
       writing.current = false;
       wanted.current = null;
-      setFailed(outcome.kind !== "completed");
+      setNotice(noticeOf(outcome));
     });
   };
   const pick = (txn: string, key: string) => {
     wanted.current = key;
-    setFailed(false);
+    setNotice(null);
     if (!writing.current) write(txn, key);
   };
   const pin = detail.merchantRule?.locked ? detail.merchantRule : null;
@@ -165,15 +180,15 @@ export function usePaymentSheet(args: {
               // One-way on the phone: no command removes a pin, so only switching it on writes. It
               // pins the confirmed category only, never the engine's suggestion.
               if (!on || pin !== null || selected === null) return;
-              setFailed(false);
+              setNotice(null);
               void pinMerchant
                 .run({ merchantKey, category: selected })
-                .then((outcome) => setFailed(outcome.kind !== "completed"));
+                .then((outcome) => setNotice(noticeOf(outcome)));
             },
             isSaving: pinMerchant.isPending,
           }
         : null,
-    error: failed ? S.couldNotSave : null,
+    error: notice,
     earlier:
       detail.earlier.length === 0
         ? { first: true }

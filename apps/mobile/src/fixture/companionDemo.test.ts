@@ -35,6 +35,7 @@ function open(which: "anna" | "home", db = new Database(":memory:")): Store {
     vault: spec.vault,
     salt: spec.salt,
     modules: builtinModules(),
+    companionReads: true, // the phone's store (openVaultStore)
   });
 }
 

@@ -5,7 +5,7 @@ import { D } from "@cashu/domain";
 import type { RawTransaction } from "@cashu/domain/budget";
 import { setLanguageForTests } from "@cashu/i18n";
 import { importStatement, setTransactionCategory } from "@cashu/store";
-import { ProfileProvider, StoreProvider } from "@cashu/store-react";
+import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import type { VaultHandle } from "@cashu/store-react/local";
 import { UiEnvProvider } from "@cashu/ui/native";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react-native";
@@ -132,7 +132,13 @@ function Triage({
   scope: TriageScope;
   observed: (state: TriageState) => void;
 }) {
-  const state = useTriageScreen({ lang: "en", today: "2026-11-12", scope, close });
+  const state = useTriageScreen({
+    vault: useProfile(),
+    lang: "en",
+    today: "2026-11-12",
+    scope,
+    close,
+  });
   useEffect(() => observed(state));
   return <TriageView {...state} />;
 }

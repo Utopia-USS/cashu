@@ -1,5 +1,5 @@
 import { UiEnvProvider } from "@cashu/ui/native";
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import type { ComponentType } from "react";
 import loanMeta, {
   Gone,
@@ -123,22 +123,32 @@ it.each([
   expect(JSON.stringify(screen.toJSON())).not.toContain("389,600");
 });
 
-it("puts a compact currency choice in the period row only with more than one currency", async () => {
+it("puts a compact currency chip in the period row only with more than one currency", async () => {
   const View = spendingMeta.component;
+  const onCurrencyChange = jest.fn();
   const view = await render(
     <UiEnvProvider locale="en-US" privacy={false}>
-      <View {...CurrentMonth.args} />
+      <View {...CurrentMonth.args} onCurrencyChange={onCurrencyChange} />
     </UiEnvProvider>,
   );
-  expect(screen.getByLabelText("Currency")).toBeOnTheScreen();
-  expect(screen.getByRole("tab", { name: "EUR" })).toBeOnTheScreen();
-  expect(screen.getByRole("tab", { name: "PLN", selected: true })).toBeOnTheScreen();
+  const chip = screen.getByRole("button", { name: "Currency: PLN. Switch to EUR" });
+  expect(chip).toHaveTextContent("PLN");
+  // A chip, not a segmented control: no currency tabs.
+  expect(screen.queryByRole("tab", { name: "EUR" })).toBeNull();
+  await fireEvent.press(chip);
+  expect(onCurrencyChange).toHaveBeenCalledWith("EUR");
+  await view.rerender(
+    <UiEnvProvider locale="en-US" privacy={false}>
+      <View {...CurrentMonth.args} currency="EUR" onCurrencyChange={onCurrencyChange} />
+    </UiEnvProvider>,
+  );
+  await fireEvent.press(screen.getByRole("button", { name: "Currency: EUR. Switch to PLN" }));
+  expect(onCurrencyChange).toHaveBeenLastCalledWith("PLN");
   await view.rerender(
     <UiEnvProvider locale="en-US" privacy={false}>
       <View {...OneCurrency.args} />
     </UiEnvProvider>,
   );
-  expect(screen.queryByLabelText("Currency")).toBeNull();
-  expect(screen.queryByRole("tab", { name: "PLN" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Currency/ })).toBeNull();
   expect(screen.getByRole("tab", { name: "Month", selected: true })).toBeOnTheScreen();
 });

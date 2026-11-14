@@ -5,6 +5,7 @@ import { lang } from "@cashu/i18n";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePinnedVault } from "../../src/screens/profile/switchProfile";
 import { ReviewDeckView } from "../../src/screens/review/ReviewDeckView";
 import { useReviewDeck } from "../../src/screens/review/useReviewDeck";
 import { useNow } from "../../src/shell/useNow";
@@ -12,12 +13,24 @@ import { useNow } from "../../src/shell/useNow";
 export { ErrorBoundary } from "expo-router";
 
 export default function ReviewRoute() {
+  // Pinned to the profile it opened with: nothing renders once the current profile is another one.
+  const vault = usePinnedVault();
+  return vault === null ? null : <ReviewDeck vault={vault} />;
+}
+
+function ReviewDeck({ vault }: { vault: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { today } = useNow();
   const { step } = useLocalSearchParams<{ step?: string }>();
   const parsed = step !== undefined && /^\d+$/u.test(step) ? Number(step) : null;
-  const props = useReviewDeck({ today, lang: lang(), step: parsed, close: () => router.back() });
+  const props = useReviewDeck({
+    vault,
+    today,
+    lang: lang(),
+    step: parsed,
+    close: () => router.back(),
+  });
   return (
     <View
       className="flex-1 bg-surface-sunken"

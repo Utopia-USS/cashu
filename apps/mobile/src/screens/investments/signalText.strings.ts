@@ -167,19 +167,15 @@ export const S = catalog({
     en: (name: string, ratio: string, days: number) =>
       `${name} traded ${ratio}x its ${days}-session average volume`,
   },
-  // A custom rule or alert: the owner's own condition (an expression, shown as written) and its measures.
-  // `conditionMet` also matches the engine's default text (domain rules/kinds/evaluate.strings.ts), which
-  // tells a rule without the owner's own message.
+  // A custom rule or alert without the owner's own message: who it is about, never the expression or its
+  // measured values. `conditionMet` matches the engine's default text (domain rules/kinds/evaluate.strings.ts),
+  // which tells a rule without the owner's own message.
   conditionMet: { pl: "Warunek spełniony", en: "Condition met" },
   custom: {
-    pl: (who: string, when: string | null, values: string) =>
-      `${who === "" ? "Warunek spełniony" : `${who}: warunek spełniony`}${when === null ? "" : ` (${when})`}${values === "" ? "" : `, ${values}`}`,
-    en: (who: string, when: string | null, values: string) =>
-      `${who === "" ? "Condition met" : `${who}: condition met`}${when === null ? "" : ` (${when})`}${values === "" ? "" : `, ${values}`}`,
+    pl: (who: string) =>
+      who === "" ? "Zadziałała Twoja reguła" : `${who}: zadziałała Twoja reguła`,
+    en: (who: string) => (who === "" ? "Your own rule fired" : `${who}: your own rule fired`),
   },
-  unknown: { pl: "brak danych", en: "unknown" },
-  yes: { pl: "tak", en: "yes" },
-  no: { pl: "nie", en: "no" },
   // Research: a note's relation to the thesis in the shared words (ui-logic `RELATION_LABEL`).
   research: {
     pl: (title: string, relation: string | null, strength: number, sources: number) =>

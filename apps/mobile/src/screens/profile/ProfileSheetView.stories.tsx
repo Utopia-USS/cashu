@@ -1,5 +1,5 @@
 // Stories of the profile sheet (CSF 3, synthetic profiles): the owner with two profiles and nothing
-// waiting, proposals waiting, incognito on, notifications off in iOS Settings, a partner phone with one profile, a release build, the app
+// waiting (no "Waiting for you on the Mac" section, only the line about the Mac), proposals waiting, incognito on, notifications off in iOS Settings, a partner phone with one profile, a release build, the app
 // lock on, a Touch ID phone and a phone with nothing set up to unlock with.
 import { ProfileSheetView, type ProfileSheetViewProps } from "./ProfileSheetView";
 

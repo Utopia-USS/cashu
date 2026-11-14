@@ -35,5 +35,5 @@ export const S = catalog({
     pl: (when: string) => `Notowania z ${when} · pobrane przez ten telefon`,
     en: (when: string) => `Prices from ${when} · fetched by this phone`,
   },
-  pricesNotYet: { pl: "Notowania jeszcze nie pobrane", en: "Prices not fetched yet" },
+  pricesNotYet: { pl: "Notowań jeszcze nie pobrano", en: "Prices not fetched yet" },
 });

@@ -3,15 +3,23 @@ import { lang } from "@cashu/i18n";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { PaymentSheetView } from "../../../src/screens/payment/PaymentSheetView";
 import { usePaymentSheet } from "../../../src/screens/payment/usePaymentSheet";
+import { usePinnedVault } from "../../../src/screens/profile/switchProfile";
 import { useNow } from "../../../src/shell/useNow";
 
 export { ErrorBoundary } from "expo-router";
 
 export default function PaymentSheetRoute() {
+  // Pinned to the profile it opened with: nothing renders once the current profile is another one.
+  const vault = usePinnedVault();
+  return vault === null ? null : <PaymentSheet vault={vault} />;
+}
+
+function PaymentSheet({ vault }: { vault: string }) {
   const router = useRouter();
   const { gid } = useLocalSearchParams<{ gid: string }>();
   const { today } = useNow();
   const props = usePaymentSheet({
+    vault,
     gid,
     lang: lang(),
     today,

@@ -40,4 +40,25 @@ describe("createRatesGate", () => {
     expect(gate.begin("vault", 299_999)).toBe(false);
     expect(gate.begin("vault", 300_000)).toBe(true);
   });
+
+  it("keeps one timestamp per key: A -> B -> A inside the interval does not fetch A again", () => {
+    const gate = createRatesGate(300_000);
+    expect(gate.begin("vault-a", 0)).toBe(true);
+    gate.finish("vault-a", 0, false);
+    expect(gate.begin("vault-b", 10_000)).toBe(true);
+    gate.finish("vault-b", 10_000, false);
+    expect(gate.begin("vault-a", 20_000)).toBe(false);
+    expect(gate.begin("vault-b", 30_000)).toBe(false);
+    expect(gate.begin("vault-a", 300_000)).toBe(true);
+    expect(gate.begin("vault-b", 300_000)).toBe(false);
+  });
+
+  it("tracks the run in flight per key: B starting does not let A start twice", () => {
+    const gate = createRatesGate(300_000);
+    expect(gate.begin("vault-a", 0)).toBe(true);
+    expect(gate.begin("vault-b", 1)).toBe(true);
+    expect(gate.begin("vault-a", 2)).toBe(false);
+    gate.finish("vault-b", 1, true);
+    expect(gate.begin("vault-a", 3)).toBe(false);
+  });
 });

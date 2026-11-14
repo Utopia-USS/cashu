@@ -61,15 +61,15 @@ export function ProfileSheetView(props: ProfileSheetViewProps) {
           onChange={props.onIncognitoToggle}
         />
       </GroupSection>
-      <GroupSection title={S.waitingOnMac}>
-        <ListRow
-          first
-          lead={<Icon name="doc" size={20} className="text-fg-muted" />}
-          name={
-            props.waiting.kind === "proposals" ? S.proposals(props.waiting.count) : S.nothingWaiting
-          }
-        />
-      </GroupSection>
+      {props.waiting.kind === "proposals" && (
+        <GroupSection title={S.waitingOnMac}>
+          <ListRow
+            first
+            lead={<Icon name="doc" size={20} className="text-fg-muted" />}
+            name={S.proposals(props.waiting.count)}
+          />
+        </GroupSection>
+      )}
       <NoteLine icon="laptop">{S.macOnly}</NoteLine>
       {props.dev && (
         <GroupSection>

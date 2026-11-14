@@ -16,8 +16,9 @@ function run(state: LockState, ...events: LockEvent[]): LockState {
   return events.reduce(reduceLock, state);
 }
 
-function move(from: AppStateStatus, to: AppStateStatus, at: number): LockEvent {
-  return { kind: "appState", from, to, at };
+/** An AppState change at wall time `at`; the monotonic clock agrees with the wall clock unless given. */
+function move(from: AppStateStatus, to: AppStateStatus, at: number, mono = at): LockEvent {
+  return { kind: "appState", from, to, at, mono };
 }
 
 const booted = (enabled: boolean) => reduceLock(initialLock("active"), { kind: "boot", enabled });
@@ -86,6 +87,99 @@ describe("background", () => {
       move("background", "active", T0 + LOCK_AFTER_MS - 1),
     );
     expect(state).toMatchObject({ locked: false, backgroundedAt: null });
+  });
+
+  describe("clock changes while away", () => {
+    it("locks when the clock was set back (the return is earlier than the departure)", () => {
+      const state = run(
+        unlocked,
+        move("active", "background", T0),
+        move("background", "active", T0 - 60 * 60 * 1000),
+      );
+      expect(state).toMatchObject({ locked: true, backgroundedAt: null, autoPrompted: false });
+      expect(dueForPrompt(state)).toBe(true);
+    });
+
+    it("locks when the clock was set back by a single millisecond", () => {
+      const state = run(
+        unlocked,
+        move("active", "background", T0),
+        move("background", "active", T0 - 1),
+      );
+      expect(state.locked).toBe(true);
+    });
+
+    it("locks when the clock was set forward past LOCK_AFTER_MS", () => {
+      const state = run(
+        unlocked,
+        move("active", "background", T0),
+        move("background", "active", T0 + 24 * 60 * 60 * 1000),
+      );
+      expect(state.locked).toBe(true);
+    });
+
+    it("stays unlocked on an equal clock (an instant round trip)", () => {
+      const state = run(
+        unlocked,
+        move("active", "background", T0),
+        move("background", "active", T0),
+      );
+      expect(state).toMatchObject({ locked: false, backgroundedAt: null });
+    });
+
+    // The monotonic clock (M0 on departure) cannot be set back; the absence is the larger reading.
+    const M0 = 5_000;
+    const HOURS_2 = 2 * 60 * 60 * 1000;
+
+    it("locks when the clock was set back by LESS than the time away (wall reads +10 s, away 2 h)", () => {
+      const state = run(
+        unlocked,
+        move("active", "background", T0, M0),
+        // Away 2 h; the wall clock was set back by 2 h minus 10 s, so it reads only 10 s later.
+        move("background", "active", T0 + 10_000, M0 + HOURS_2),
+      );
+      expect(state).toMatchObject({ locked: true, backgroundedAt: null, backgroundedMono: null });
+      expect(dueForPrompt(state)).toBe(true);
+    });
+
+    it("locks when the monotonic clock alone passes LOCK_AFTER_MS", () => {
+      const state = run(
+        unlocked,
+        move("active", "background", T0, M0),
+        move("background", "active", T0 + 1, M0 + LOCK_AFTER_MS),
+      );
+      expect(state.locked).toBe(true);
+    });
+
+    it("stays unlocked when both clocks say a short spell", () => {
+      const state = run(
+        unlocked,
+        move("active", "background", T0, M0),
+        move("background", "active", T0 + LOCK_AFTER_MS - 1, M0 + LOCK_AFTER_MS - 1),
+      );
+      expect(state).toMatchObject({ locked: false, backgroundedAt: null, backgroundedMono: null });
+    });
+
+    it("measures from the first arrival in the background on both clocks", () => {
+      const state = run(
+        unlocked,
+        move("active", "inactive", T0, M0),
+        move("inactive", "background", T0 + 5, M0 + 5),
+        move("background", "background", T0 + 10, M0 + 10),
+      );
+      expect(state).toMatchObject({ backgroundedAt: T0 + 5, backgroundedMono: M0 + 5 });
+      const back = run(state, move("background", "active", T0 + 20, M0 + 5 + LOCK_AFTER_MS));
+      expect(back.locked).toBe(true);
+    });
+
+    it("never locks with the lock off, even with the clock set back", () => {
+      const state = run(
+        booted(false),
+        move("active", "background", T0),
+        move("background", "active", T0 - 60 * 60 * 1000),
+      );
+      expect(state.locked).toBe(false);
+    });
   });
 
   it("never locks with the lock off", () => {

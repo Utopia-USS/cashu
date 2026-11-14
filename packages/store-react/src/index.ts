@@ -13,7 +13,13 @@ export { isStale } from "./client/index.js";
 export { StoreBindingError, useStoreClient } from "./react/context.js";
 export { ProfileProvider } from "./react/ProfileProvider.js";
 export { StoreProvider } from "./react/StoreProvider.js";
-export { type CommandHandle, useCommand } from "./react/useCommand.js";
+export {
+  type CommandHandle,
+  type CommandOptions,
+  PREVIOUS_ATTEMPT_COMPLETED,
+  useCommand,
+  VAULT_UNAVAILABLE,
+} from "./react/useCommand.js";
 export { useConnection } from "./react/useConnection.js";
 export { useProfile } from "./react/useProfile.js";
 export { useQuery } from "./react/useQuery.js";
