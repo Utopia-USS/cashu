@@ -3,7 +3,10 @@
 // `FOREGROUND_PASS_EVERY_MS` while the app stays in the foreground (the runner owns that timer: a relay
 // that went away shows as paused, a Mac's change arrives, without the owner leaving the app), a push-only pass on the
 // arrival in the background when own writes wait, and inside the background task before the
-// notification plan. One pass in flight per vault: a trigger while one runs joins it. Every pass goes
+// notification plan, and a push-only pass `WRITE_PUSH_DEBOUNCE_MS` after an own write while the app is
+// in the foreground (debounced and coalescing like the Mac's; a write during a relay back-off goes up
+// when the back-off ends: 60 s doubling to 30 min after passes that ended with the relay failing, 1 h
+// after its quota ran out). One pass in flight per vault: a trigger while one runs joins it. Every pass goes
 // through the vault's command queue (`VaultSession.pass`), so it never overlaps a command. A trigger
 // that finds a vault still `opening` (the start right after a remount, a cold background launch) is
 // remembered and decided once the open settled: one pass per vault however many triggers arrived
@@ -18,7 +21,7 @@
 import type { SyncResult } from "@cashu/sync/engine";
 import type { VaultSyncStatus } from "../services/vaultEngine";
 
-export type SyncTrigger = "start" | "foreground" | "background" | "task";
+export type SyncTrigger = "start" | "foreground" | "background" | "task" | "write";
 
 /** The part of a vault session the runner drives. */
 export interface SyncTarget {
@@ -39,6 +42,11 @@ export interface SyncRunner {
    * `FOREGROUND_PASS_EVERY_MS`. Idempotent.
    */
   foreground(active: boolean): void;
+  /**
+   * A command wrote to a vault: a push-only pass `WRITE_PUSH_DEBOUNCE_MS` later (every write meanwhile
+   * moves it), or when the relay back-off ends. Only while in the foreground; leaving it pushes anyway.
+   */
+  wrote(): void;
 }
 
 /** The least time between two foreground passes of one vault. */
@@ -46,6 +54,14 @@ export const FOREGROUND_MIN_INTERVAL_MS = 30_000;
 
 /** While the app stays in the foreground, a foreground pass at least this often (under 5 minutes). */
 export const FOREGROUND_PASS_EVERY_MS = 4 * 60_000;
+
+/** An own write is pushed this long after the last write (the Mac's `RELAY_PUSH_DEBOUNCE_MS`). */
+export const WRITE_PUSH_DEBOUNCE_MS = 2_000;
+
+/** The write push's back-off after passes that ended with the relay failing (the Mac's policy). */
+export const WRITE_BACKOFF_START_MS = 60_000;
+const WRITE_BACKOFF_MAX_MS = 30 * 60_000;
+export const WRITE_QUOTA_BACKOFF_MS = 60 * 60_000;
 
 /** How long the background task's sync step may take before it plans with what synced. */
 export const TASK_OPEN_WAIT_MS = 20_000;
@@ -68,7 +84,7 @@ const RETRY_BACKOFF_MS: readonly number[] = [60_000, 5 * 60_000, 30 * 60_000];
 
 /** A trigger asking for a full pass wins over the push-only one when several wait for one open. */
 function stronger(a: SyncTrigger, b: SyncTrigger): SyncTrigger {
-  return a === "background" ? b : a;
+  return a === "background" || a === "write" ? b : a;
 }
 
 export function createSyncRunner(options: {
@@ -78,6 +94,8 @@ export function createSyncRunner(options: {
   readonly sleep?: (ms: number) => Promise<void>;
   /** Runs `tick` every `ms` until the returned stop is called (`setInterval` when omitted). */
   readonly every?: (ms: number, tick: () => void) => () => void;
+  /** Runs `fire` once after `ms` unless the returned cancel is called (`setTimeout` when omitted). */
+  readonly after?: (ms: number, fire: () => void) => () => void;
 }): SyncRunner {
   const inFlight = new Map<string, Promise<void>>();
   const startedAt = new Map<string, number>();
@@ -85,6 +103,28 @@ export function createSyncRunner(options: {
   const waiting = new Map<string, { trigger: SyncTrigger; run: Promise<void> }>();
   /** Per failed vault: retries so far and when the last try (or the failure's sighting) was. */
   const retries = new Map<string, { tries: number; at: number }>();
+  /** The write push's back-off: consecutive passes that ended with the relay failing, and its end. */
+  let relayFailures = 0;
+  let blockedUntil = 0;
+
+  /** After every pass that ran (one relay serves every vault): a relay error arms the write push's back-off, a clean pass ends it. */
+  const judge = (target: SyncTarget): void => {
+    const status = target.status();
+    const error = status.relay?.lastError;
+    if (error === undefined && status.failure !== "relay_unreachable") {
+      relayFailures = 0;
+      blockedUntil = 0;
+      return;
+    }
+    if (error === "quota") {
+      blockedUntil = options.now() + WRITE_QUOTA_BACKOFF_MS;
+      return;
+    }
+    relayFailures += 1;
+    blockedUntil =
+      options.now() +
+      Math.min(WRITE_BACKOFF_MAX_MS, WRITE_BACKOFF_START_MS * 2 ** Math.min(relayFailures - 1, 16));
+  };
 
   /** A `failed` vault whose code can heal and whose back-off has passed is opened again. */
   const maybeRetry = (target: SyncTarget, trigger: SyncTrigger): void => {
@@ -113,7 +153,8 @@ export function createSyncRunner(options: {
     if (!status.remote) return undefined;
     if (status.phase !== "ready" && status.phase !== "receiving" && status.phase !== "waiting")
       return undefined;
-    if (trigger === "background") return status.unpushed ? "push" : undefined;
+    if (trigger === "background" || trigger === "write")
+      return status.unpushed ? "push" : undefined;
     if (trigger === "foreground") {
       const last = Math.max(status.lastPullAt ?? 0, startedAt.get(target.vault) ?? 0);
       if (last > 0 && options.now() - last < FOREGROUND_MIN_INTERVAL_MS) return undefined;
@@ -123,14 +164,19 @@ export function createSyncRunner(options: {
 
   const start = (target: SyncTarget, trigger: SyncTrigger): Promise<void> => {
     const running = inFlight.get(target.vault);
-    if (running !== undefined) return running;
+    // A write that met a running pass is looked at again after it (the pass may have listed before it).
+    if (running !== undefined)
+      return trigger === "write" ? running.then(() => start(target, trigger)) : running;
     const mode = due(target, trigger);
     if (mode === undefined) return Promise.resolve();
     startedAt.set(target.vault, options.now());
     const pass = target
       .pass(mode)
       .then(
-        () => undefined,
+        (result) => {
+          // Only a pass that ran says how the relay answered.
+          if (result !== undefined) judge(target);
+        },
         () => undefined,
       )
       .finally(() => inFlight.delete(target.vault));
@@ -164,17 +210,43 @@ export function createSyncRunner(options: {
       const timer = setInterval(tick, ms);
       return () => clearInterval(timer);
     });
+  const after =
+    options.after ??
+    ((ms: number, fire: () => void) => {
+      const timer = setTimeout(fire, ms);
+      return () => clearTimeout(timer);
+    });
   let stopForeground: (() => void) | undefined;
+  let cancelWritePush: (() => void) | undefined;
+
+  /** The write push, or (during the back-off) its retry when the back-off ends. */
+  const pushWrites = (): void => {
+    cancelWritePush = undefined;
+    const now = options.now();
+    if (blockedUntil > now) {
+      cancelWritePush = after(blockedUntil - now, pushWrites);
+      return;
+    }
+    void runner.request("write");
+  };
 
   const runner: SyncRunner = {
     foreground(active) {
       if (!active) {
         stopForeground?.();
         stopForeground = undefined;
+        cancelWritePush?.();
+        cancelWritePush = undefined;
         return;
       }
       if (stopForeground !== undefined) return;
       stopForeground = every(FOREGROUND_PASS_EVERY_MS, () => void runner.request("foreground"));
+    },
+    wrote() {
+      if (stopForeground === undefined) return;
+      cancelWritePush?.();
+      const wait = Math.max(WRITE_PUSH_DEBOUNCE_MS, blockedUntil - options.now());
+      cancelWritePush = after(wait, pushWrites);
     },
     request(trigger) {
       const passes = options.targets().map((target) => {

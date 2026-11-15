@@ -388,6 +388,14 @@ describe("pairing over the relay", () => {
       expect(devices.decodeInvite(qr)?.rendezvous).toBe(
         `fb1:${paired.env.fake.endpoint.projectId}`,
       );
+      // The code the Mac shows and copies is one opaque token: base64url of the invite's JSON.
+      const token = qr.slice("cashu-pair:".length);
+      expect(qr.startsWith("cashu-pair:")).toBe(true);
+      expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+      expect(JSON.parse(Buffer.from(token, "base64url").toString("utf8")).vault).toBe(
+        paired.env.vault,
+      );
+      expect(qr.length).toBeLessThan(600);
       // The session exists before anyone scanned; it is bound to this Mac and nobody claimed it yet.
       expect(pairingDocs(paired)).toHaveLength(1);
 

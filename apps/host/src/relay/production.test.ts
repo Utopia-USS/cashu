@@ -1,10 +1,22 @@
 // The production host's relay wiring (main.ts -> productionRelayOptions): a bad config file is one
 // value-free stderr line and no relay (`no_config`); a test build takes the emulators only; a keychain
-// that cannot be reached fails relay requests (`offline`), never the host start. Synthetic values only;
-// the hosts run against the in-memory fake (`demo-cashu`).
-import type { RelayAuthSecret } from "@cashu/node-host/relay-auth";
+// that cannot be reached fails relay requests (`offline`), never the host start; enabling a vault keeps
+// its recovery secret and writes the hash. Synthetic values only; the hosts run against the in-memory
+// fake (`demo-cashu`).
+import { createHash } from "node:crypto";
+import type {
+  RelayAuthSecret,
+  RelayRecoveryRecord,
+  RelayRecoverySecrets,
+} from "@cashu/node-host/relay-auth";
 import { afterEach, expect, it } from "vitest";
-import { presetRelaySetting, relayHarness, relayRequests, until } from "../testing/relayFixture.js";
+import {
+  enabledRelayHost,
+  presetRelaySetting,
+  relayHarness,
+  relayRequests,
+  until,
+} from "../testing/relayFixture.js";
 import { relayConfigFile } from "./config.js";
 import { productionRelayOptions } from "./production.js";
 import type { HostRelayOptions } from "./service.js";
@@ -35,6 +47,7 @@ function wiring(input: {
   readonly env?: Record<string, string>;
   readonly testBuild?: boolean;
   readonly secret?: () => RelayAuthSecret;
+  readonly recoverySecrets?: () => RelayRecoverySecrets;
 }) {
   const stderr: string[] = [];
   const read: string[] = [];
@@ -50,7 +63,7 @@ function wiring(input: {
     },
     // Never the OS keychain: a test that needs a secret passes its own; the default refuses.
     secret: input.secret ?? refuseKeychain,
-    recoverySecrets: refuseKeychain,
+    recoverySecrets: input.recoverySecrets ?? refuseKeychain,
   });
   return { options, stderr, read };
 }
@@ -88,8 +101,13 @@ it("gives a test build the emulators only, never a configured project", () => {
 function overFake(
   env: Awaited<ReturnType<typeof harness.setup>>,
   secret: () => RelayAuthSecret,
+  recoverySecrets?: () => RelayRecoverySecrets,
 ): HostRelayOptions {
-  const options = wiring({ env: EMULATORS, secret }).options;
+  const options = wiring({
+    env: EMULATORS,
+    secret,
+    ...(recoverySecrets === undefined ? {} : { recoverySecrets }),
+  }).options;
   if (options === undefined) throw new Error("no relay options");
   return { ...options, fetch: env.fake.fetch, retries: 0, timers: env.timers, now: env.timers.now };
 }
@@ -137,5 +155,64 @@ it.each(LOCKED)("starts and answers offline with %s", async (_case, secret) => {
     reopen: false,
   });
   expect(relayRequests(env.fake)).toBe(0);
+  expect(await host.stop("idle")).toBe(0);
+});
+
+/** A synthetic keychain item (the identity's refresh token record). */
+function memorySecret(): RelayAuthSecret {
+  let value: string | null = null;
+  return {
+    get: async () => value,
+    set: async (next) => {
+      value = next;
+    },
+    clear: async () => {
+      value = null;
+    },
+  };
+}
+
+/** Synthetic recovery secrets; `onSet` runs before each write lands. */
+function memoryRecovery(onSet: () => void = () => {}) {
+  const records = new Map<string, RelayRecoveryRecord>();
+  const store: RelayRecoverySecrets = {
+    get: async (vault) => records.get(vault) ?? null,
+    set: async (vault, record) => {
+      onSet();
+      records.set(vault, record);
+    },
+    clear: async (vault) => {
+      records.delete(vault);
+    },
+  };
+  return { records, store };
+}
+
+it("keeps a recovery secret and writes its hash when the production wiring enables a vault", async () => {
+  const env = await harness.setup();
+  const vaultExistedAtSet: boolean[] = [];
+  const recovery = memoryRecovery(() =>
+    vaultExistedAtSet.push(env.fake.documents(`vaults/${env.vault}`).has(`vaults/${env.vault}`)),
+  );
+  const secret = memorySecret();
+  const host = await enabledRelayHost(
+    env,
+    overFake(
+      env,
+      () => secret,
+      () => recovery.store,
+    ),
+  );
+  const kept = recovery.records.get(env.vault);
+  expect(kept?.current.length).toBe(32);
+  // Kept before the commit that created the vault document with its hash.
+  expect(vaultExistedAtSet).toEqual([false]);
+  const field = env.fake.documents(`vaults/${env.vault}`).get(`vaults/${env.vault}`)
+    ?.fields.recoveryHash;
+  expect(field).toEqual({
+    bytesValue: createHash("sha256")
+      .update(kept?.current as Uint8Array)
+      .digest("base64"),
+  });
   expect(await host.stop("idle")).toBe(0);
 });

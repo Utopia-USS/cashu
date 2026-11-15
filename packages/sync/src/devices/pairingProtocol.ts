@@ -11,12 +11,14 @@ import {
   type CanonicalValue,
   canonicalJson,
   concat,
+  fromBase64Url,
   fromHex,
   fromUtf8,
   isCanonicalValue,
   isHex,
   isRecord,
   lp,
+  toBase64Url,
   toHex,
   utf8,
 } from "./bytes.js";
@@ -74,7 +76,7 @@ export interface Invite {
   readonly rendezvous: string | undefined;
 }
 
-export function encodeInvite(invite: Invite): string {
+function inviteJson(invite: Invite): string {
   const body: Record<string, CanonicalValue> = {
     v: PAIRING_VERSION,
     vault: invite.vaultId,
@@ -84,14 +86,38 @@ export function encodeInvite(invite: Invite): string {
     exp: invite.expiresAt,
   };
   if (invite.rendezvous !== undefined) body.rv = invite.rendezvous;
-  return INVITE_PREFIX + canonicalJson(body);
+  return canonicalJson(body);
 }
 
+/** The code the Mac shows and copies: the prefix and ONE opaque token (base64url of the JSON, no padding). */
+export function encodeInvite(invite: Invite): string {
+  return INVITE_PREFIX + toBase64Url(utf8(inviteJson(invite)));
+}
+
+/** The form older Macs emitted (the JSON itself after the prefix); still accepted by `decodeInvite`. */
+export function encodeLegacyInvite(invite: Invite): string {
+  return INVITE_PREFIX + inviteJson(invite);
+}
+
+/** Accepts both the token form and the old JSON form; the decoded invite is checked the same way. */
 export function decodeInvite(text: string): Invite | undefined {
   if (!text.startsWith(INVITE_PREFIX) || text.length > 2048) return undefined;
+  const rest = text.slice(INVITE_PREFIX.length);
+  let json: string;
+  if (rest.startsWith("{")) {
+    json = rest;
+  } else {
+    const bytes = fromBase64Url(rest);
+    if (bytes === undefined) return undefined;
+    try {
+      json = fromUtf8(bytes);
+    } catch {
+      return undefined;
+    }
+  }
   let body: unknown;
   try {
-    body = JSON.parse(text.slice(INVITE_PREFIX.length));
+    body = JSON.parse(json);
   } catch {
     return undefined;
   }

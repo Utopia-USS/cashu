@@ -1,13 +1,21 @@
 // The native dev demo (devDemo.ts `native`): demo-anna provisioned through the native Create flow into
 // a dir under the lab root only, its keys in the demo's own files, served on the native host where
-// the sync relay switch works (here over the in-memory Firebase fake, `demo-cashu`).
+// the sync relay switch works through the demo's own relay wiring (here over the in-memory Firebase fake,
+// `demo-cashu`): the vault's recovery secret kept in the demo's key files, its hash at the relay.
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createFakeFirebase } from "@cashu/sync/testing";
 import { afterEach, expect, it } from "vitest";
-import { initNativeDevDemo, type ServedDevDemo, serveDevDemo } from "./devDemo.js";
+import {
+  demoRelayOptions,
+  initNativeDevDemo,
+  type ServedDevDemo,
+  serveDevDemo,
+} from "./devDemo.js";
+import { demoRelayRecoverySecrets } from "./devDemoNative.js";
 import { cleanup, tempDir } from "./harness.js";
-import { fakeRelayOptions, ManualRelayTimers } from "./relayFixture.js";
+import { ManualRelayTimers } from "./relayFixture.js";
 
 let served: ServedDevDemo | undefined;
 afterEach(async () => {
@@ -40,8 +48,15 @@ it("provisions demo-anna as a native vault under the lab root and serves it with
   expect(statSync(keys).mode & 0o777).toBe(0o700);
   expect(readdirSync(keys).length).toBeGreaterThan(0);
 
+  // The demo's own relay wiring (what `devDemo.ts serve` binds), served by the fake.
+  const wiring = demoRelayOptions(dataDir, {
+    CASHU_FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
+    CASHU_FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9099",
+  });
+  if (wiring.kind !== "ready") throw new Error("no demo relay");
   const fake = createFakeFirebase();
-  const relay = fakeRelayOptions(fake, new ManualRelayTimers());
+  const timers = new ManualRelayTimers();
+  const relay = { ...wiring.relay, fetch: fake.fetch, retries: 0, timers, now: timers.now };
   served = await serveDevDemo(dataDir, { home, labRoot: lab, relay });
   const vaults = [...served.host.stores.vaults.values()];
   expect(vaults.map((vault) => vault.mode)).toEqual(["native"]);
@@ -60,6 +75,17 @@ it("provisions demo-anna as a native vault under the lab root and serves it with
     reopen: true,
   });
   expect(fake.documents(`vaults/${anna.id}`).has(`vaults/${anna.id}`)).toBe(true);
+  // The vault's recovery secret is in the demo's key files (0600) and its hash at the relay.
+  const kept = await demoRelayRecoverySecrets(dataDir).get(anna.id);
+  expect(kept?.current.length).toBe(32);
+  expect(statSync(join(keys, `relay-recovery.${anna.id}`)).mode & 0o777).toBe(0o600);
+  expect(fake.documents(`vaults/${anna.id}`).get(`vaults/${anna.id}`)?.fields.recoveryHash).toEqual(
+    {
+      bytesValue: createHash("sha256")
+        .update(kept?.current as Uint8Array)
+        .digest("base64"),
+    },
+  );
 
   await expect(serveDevDemo(dataDir, { home, labRoot: tempDir("cashu-lab-") })).rejects.toThrow(
     "lab root",

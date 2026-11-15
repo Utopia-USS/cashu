@@ -2,10 +2,15 @@
 // the six digits, receiving, the role, the first sync, and every way it can stop. The user never sees
 // "relay": the concept is sync / synchronizacja. PL + EN. Copy marked "proposed" waits for the
 // designer's pass (scratch f52-w3-phone-pairing.md lists it).
-import { catalog, enCount, plCount } from "@cashu/i18n";
+import { catalog, enCount, enForm, plCount, plForm } from "@cashu/i18n";
 
-const pln = new Intl.NumberFormat("pl-PL");
-const eng = new Intl.NumberFormat("en-US");
+const pln = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const eng = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const plInt = new Intl.NumberFormat("pl-PL");
+const enInt = new Intl.NumberFormat("en-US");
+/** Bytes as megabytes with one decimal (the first sync's received data). */
+const mb = (format: Intl.NumberFormat, bytes: number) =>
+  format.format(Math.floor(bytes / 100_000) / 10);
 /** m:ss of a countdown. */
 const clock = (seconds: number) =>
   `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -59,8 +64,8 @@ export const S = catalog({
   // Code (prototype step 2).
   codeTitle: { pl: "Wpisz te cyfry na Macu", en: "Type these digits on your Mac" },
   codeBody: {
-    pl: "Jeśli Mac prosi o inne cyfry, przerwij: ktoś inny mógł zeskanować kod.",
-    en: "If the Mac asks for different digits, stop: someone else may have scanned the code.",
+    pl: "Jeśli Mac nie przyjmie tych cyfr, przerwij i pokaż nowy kod: ktoś inny mógł go zeskanować.",
+    en: "If your Mac doesn't accept these digits, stop and show a new code: someone else may have scanned it.",
   },
   codeDigits: {
     pl: (digits: string) => `Kod: ${digits.split("").join(" ")}`,
@@ -95,11 +100,25 @@ export const S = catalog({
     pl: "Profil trafia na ten telefon",
     en: "Your profile is coming to this phone",
   },
+  // The designer's sentence (#23.8) with the numbers counted exactly (wave 4): megabytes received of
+  // what the Mac's sync holds, not an estimate of events. Then the events saved, then the replay check.
   firstSyncProgress: {
     pl: (done: number, total: number) =>
-      `Odbieranie danych z Maca · ${pln.format(done)} z ~${pln.format(total)}`,
+      `Odbieranie danych z Maca · ${mb(pln, done)} z ${mb(pln, total)} MB`,
     en: (done: number, total: number) =>
-      `Receiving your data from your Mac · ${eng.format(done)} of ~${eng.format(total)}`,
+      `Receiving your data from your Mac · ${mb(eng, done)} of ${mb(eng, total)} MB`,
+  },
+  // Proposed (wave 4): the events saved so far while they go into this phone's copy.
+  firstSyncSaving: {
+    pl: (events: number) =>
+      `Zapisywanie na tym telefonie · ${plInt.format(events)} ${plForm(events, "zmiana", "zmiany", "zmian")}`,
+    en: (events: number) =>
+      `Saving on this phone · ${enInt.format(events)} ${enForm(events, "change", "changes")}`,
+  },
+  // The replay line's copy (Sync.strings `replay`), here for the first sync's last step.
+  firstSyncChecking: {
+    pl: (percent: number) => `Sprawdzanie kopii na tym telefonie · ${percent}%`,
+    en: (percent: number) => `Checking this phone's copy · ${percent}%`,
   },
   firstSyncWaiting: {
     pl: "Czekanie na dane z Maca...",

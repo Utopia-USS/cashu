@@ -11,8 +11,10 @@
 // the fields the rules allow and no plaintext, a stranger reads nothing, and after a purge the joiner's
 // next pass is refused (403: `forbidden`, which the phone shows as removed / sync off).
 // Skipped unless the emulators run (`pnpm test:emulator` at the repo root). Synthetic data only.
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { HostConnection } from "@cashu/node-host";
+import type { RelayRecoveryRecord, RelayRecoverySecrets } from "@cashu/node-host/relay-auth";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
   addCashExpense,
@@ -538,6 +540,73 @@ describe.skipIf(!hosts)("host <-> Node joiner over the emulator, real security r
           },
         };
       }
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "keeps the recovery secret at enable and adds the hash a vault enabled without one lacks, under the rules",
+    async () => {
+      if (!hosts) return;
+      const database = emulatorDatabase("recovery");
+      const env = await harness.setup();
+      const vault = env.vault;
+      const secrets = new Map<string, RelayRecoveryRecord>();
+      const store: RelayRecoverySecrets = {
+        get: async (v) => secrets.get(v) ?? null,
+        set: async (v, record) => {
+          secrets.set(v, record);
+        },
+        clear: async (v) => {
+          secrets.delete(v);
+        },
+      };
+      const macAuth = new MemoryAuthStore();
+      const base: HostRelayOptions = {
+        endpoints: emulatorRelayEndpoints(hosts, database),
+        authStore: () => macAuth,
+        retries: 0,
+        timers: env.timers,
+      };
+      const start = async (relay: HostRelayOptions) => {
+        const host = await env.start(relay);
+        started.push(host);
+        return host;
+      };
+      const vaultHash = async () => {
+        const doc = (await rawVaultDocuments(hosts, database, vault)).find(
+          (d) => d.path === `vaults/${vault}`,
+        );
+        return doc?.fields.recoveryHash?.bytesValue as string | undefined;
+      };
+      const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("base64");
+
+      // An earlier build switched sync on without keeping a secret: no hash at the relay.
+      const first = await start(base);
+      const client = await env.ui();
+      clients.push(client);
+      expect(await client.call("native.relay.enable", { vault })).toEqual({ kind: "done" });
+      expect(await first.exit).toBe(HANDOVER_EXIT_CODE);
+      expect(await vaultHash()).toBeUndefined();
+
+      // The next start with the secret store: the admin sets the absent hash (firestore.rules allow it).
+      const host = await start({ ...base, recoverySecrets: () => store });
+      env.timers.advance(0);
+      await eventually(async () => host.relay.pending() === 0 && (await vaultHash()) !== undefined);
+      const kept = secrets.get(vault);
+      expect(kept?.current.length).toBe(32);
+      expect(await vaultHash()).toBe(sha256(kept?.current as Uint8Array));
+      // No proof doc left, the membership unchanged.
+      const docs = await rawVaultDocuments(hosts, database, vault);
+      expect(docs.filter((d) => /\/recoveries\//.test(d.path))).toEqual([]);
+      expect(docs.filter((d) => /\/members\//.test(d.path)).map((d) => d.path)).toEqual([
+        `vaults/${vault}/members/${macAuth.record?.uid}`,
+      ]);
+      // Off and on again: the same secret, the same hash.
+      expect((await host.relay.disable(vault)).result).toEqual({ kind: "done" });
+      expect((await host.relay.enable(vault)).result).toEqual({ kind: "done" });
+      expect(secrets.get(vault)?.current).toEqual(kept?.current);
+      expect(await vaultHash()).toBe(sha256(kept?.current as Uint8Array));
     },
     TIMEOUT,
   );

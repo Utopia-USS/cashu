@@ -1,6 +1,6 @@
-// The native dev demo's own key files (devDemo.ts `native`): the synthetic vault keys, device identity
-// and relay identity of a demo data dir live in `<data dir>/demo-keys/` (0700, files 0600, plain), never
-// in the OS keychain. Only for synthetic demo data: every constructor refuses a data dir outside the
+// The native dev demo's own key files (devDemo.ts `native`): the synthetic vault keys, device identity,
+// relay identity and the vaults' relay recovery secrets of a demo data dir live in `<data dir>/demo-keys/`
+// (0700, files 0600, plain), never in the OS keychain. Only for synthetic demo data: every constructor refuses a data dir outside the
 // lab root (`~/cashu-lab` for the CLI, a temp dir in tests).
 import { randomBytes } from "node:crypto";
 import {
@@ -15,11 +15,15 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { ProductionKeyStoreInput } from "@cashu/node-host/keyring";
+import type { RelayRecoveryRecord, RelayRecoverySecrets } from "@cashu/node-host/relay-auth";
 import type { AuthRecord, AuthStore, crypto } from "@cashu/sync";
 
 const DIR = "demo-keys";
 const NAME = /^[A-Za-z0-9._-]{1,128}$/;
 const RELAY_AUTH = "relay-auth.json";
+const VAULT = /^[0-9a-f]{32}$/;
+const RECOVERY_BYTES = 32;
+const RECOVERY_FORMAT = 1;
 
 /** The canonical `dataDir` when it lies strictly inside `labRoot` (both resolved), else throws. */
 export function insideLab(dataDir: string, labRoot: string): string {
@@ -99,6 +103,46 @@ export function demoRelayAuthStore(dataDir: string): AuthStore {
     },
     clear() {
       rmSync(file, { force: true });
+    },
+  };
+}
+
+/** A vault's recovery file: `relay-recovery.<vault>` (never a `.key` name of the key store). */
+function recoveryFile(dataDir: string, vault: string): string {
+  if (!VAULT.test(vault)) throw new Error("bad_vault_id");
+  return join(keyDir(dataDir), `relay-recovery.${vault}`);
+}
+
+/**
+ * The demo's relay recovery secrets (one file per vault in its key dir), the same contract as the
+ * keychain store of production (`@cashu/node-host/relay-auth`): a value that does not decode reads as
+ * absent, so the demo exercises the real enable path (secret kept before the commit of its hash).
+ */
+export function demoRelayRecoverySecrets(dataDir: string): RelayRecoverySecrets {
+  return {
+    async get(vault) {
+      const file = recoveryFile(dataDir, vault);
+      if (!existsSync(file)) return null;
+      const bytes = new Uint8Array(readFileSync(file));
+      const one = 1 + RECOVERY_BYTES;
+      if (bytes[0] !== RECOVERY_FORMAT || (bytes.length !== one && bytes.length !== one * 2 - 1))
+        return null;
+      const current = bytes.slice(1, one);
+      return bytes.length === one ? { current } : { current, next: bytes.slice(one) };
+    },
+    async set(vault, record: RelayRecoveryRecord) {
+      const parts = record.next === undefined ? [record.current] : [record.current, record.next];
+      if (parts.some((part) => part.length !== RECOVERY_BYTES))
+        throw new Error("bad_recovery_secret");
+      const out = new Uint8Array(1 + parts.length * RECOVERY_BYTES);
+      out[0] = RECOVERY_FORMAT;
+      parts.forEach((part, i) => {
+        out.set(part, 1 + i * RECOVERY_BYTES);
+      });
+      writeAtomic(recoveryFile(dataDir, vault), out);
+    },
+    async clear(vault) {
+      rmSync(recoveryFile(dataDir, vault), { force: true });
     },
   };
 }

@@ -56,6 +56,47 @@ export function fromHex(hex: string): Uint8Array {
   return out;
 }
 
+const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const B64URL_TEXT = /^[A-Za-z0-9_-]*$/;
+
+/** base64url without padding (RFC 4648 section 5); no platform `atob` / `Buffer` needed. */
+export function toBase64Url(bytes: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i] ?? 0;
+    const b = bytes[i + 1] ?? 0;
+    const c = bytes[i + 2] ?? 0;
+    const n = (a << 16) | (b << 8) | c;
+    out += B64URL[(n >> 18) & 63] ?? "";
+    out += B64URL[(n >> 12) & 63] ?? "";
+    if (i + 1 < bytes.length) out += B64URL[(n >> 6) & 63] ?? "";
+    if (i + 2 < bytes.length) out += B64URL[n & 63] ?? "";
+  }
+  return out;
+}
+
+/**
+ * Strict inverse of `toBase64Url`: undefined for padding, any other alphabet, an impossible length
+ * or non-zero trailing bits (so every byte string has exactly one accepted text).
+ */
+export function fromBase64Url(text: string): Uint8Array | undefined {
+  if (!B64URL_TEXT.test(text) || text.length % 4 === 1) return undefined;
+  const out = new Uint8Array(Math.floor((text.length * 3) / 4));
+  let bits = 0;
+  let acc = 0;
+  let j = 0;
+  for (const ch of text) {
+    acc = (acc << 6) | B64URL.indexOf(ch);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[j++] = (acc >> bits) & 0xff;
+    }
+  }
+  if ((acc & ((1 << bits) - 1)) !== 0) return undefined;
+  return out;
+}
+
 export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;

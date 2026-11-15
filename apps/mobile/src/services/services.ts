@@ -683,12 +683,19 @@ export function bootServices(): Services {
       ];
     }),
   );
+  const list = [...sessions.values()];
+  const sync = createSyncRunner({ targets: () => list, now: () => Date.now() });
   const handles = new Map<string, DurableVaultHandle>(
     [...sessions.values()].map((s) => [
       s.vault,
       {
         store: s.store,
-        execute: (command, input, attemptKey) => s.execute(command, input, attemptKey),
+        execute: async (command, input, attemptKey) => {
+          const outcome = await s.execute(command, input, attemptKey);
+          // A write (or one whose outcome is unknown) goes up while the app stays open.
+          if (outcome.kind === "completed" || outcome.kind === "outcome_unknown") sync.wrote();
+          return outcome;
+        },
         reconcile: (attemptKey) => s.reconcile(attemptKey),
       },
     ]),
@@ -742,7 +749,6 @@ export function bootServices(): Services {
       keyStore: phoneKeyStore,
     }),
   );
-  const list = [...sessions.values()];
   const closeSessions = async () => {
     await Promise.allSettled(list.map((s) => s.close()));
     await queue.close();
@@ -774,7 +780,7 @@ export function bootServices(): Services {
       unavailable: (vault) => unavailable.get(vault),
       unavailableVaults: () => unavailableVaults,
     },
-    sync: createSyncRunner({ targets: () => list, now: () => Date.now() }),
+    sync,
     prices,
     moneyQueries: createMoneyQueries(
       { prices, changes: prices },

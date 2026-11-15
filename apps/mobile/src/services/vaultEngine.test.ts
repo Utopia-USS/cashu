@@ -581,8 +581,8 @@ describe("a paired vault", () => {
     });
     const progress: number[] = [];
     const stop = phone.subscribe(() => {
-      const applied = phone.status().progress?.applied;
-      if (applied !== undefined) progress.push(applied);
+      const events = phone.status().progress?.events;
+      if (events !== undefined) progress.push(events);
     });
     await phone.pass("full");
     stop();
@@ -617,6 +617,68 @@ describe("a paired vault", () => {
     await phone.close();
     await mac.engine.close();
   }, 60_000);
+
+  it("counts the first sync exactly: bytes received and saved of those the relay lists, then the check", async () => {
+    const fake = createFakeFirebase();
+    const mac = await createMac(fake);
+    for (let i = 0; i < 40; i++) await mac.write(renameProfile, { name: `Ala ${i}` });
+    await mac.engine.sync();
+    const paired = await pairPhone(fake, mac);
+    // The oracles: what the relay lists of the Mac's data segments, and the Mac's events the phone's view
+    // holds after the pass.
+    const listed = (await paired.relay.list(mac.vault))
+      .filter((s) => s.device === mac.device && s.seg >= 1)
+      .reduce((n, s) => n + s.size, 0);
+    const phone = paired.open();
+    await phone.opened;
+    const seen: { step: string; done: number; total: number; events?: number }[] = [];
+    const stop = phone.subscribe(() => {
+      const status = phone.status();
+      const step = status.replay
+        ? { step: "checking", done: status.replay.done, total: status.replay.total }
+        : status.progress
+          ? {
+              step: status.progress.phase,
+              done: status.progress.done,
+              total: status.progress.total,
+              events: status.progress.events,
+            }
+          : undefined;
+      const last = seen.at(-1);
+      if (step !== undefined && JSON.stringify(step) !== JSON.stringify(last)) seen.push(step);
+    });
+    await phone.pass("full");
+    stop();
+    expect(phone.status().phase).toBe("ready");
+    expect(listed).toBeGreaterThan(0);
+    const steps = seen.map((s) => s.step).filter((s, i, all) => s !== all[i - 1]);
+    expect(steps).toEqual(["receiving", "saving", "checking"]);
+    const of = (step: string) => seen.filter((s) => s.step === step);
+    for (const s of [...of("receiving"), ...of("saving")]) expect(s.total).toBe(listed);
+    // Each step moves forward and ends complete before the next one's line replaces it.
+    for (const step of ["receiving", "saving"]) {
+      const done = of(step).map((s) => s.done);
+      expect(done).toEqual([...done].sort((a, b) => a - b));
+      expect(of(step).at(-1)?.done).toBe(of(step).at(-1)?.total);
+    }
+    // The check may audit the log more than once (a checkpoint's tail, then the full replay it falls
+    // back to): every run moves forward and ends complete.
+    const runs: { done: number; total: number }[][] = [];
+    for (const s of of("checking")) {
+      const run = runs.at(-1);
+      if (run === undefined || s.done < (run.at(-1)?.done ?? 0)) runs.push([s]);
+      else run.push(s);
+    }
+    for (const run of runs) expect(run.at(-1)?.done).toBe(run.at(-1)?.total);
+    expect(of("receiving").length).toBeGreaterThan(2);
+    const macEvents = paired.store.read<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM event_log WHERE substr(hlc, 16) = ?",
+      mac.device,
+    )[0]?.n;
+    expect(macEvents).toBeGreaterThan(40);
+    expect(of("saving").at(-1)?.events).toBe(macEvents);
+    expect(phone.status().progress).toBeUndefined();
+  });
 
   it("carries the engine's stuck writers, value-free and named from the registry, until they move", async () => {
     const fake = createFakeFirebase();

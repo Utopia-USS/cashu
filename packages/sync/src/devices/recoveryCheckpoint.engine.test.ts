@@ -138,6 +138,8 @@ function fixture() {
       store?: RecoveryCheckpointStore;
       yieldToHost?: { run: () => Promise<void>; now: () => number; sliceMs: number };
       onRecoveryProgress?: (p: RecoveryProgress) => void;
+      /** Certificates of other devices this one starts out knowing (a pairing's welcome). */
+      certificates?: readonly ReturnType<typeof certifyDevice>[];
     } = {},
   ) => {
     const ring = vault.ring.clone(sodium);
@@ -147,7 +149,7 @@ function fixture() {
       ring,
       provenance: new MemoryProvenanceStore(),
       clock: () => T0,
-      bootstrapCertificates: [certificate],
+      bootstrapCertificates: [certificate, ...(options.certificates ?? [])],
     });
     const real = createOwnLogCodec({ sodium, ring, signer: identity });
     const codec: FrameCodec = {
@@ -246,7 +248,9 @@ function fixture() {
       physicalClock: new ManualClock(T0),
     });
     const admission = buildDeviceAdded(recovery, vaultId, newEid(), subject, "second", cert);
-    return { identity: other, engine, admission };
+    /** Its own introduction under its certificate (how a creator's stream starts). */
+    const selfIntro = () => buildDeviceAdded(other, vaultId, newEid(), subject, "second", cert);
+    return { identity: other, engine, admission, cert, selfIntro };
   };
   /** Append one frame signed by this device straight to the local log (a frame no engine wrote). */
   const appendOwn = async (events: readonly ReturnType<typeof event>[], counter: number) => {
@@ -356,7 +360,11 @@ async function seeded(n: number): Promise<Fixture> {
  * The same recovery without a checkpoint over a captured state (the oracle): its own log, view, gate
  * snapshot, evidence and clock, none of which the checked run can reach.
  */
-async function reference(f: Fixture, captured: Captured) {
+async function reference(
+  f: Fixture,
+  captured: Captured,
+  certificates: readonly ReturnType<typeof certifyDevice>[] = [],
+) {
   let snapshot = captured.snapshot;
   const evidence = [...captured.evidence];
   const gateState: GateStateStore = {
@@ -376,6 +384,7 @@ async function reference(f: Fixture, captured: Captured) {
     local: await copyLog(captured.log, f.vaultId),
     gateState,
     clockStore: new MemoryClockStore(captured.clock),
+    certificates,
   });
   const result = await engine.recoverLocal();
   await engine.close();
@@ -763,6 +772,73 @@ describe("recovery checkpoint (phone open strategy)", () => {
     expect(run.value.complete).toBe(false);
     expect(run.value.requiresViewRebuild).toBe(true);
     expect(run.value.streams.find((s) => s.device === B)?.reason).toBe("cursor-not-accepted");
+    await engine.close();
+  });
+  /**
+   * A first sync (W4): the open audited an empty log and checkpointed it; then another device's
+   * stream lands (its own introduction first: a registry statement, as a creator's stream starts).
+   */
+  async function firstSync(n: number) {
+    const f = fixture();
+    const b = await f.writer();
+    const phone = await f.open({ certificates: [b.cert] });
+    const empty = await f.counted(() => phone.recoverLocal());
+    expect(empty.value.complete).toBe(true);
+    expect(empty.opens).toBe(0);
+    expect(f.cp.text).toBeDefined();
+    await b.engine.write([b.selfIntro()]);
+    for (let i = 0; i < n; i++) await b.engine.write([event(`m${i}`)]);
+    await b.engine.close();
+    return { f, b, phone };
+  }
+
+  it("a first sync from an empty log is audited once: N frames opened, not 2N", async () => {
+    const n = 12;
+    const { f, b, phone } = await firstSync(n);
+    const before = await f.capture();
+    const run = await f.counted(() => phone.recoverLocal());
+    expect(run.value.complete).toBe(true);
+    // The pulled stream: its introduction frame and the n event frames, each opened exactly once.
+    expect(run.opens).toBe(n + 1);
+    // One head signature per frame plus the statements and the snapshot's: never a second pass.
+    expect(run.verifies).toBeLessThan(2 * (n + 1));
+    expect(run.value).toEqual((await reference(f, before, [b.cert])).result);
+    expect(f.sink.value(`m${n - 1}`)).toBe(`m${n - 1}`);
+    // It leaves a checkpoint over the whole stream: the next open opens nothing.
+    const reopened = await f.open({ certificates: [b.cert] });
+    const next = await f.counted(() => reopened.recoverLocal());
+    expect(next.opens).toBe(0);
+    await phone.close();
+    await reopened.close();
+  });
+
+  it("a tampered frame in a first sync is still refused, as a replay without a checkpoint refuses it", async () => {
+    const n = 6;
+    const { f, b, phone } = await firstSync(n);
+    const device = b.identity.deviceId;
+    const bytes = (await f.local.read(f.vaultId, device, 1, 0)).slice();
+    const frame = scanFrames(bytes, 0).frames[3];
+    if (!frame) throw new Error("no frame");
+    const at = Math.floor((frame.offset + frame.end) / 2);
+    bytes[at] = (bytes[at] ?? 0) ^ 1;
+    const log = new MemoryTransport();
+    await log.append(f.vaultId, device, 1, 0, bytes);
+    const before = await f.capture({ local: log });
+    const engine = await f.open({ local: log, certificates: [b.cert] });
+    const run = await f.counted(() => engine.recoverLocal());
+    expect(run.value.complete).toBe(false);
+    expect(run.value.streams.find((s) => s.device === device)?.disposition).toBe("unresolved_tail");
+    const oracle = await reference(f, before, [b.cert]);
+    expect(run.value).toEqual(oracle.result);
+    // Frames up to the tampered one were opened once; the refused stream reaches the view as it does
+    // without a checkpoint (an unresolved stream delivers nothing).
+    expect(run.opens).toBeLessThanOrEqual(n + 1);
+    for (const v of ["m0", "m1", "m2", `m${n - 1}`]) {
+      expect(f.sink.value(v)).toBe(oracle.sink.value(v));
+      expect(f.sink.value(v)).toBeUndefined();
+    }
+    expect(f.cp.text).toBeUndefined();
+    await phone.close();
     await engine.close();
   });
 });

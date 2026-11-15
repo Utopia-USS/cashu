@@ -401,11 +401,52 @@ describe("the checks before anything leaves the phone", () => {
     expect(fake.counters).toEqual(before);
   });
 
-  it("pairs with a code typed by hand: curled quotes, invisible spaces and line breaks", async () => {
+  it("pairs with the Mac's token code broken by stray spaces and line breaks", async () => {
     const invite = await openInvite(mac, sodium);
+    // The Mac's code is one opaque token: the prefix, then base64url of the invite's JSON.
+    const token = invite.qr.slice("cashu-pair:".length);
+    expect(invite.qr.startsWith("cashu-pair:")).toBe(true);
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+    const inner = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as { vault: string };
+    expect(inner.vault).toBe(mac.vault);
+    // A paste that wrapped: line breaks, spaces and invisible spaces inside the token.
+    const chunks = token.match(/.{1,17}/g) ?? [];
+    const typed = `  cashu-pair:\n${chunks.join(" \n\u00a0")}\u200b\n`;
+    const phone = await createPhone(fake);
+    const pairing = phone.pairing((event) => {
+      if (event.type === "sas") invite.typeCode(event.sas);
+    });
+    const mac$ = invite.run();
+    await pairing.start(typed, NAME, { discardUnpushed: false });
+    expect(phone.state()).toEqual({ kind: "role", vault: mac.vault, role: "owner" });
+    expect(await mac$).toEqual({ ok: true, admitted: true });
+  });
+
+  it("says a token that does not decode is not a cashU code", async () => {
+    const invite = await openInvite(mac, sodium);
+    const token = invite.qr.slice("cashu-pair:".length);
+    const phone = await createPhone(fake);
+    const before = { ...fake.counters };
+    await phone.pairing().start(`cashu-pair:${token.slice(0, 20)}!${token.slice(21)}`, NAME, {
+      discardUnpushed: false,
+    });
+    expect(phone.state()).toMatchObject({ kind: "scan", notACode: true });
+    await phone
+      .pairing()
+      .start(`cashu-pair:${token.slice(0, -5)}`, NAME, { discardUnpushed: false });
+    expect(phone.state()).toMatchObject({ kind: "scan", notACode: true });
+    expect(fake.counters).toEqual(before);
+    await invite.link.close();
+  });
+
+  it("pairs with an older Mac's JSON code typed by hand: curled quotes, invisible spaces and line breaks", async () => {
+    const invite = await openInvite(mac, sodium);
+    // An older Mac showed the invite's JSON itself after the prefix.
+    const legacy = `cashu-pair:${Buffer.from(invite.qr.slice("cashu-pair:".length), "base64url").toString("utf8")}`;
+    expect(legacy).toContain('"vault"');
     // iOS smart punctuation curls the quotes as the code is typed; a copy may carry invisible spaces.
     let opening = true;
-    const typed = `\n  ${invite.qr
+    const typed = `\n  ${legacy
       .replace(/"/g, () => {
         opening = !opening;
         return opening ? "\u201d" : "\u201c";

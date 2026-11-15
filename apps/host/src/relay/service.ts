@@ -26,7 +26,8 @@
 // relay identity (`@cashu/node-host/relay-auth`), stored BEFORE the commit that writes its hash, so a
 // crash never leaves a hash at the relay whose secret is gone. `reconnect` spends it after an identity
 // loss: the new uid becomes admin again under a NEW secret (stored before that commit, the old one kept
-// until the commit is confirmed), then the lost uid's member document goes.
+// until the commit is confirmed), then the lost uid's member document goes. A vault switched on before
+// its secret was kept gets one, and its hash, at the next enable or host start (`backfillRecoveryHash`).
 import { randomBytes } from "node:crypto";
 import type { RelayActionResult, RelayStatusResult } from "@cashu/host-protocol";
 import type { HostLock } from "@cashu/node-host";
@@ -440,12 +441,15 @@ export function createHostRelay(input: {
   };
 
   let recoveryStore: RelayRecoverySecrets | undefined;
+  const keepsSecrets = options.recoverySecrets !== undefined;
   /** Built on first use like the identity store; undefined when the host keeps no secrets. */
   const recovery = (): RelayRecoverySecrets | undefined => {
     if (options.recoverySecrets === undefined) return undefined;
     recoveryStore ??= options.recoverySecrets(lock);
     return recoveryStore;
   };
+  /** Running host-start recovery hash checks (`backfillRecoveryHash`), counted by `pending`. */
+  const backfills = new Set<Promise<void>>();
   /** Vaults whose recovery secret this Mac holds (read from the keychain at most once per change). */
   const recoverable = new Map<string, boolean>();
   const refreshRecoverable = async (vault: string): Promise<void> => {
@@ -741,6 +745,13 @@ export function createHostRelay(input: {
           request(vault, "open");
         });
       }
+      // A vault enabled before this Mac kept its recovery secret gets its hash (`backfillRecoveryHash`).
+      if (keepsSecrets)
+        for (const vault of vaults.keys())
+          timers.after(0, () => {
+            const check = backfillRecoveryHash(vault).finally(() => backfills.delete(check));
+            backfills.add(check);
+          });
       if (vaults.size > 0)
         cancelPull = timers.every(RELAY_PULL_INTERVAL_MS, () => {
           for (const vault of vaults.keys()) request(vault, "pull");
@@ -748,7 +759,7 @@ export function createHostRelay(input: {
     },
 
     pending() {
-      let count = 0;
+      let count = backfills.size;
       for (const state of vaults.values())
         if (state.running !== undefined || state.cancelDebounce !== undefined) count += 1;
       return count;
@@ -1262,6 +1273,45 @@ export function createHostRelay(input: {
       return "admin";
     } catch (error) {
       return unreachable(error) ? "offline" : "not_admin";
+    }
+  }
+
+  /**
+   * Host start: a vault this Mac switched on as its admin while no recovery secret was kept (an older
+   * build, or a wiring without the secret store) has no `recoveryHash` at the relay, so an identity
+   * loss could never be undone. The admin writes it now through the enable path (`becomeFirstAdmin`:
+   * the secret kept before the commit of its hash; firestore.rules let an admin set an absent hash).
+   * One read of the vault document per switched-on vault and start, nothing more when the hash is
+   * there; skipped while the identity is lost (reconnect's job), during a back-off or another action.
+   */
+  async function backfillRecoveryHash(vault: string): Promise<void> {
+    if (!keepsSecrets || closed || context?.closing() || busy.has(vault)) return;
+    const setting = settingOf(vault);
+    const session = context?.stores.vaults.get(vault)?.native;
+    const state = vaults.get(vault);
+    if (
+      !enabledOn(setting) ||
+      setting.identityLostAt !== undefined ||
+      session === undefined ||
+      relayDeviceRole(setting, session.device) === "member" ||
+      state === undefined ||
+      state.stopped ||
+      state.policy.blockedUntil > now()
+    )
+      return;
+    busy.add(vault);
+    try {
+      // The keychain is touched only when the hash is missing (a store that cannot be opened throws
+      // here and is logged like any failure).
+      const doc = await client().get(`${root}/${vault}`);
+      if (doc === undefined || doc.fields.recoveryHash !== undefined) return;
+      const outcome = await becomeFirstAdmin(vault, session.device, await identity().uid());
+      if (outcome === "admin") log.info("relay.recovery-hash-added");
+      else log.warn("relay.recovery-hash-missing", { outcome });
+    } catch (error) {
+      log.warn("relay.recovery-hash-missing", { error: errorName(error) });
+    } finally {
+      busy.delete(vault);
     }
   }
 

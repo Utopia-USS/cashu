@@ -26,12 +26,12 @@ export default meta;
 
 export const Scan = { args: {} };
 export const CameraDenied = { args: { input: "paste", camera: "denied" } };
-export const Paste = { args: { input: "paste", pasted: "cashu-pair:{...}" } };
+export const Paste = { args: { input: "paste", pasted: "cashu-pair:eyJlcGgiOiIwYTBh..." } };
 /** A long pasted code: shown from its first character, the field grows with it. */
 export const PasteLong = {
   args: {
     input: "paste",
-    pasted: `cashu-pair:{"eph":"${"0a".repeat(32)}","vault":"${"1b".repeat(32)}"}`,
+    pasted: `cashu-pair:${"eyJlcGgiOiIwYTBhMGEwYTBh".repeat(14)}`,
   },
 };
 export const NotACode = { args: { input: "paste", pasted: "hello", notACode: true } };
@@ -65,7 +65,7 @@ export const FirstSyncProgress = {
   args: {
     kind: "firstSync",
     profile: null,
-    progress: { applied: 12_400, expected: 64_000 },
+    progress: { step: "receiving", done: 1_240_000, total: 6_400_000 },
     canOpen: false,
     suggestLock: true,
     done: false,
@@ -76,8 +76,30 @@ export const FirstSyncOpenable = {
   args: {
     kind: "firstSync",
     profile: "Ala",
-    progress: { applied: 40_000, expected: 64_000 },
+    progress: { step: "saving", done: 4_000_000, total: 6_400_000, events: 40_000 },
     canOpen: true,
+    suggestLock: true,
+    done: false,
+    onOpen: noop,
+  },
+};
+export const FirstSyncSaving = {
+  args: {
+    kind: "firstSync",
+    profile: null,
+    progress: { step: "saving", done: 2_100_000, total: 6_400_000, events: 21_000 },
+    canOpen: false,
+    suggestLock: true,
+    done: false,
+    onOpen: noop,
+  },
+};
+export const FirstSyncChecking = {
+  args: {
+    kind: "firstSync",
+    profile: null,
+    progress: { step: "checking", done: 140, total: 350 },
+    canOpen: false,
     suggestLock: true,
     done: false,
     onOpen: noop,

@@ -261,6 +261,12 @@ interface Fallback {
   readonly touched: boolean;
 }
 
+/** True when the checkpoint covers at least one frame of some stream (else it skips nothing). */
+function vouchesForFrames(cp: Checkpoint): boolean {
+  for (const stream of cp.streams.values()) if (!sameCursor(stream.end, START_CURSOR)) return true;
+  return false;
+}
+
 function signatureOf(sealed: Uint8Array): Uint8Array {
   return sealed.subarray(Math.max(0, sealed.length - SIGNATURE_BYTES));
 }
@@ -757,7 +763,12 @@ class OwnLogEngine implements SyncEngine {
     this.#assertOpen();
     const checkpoint = await this.#loadCheckpoint();
     let gateTouched = false;
-    if (checkpoint !== undefined) {
+    if (checkpoint !== undefined && !vouchesForFrames(checkpoint)) {
+      // Taken over an empty log (the open before a first sync): it vouches for no frame, so the tail
+      // audit would open every frame and, on the first registry statement, give up and open them all
+      // again. Go to the full replay at once: the same audit with the same verdicts, done once.
+      await this.#clearCheckpoint();
+    } else if (checkpoint !== undefined) {
       const tail = await this.#recover(checkpoint, false);
       if (!("fallback" in tail)) return tail;
       // Prefer the full replay over a doubtful checkpoint: forget it and open every frame again. When

@@ -288,7 +288,8 @@ it("waits for the phone's first sync and asks inspect again on each host push un
 });
 
 const OP = "0".repeat(26);
-const LONG = `cashu-pair:{"eph":"${"ab".repeat(32)}","vault":"${"cd".repeat(16)}"}`;
+/** The Mac's code: the prefix and one base64url token of the invite's JSON. */
+const LONG = `cashu-pair:${Buffer.from(`{"eph":"${"ab".repeat(32)}","vault":"${"cd".repeat(16)}"}`).toString("base64url")}`;
 /** A fixed clock time still ahead (tomorrow), so the invitation does not expire during a test. */
 function tomorrowAt(hours: number, minutes: number, seconds: number): number {
   const at = new Date();
@@ -321,7 +322,7 @@ it("shows a long code as one start…end line, copies the whole code and writes 
   const view = await created(readyBridge({}));
   try {
     const shown = view.container.querySelector("code")?.textContent ?? "";
-    expect(shown).toBe(`cashu-pair:{"eph":…cdcdcd"}`);
+    expect(shown).toBe("cashu-pair:eyJlcGg…Y2RjZCJ9");
     expect(view.container.textContent).not.toContain(LONG);
     await act(async () => view.button("Copy code")?.click());
     expect(writeText).toHaveBeenCalledWith(LONG);

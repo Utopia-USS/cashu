@@ -180,6 +180,25 @@ it("turns expired digits into Scan again", async () => {
   }
 });
 
+it("tells the owner to stop and show a new code if the Mac refuses the digits", async () => {
+  const code = { kind: "code", sas: "418207", name: "iPhone 16 Pro", secondsLeft: 102 } as const;
+  const props = { ...pairStories.default.args, ...code } as Parameters<typeof PairView>[0];
+  const view = await render(wrap(<PairView {...props} />));
+  expect(
+    screen.getByText(
+      "If your Mac doesn't accept these digits, stop and show a new code: someone else may have scanned it.",
+    ),
+  ).toBeOnTheScreen();
+  await view.unmount();
+  setLanguageForTests("pl");
+  await render(wrap(<PairView {...props} />));
+  expect(
+    screen.getByText(
+      "Jeśli Mac nie przyjmie tych cyfr, przerwij i pokaż nowy kod: ktoś inny mógł go zeskanować.",
+    ),
+  ).toBeOnTheScreen();
+});
+
 it("saves the role picked and moves on to the first sync", async () => {
   const saveRole = jest.fn(async () => undefined);
   await render(wrap(<Screen close={() => {}} saveRole={saveRole} />));

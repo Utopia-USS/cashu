@@ -62,7 +62,12 @@ import { loadRelayConfig } from "../relay/config.js";
 import type { HostRelayOptions } from "../relay/service.js";
 import { type OpenVault, storeFiles } from "../stores.js";
 import type { StrategyScreenCapability } from "../strategiesScreen.js";
-import { demoKeyStoreFactory, demoRelayAuthStore, insideLab } from "./devDemoNative.js";
+import {
+  demoKeyStoreFactory,
+  demoRelayAuthStore,
+  demoRelayRecoverySecrets,
+  insideLab,
+} from "./devDemoNative.js";
 import { syntheticStrategyDocuments } from "./strategyDocuments.js";
 import { command } from "./worker.js";
 
@@ -1047,10 +1052,34 @@ async function main(args: readonly string[]): Promise<void> {
 
 /** A native demo's relay from the env (relay/config.ts, checkout rules); invalid or absent: none. */
 function envRelay(dataDir: string): { readonly relay?: HostRelayOptions } {
-  const loaded = loadRelayConfig({ dataDir, packaged: false, env: process.env });
+  const loaded = demoRelayOptions(dataDir, process.env);
   if (loaded.kind === "invalid") process.stderr.write(`dev demo: ${loaded.code}\n`);
-  if (loaded.kind !== "ready") return {};
-  return { relay: { endpoints: loaded.relay, authStore: () => demoRelayAuthStore(dataDir) } };
+  return loaded.kind === "ready" ? { relay: loaded.relay } : {};
+}
+
+/**
+ * The native demo's relay wiring: the config from `env` (checkout rules), the identity and the vaults'
+ * recovery secrets in the demo's key files, so enabling sync on the demo runs the production path (the
+ * secret kept before the commit that writes its hash).
+ */
+export function demoRelayOptions(
+  dataDir: string,
+  env: Readonly<Record<string, string | undefined>>,
+):
+  | { readonly kind: "ready"; readonly relay: HostRelayOptions }
+  | { readonly kind: "invalid"; readonly code: string }
+  | { readonly kind: "absent" } {
+  const loaded = loadRelayConfig({ dataDir, packaged: false, env });
+  if (loaded.kind === "invalid") return { kind: "invalid", code: loaded.code };
+  if (loaded.kind !== "ready") return { kind: "absent" };
+  return {
+    kind: "ready",
+    relay: {
+      endpoints: loaded.relay,
+      authStore: () => demoRelayAuthStore(dataDir),
+      recoverySecrets: () => demoRelayRecoverySecrets(dataDir),
+    },
+  };
 }
 
 const entry = process.argv[1];

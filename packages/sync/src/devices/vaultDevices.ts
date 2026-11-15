@@ -274,19 +274,29 @@ export class VaultDevices {
     const me = this.#o.identity.deviceId;
     const now = this.#o.clock();
     for (const e of events) {
+      // The type first: every other event (the vault's data) is skipped before its copy key, the
+      // canonical JSON of its content, is built (most of a replay's events; the key only dedupes).
+      const kind = isRegistryEvent(e)
+        ? "registry"
+        : isLeaseEvent(e)
+          ? "lease"
+          : e.type === KEYS_ROTATED && e.v === 1
+            ? "keys"
+            : undefined;
+      if (kind === undefined) continue;
       const key = copyKey(e);
       if (this.#seenEvents.has(key)) continue;
-      if (isRegistryEvent(e)) {
+      if (kind === "registry") {
         this.#seenEvents.add(key);
         this.#registryEvents.push(e);
         registryChanged = true;
-      } else if (isLeaseEvent(e)) {
+      } else if (kind === "lease") {
         this.#seenEvents.add(key);
         this.#leaseEvents.push(e);
         if (!this.#firstSeen.has(e.eid)) this.#firstSeen.set(e.eid, now);
         leaseChanged = true;
         registryChanged = true; // lease statements are revokers' attested knowledge (registry M1)
-      } else if (e.type === KEYS_ROTATED && e.v === 1) {
+      } else {
         this.#seenEvents.add(key);
         const wire = decodeKeysRotated(e.data)?.wraps[me];
         if (wire !== undefined)

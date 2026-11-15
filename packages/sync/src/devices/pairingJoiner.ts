@@ -27,6 +27,7 @@ import {
   decodeInvite,
   decodeRegistryEvents,
   encodeInvite,
+  encodeLegacyInvite,
   hash,
   type Invite,
   joinerKeys,
@@ -227,7 +228,8 @@ export class PairingJoiner {
     const invite = decodeInvite(snapshot.invite);
     if (
       !invite ||
-      encodeInvite(invite) !== snapshot.invite ||
+      (encodeInvite(invite) !== snapshot.invite &&
+        encodeLegacyInvite(invite) !== snapshot.invite) ||
       snapshot.challengeAt < snapshot.helloClock - (o.maxSkewMs ?? DEFAULT_MAX_DRIFT_MS) ||
       snapshot.challengeAt > invite.expiresAt + SAS_TTL_MS ||
       now > invite.expiresAt + 24 * 60 * 60 * 1000

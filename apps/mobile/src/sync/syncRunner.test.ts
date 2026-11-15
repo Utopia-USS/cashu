@@ -10,6 +10,9 @@ import {
   type SyncTarget,
   syncCause,
   TASK_OPEN_WAIT_MS,
+  WRITE_BACKOFF_START_MS,
+  WRITE_PUSH_DEBOUNCE_MS,
+  WRITE_QUOTA_BACKOFF_MS,
 } from "./syncRunner";
 
 const VAULT = "5f0c3a9e81d24b7690ae13c7d2f4b856";
@@ -17,7 +20,7 @@ const MINUTE = 60_000;
 
 function fakeTarget(status: Partial<VaultSyncStatus> = {}) {
   const passes: ("full" | "push")[] = [];
-  const pending: (() => void)[] = [];
+  const pending: ((result?: SyncResult) => void)[] = [];
   let retries = 0;
   let markOpened: () => void = () => {};
   let opened = new Promise<void>((resolve) => {
@@ -48,7 +51,7 @@ function fakeTarget(status: Partial<VaultSyncStatus> = {}) {
     pass(mode) {
       passes.push(mode);
       return new Promise<SyncResult | undefined>((resolve) => {
-        pending.push(() => resolve(undefined));
+        pending.push((result) => resolve(result));
       });
     },
   };
@@ -56,8 +59,9 @@ function fakeTarget(status: Partial<VaultSyncStatus> = {}) {
     target,
     passes,
     retries: () => retries,
-    finish: () => {
-      for (const done of pending.splice(0)) done();
+    /** Settle the running passes; with `ran`, as passes that ran (a result), else as skipped. */
+    finish: (ran = false) => {
+      for (const done of pending.splice(0)) done(ran ? ({} as SyncResult) : undefined);
     },
     set: (patch: Partial<VaultSyncStatus>) => {
       current = { ...current, ...patch };
@@ -357,6 +361,153 @@ describe("the sync runner", () => {
     };
     const runner = createSyncRunner({ targets: () => [target], now: () => 0 });
     await expect(runner.request("start")).resolves.toBeUndefined();
+  });
+});
+
+/** A virtual clock with one-shot timers: `advance` fires every timer that falls due, in order. */
+function virtualClock(start = 1_000_000) {
+  let now = start;
+  const timers: { at: number; fire: () => void; cancelled: boolean }[] = [];
+  return {
+    now: () => now,
+    after: (ms: number, fire: () => void) => {
+      const timer = { at: now + ms, fire, cancelled: false };
+      timers.push(timer);
+      return () => {
+        timer.cancelled = true;
+      };
+    },
+    /** Timers still to fire. */
+    pending: () => timers.filter((t) => !t.cancelled).length,
+    async advance(ms: number) {
+      const end = now + ms;
+      for (;;) {
+        const due = timers
+          .filter((t) => !t.cancelled && t.at <= end)
+          .sort((a, b) => a.at - b.at)[0];
+        if (due === undefined) break;
+        due.cancelled = true;
+        now = due.at;
+        due.fire();
+        await flush();
+      }
+      now = end;
+      await flush();
+    },
+  };
+}
+
+describe("the push after an own write", () => {
+  /** A runner in the foreground over one vault with own writes waiting, on a virtual clock. */
+  function setup() {
+    const clock = virtualClock();
+    const fake = fakeTarget({ unpushed: true, lastPullAt: clock.now() });
+    const runner = createSyncRunner({
+      targets: () => [fake.target],
+      now: clock.now,
+      after: clock.after,
+      every: () => () => {},
+    });
+    runner.foreground(true);
+    return { clock, fake, runner };
+  }
+
+  it("starts a push pass 2 s after the last write while the app stays open", async () => {
+    const { clock, fake, runner } = setup();
+    runner.wrote();
+    await clock.advance(1_500);
+    // A second write moves the push: one pass for both, 2 s after the later one.
+    runner.wrote();
+    await clock.advance(WRITE_PUSH_DEBOUNCE_MS - 1);
+    expect(fake.passes).toEqual([]);
+    await clock.advance(1);
+    expect(fake.passes).toEqual(["push"]);
+    expect(WRITE_PUSH_DEBOUNCE_MS).toBe(2_000);
+    fake.finish(true);
+    await flush();
+    // Nothing more without a new write.
+    await clock.advance(10 * MINUTE);
+    expect(fake.passes).toEqual(["push"]);
+  });
+
+  it("pushes nothing when the write left nothing unpushed, or outside the foreground", async () => {
+    const { clock, fake, runner } = setup();
+    fake.set({ unpushed: false });
+    runner.wrote();
+    await clock.advance(WRITE_PUSH_DEBOUNCE_MS);
+    expect(fake.passes).toEqual([]);
+    fake.set({ unpushed: true });
+    runner.wrote();
+    // Leaving the foreground drops the timer (the background trigger pushes there).
+    runner.foreground(false);
+    expect(clock.pending()).toBe(0);
+    runner.wrote();
+    await clock.advance(MINUTE);
+    expect(fake.passes).toEqual([]);
+  });
+
+  it("looks again after a pass that was running when the write came", async () => {
+    const { clock, fake, runner } = setup();
+    fake.set({ unpushed: false });
+    const running = runner.request("start");
+    expect(fake.passes).toEqual(["full"]);
+    fake.set({ unpushed: true });
+    runner.wrote();
+    await clock.advance(WRITE_PUSH_DEBOUNCE_MS);
+    expect(fake.passes).toEqual(["full"]);
+    fake.finish(true);
+    await running;
+    await flush();
+    expect(fake.passes).toEqual(["full", "push"]);
+  });
+
+  it("waits out the relay back-off: 60 s doubling after failed passes, 1 h after the quota, none after a clean pass", async () => {
+    const { clock, fake, runner } = setup();
+    const failedPush = async (lastError: "unavailable" | "quota") => {
+      runner.wrote();
+      await clock.advance(WRITE_PUSH_DEBOUNCE_MS);
+      fake.set({ relay: { lastError, lastErrorAt: clock.now() } });
+      fake.finish(true);
+      await flush();
+    };
+    await failedPush("unavailable");
+    expect(fake.passes).toEqual(["push"]);
+    // A write 2 s later waits for the 60 s back-off counted from the failed pass.
+    runner.wrote();
+    await clock.advance(WRITE_BACKOFF_START_MS - 1);
+    expect(fake.passes).toEqual(["push"]);
+    await clock.advance(1);
+    expect(fake.passes).toEqual(["push", "push"]);
+    // That one fails too: the next waits 120 s.
+    fake.finish(true);
+    await flush();
+    runner.wrote();
+    await clock.advance(2 * WRITE_BACKOFF_START_MS - 1);
+    expect(fake.passes).toHaveLength(2);
+    await clock.advance(1);
+    expect(fake.passes).toHaveLength(3);
+    // The quota: an hour.
+    fake.set({ relay: { lastError: "quota", lastErrorAt: clock.now() } });
+    fake.finish(true);
+    await flush();
+    runner.wrote();
+    await clock.advance(WRITE_QUOTA_BACKOFF_MS - 1);
+    expect(fake.passes).toHaveLength(3);
+    await clock.advance(1);
+    expect(fake.passes).toHaveLength(4);
+    // That one hit the quota again; a pass that reaches the relay meanwhile (the open's) ends the
+    // back-off: the next write goes up 2 s later, not an hour later.
+    fake.finish(true);
+    await flush();
+    fake.set({ relay: { lastOk: clock.now() } });
+    const start = runner.request("start");
+    fake.finish(true);
+    await start;
+    expect(fake.passes).toHaveLength(5);
+    runner.wrote();
+    await clock.advance(WRITE_PUSH_DEBOUNCE_MS);
+    expect(fake.passes).toEqual(["push", "push", "push", "push", "full", "push"]);
+    fake.finish(true);
   });
 });
 

@@ -86,6 +86,35 @@ budgets: the desktop is back at its pre-M3 numbers; its day's events and rebuild
 before M3 (not caused by the derivers; an idle re-measure decides). The phone's numbers are inside its 30 s first sync
 only at the lower load and over the 100 ms day budget on this Mac; the recurring deriver's per-batch group re-detection
 (M3.1) is still the largest write cost there, and the phone's real figures belong to the device runs (S41g).
+Phone first sync (M4 W4, 2026-11-15). The first real-project run (iOS simulator, dev build, 22,187 events, a
+2.36 MB sealed log) took 54 s from the first-sync screen to ready: ~10 s to the first applied batch, ~29 s in one
+sink transaction (the 20,000-row import is one command, so one frame group, which `MAX_BATCH_EVENTS` cannot
+split), ~35 s in the check after the pass. Reproduced on V8 (Node 24, better-sqlite3 file databases with the
+phone's pragmas, `companionReads`, the session's batch size and yielding sink, the M-series Mac, load average
+9-45, so ranges): `CASHU_FIRSTSYNC_BENCH=1 [CASHU_FIRSTSYNC_SPLIT=month] pnpm --filter @cashu/mobile exec jest
+src/services/vaultEngine.firstsync.measure.test.ts` (opt-in, out of the default tier; a synthetic mBank import
+of 20,000 rows, 21,834 events, ~102 B per event on the relay). Wall ms of the pass:
+
+| Phase | One import, before / after 1-2 / after 3-4 | 61 monthly imports, before / after 1-2 / after 3-4 |
+|---|---|---|
+| pull + open until the first sink call | 630-670 / 650-670 / 407 | 480 / 493-670 / 449 |
+| sink transactions (materializers + derivers) | 3,061-3,181 / 3,140-3,184 / 3,301 | 24,087 / 10,125-12,299 / 6,262 |
+| of that the recurring deriver | 715-777 (1 run) / 724-733 / 369 | 19,584 (61 runs) / 5,633-6,855 (16 runs) / 1,753 |
+| check after the pass (recoverLocal) | 1,591-1,603 (2 audits) / 768-795 (1 audit) / 250 | 1,889 (2 audits) / 961-1,387 (1 audit) / 300 |
+| whole pass | 5,408-5,534 / 4,696-4,734 / 4,058 | 26,935 / 11,919-14,779 / 7,086 |
+
+Four fixes, none changes a result (1-2 first, 3-4 measured after them, load 15-35): the derivers run once per sink transaction over the union of its batches'
+dirty partitions (`Store.applyWireBatches`; before, once per frame batch, so a log written by many commands
+re-detected every merchant group per command; `apply-batches.property.test.ts`), and a recovery checkpoint
+that vouches for no frame (the one the open takes over an empty log) no longer starts a tail audit that gives
+up on the first registry statement and audits everything again (`engine.ts`, `recoveryCheckpoint.engine.test.ts`:
+a first sync of N frames opens N, not 2N). Then (3) the domain's `groupSeries` builds `1 + tolerance`, each candidate's ceiling and each charge's scaled
+amount once instead of per (charge x candidate) pair (`recurring.series.test.ts` against the pre-hoist code), and
+(4) the device gate's `VaultDevices.ingest` checks the event type before it canonicalises the content for the
+copy key, so data events are never canonicalised (`vaultDevices.ingest.test.ts`). Hermes is slower than V8 and by more on crypto and string work: the run's 54 s against
+5.5 s here (about 10x; the check after the pass about 22x, the sink about 9x), and the dev build's open
+(5.6-5.7 s) was about 2x the release build's (2.7-2.8 s), so a release device run decides the budget.
+
 Also since M3 the store needs SQLite with FTS5: `node:sqlite` has it from Node 24 (the
 `.nvmrc` Node, also Electron 45's), not in Node 23; better-sqlite3 and expo-sqlite ship it (docs/agents/running.md).
 

@@ -7,10 +7,28 @@ import { CameraView } from "expo-camera";
 import type { ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { QR_ONLY } from "../../platform/camera";
+import type { FirstSyncStep } from "./firstSyncStep";
 import { S } from "./Pair.strings";
 import type { PairScreenState } from "./usePairScreen";
 
 export type PairViewProps = PairScreenState;
+
+/** The bar of one first-sync step: `done` of `total`, never past the end. */
+function shareOf(step: FirstSyncStep): number {
+  return step.total > 0 ? Math.min(1, step.done / step.total) : 0;
+}
+
+/** The line of one first-sync step. */
+function firstSyncLine(step: FirstSyncStep): string {
+  switch (step.step) {
+    case "receiving":
+      return S.firstSyncProgress(step.done, step.total);
+    case "saving":
+      return S.firstSyncSaving(step.events);
+    case "checking":
+      return S.firstSyncChecking(Math.floor(shareOf(step) * 100));
+  }
+}
 
 /** The modal's frame: a close / cancel button on the steps that allow it, the step's body, its actions. */
 function Frame(props: { onCancel?: () => void; children: ReactNode; actions?: ReactNode }) {
@@ -281,16 +299,9 @@ export function PairView(props: PairViewProps) {
           {props.progress !== null && !props.done ? (
             <View className="gap-2">
               <Text accessibilityLiveRegion="polite" className="text-body text-fg-secondary">
-                {S.firstSyncProgress(props.progress.applied, props.progress.expected)}
+                {firstSyncLine(props.progress)}
               </Text>
-              <Meter
-                share={
-                  props.progress.expected > 0
-                    ? Math.min(1, props.progress.applied / props.progress.expected)
-                    : 0
-                }
-                tone="accent"
-              />
+              <Meter share={shareOf(props.progress)} tone="accent" />
             </View>
           ) : (
             !props.canOpen && <Body>{S.firstSyncWaiting}</Body>

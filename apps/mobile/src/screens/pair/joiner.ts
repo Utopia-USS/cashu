@@ -129,18 +129,25 @@ function failureOf(error: unknown): PairFailure {
   return "failed";
 }
 
+const CODE_PREFIX = "cashu-pair:";
+
 /**
- * A code as the owner may have typed or pasted it, back to what the Mac wrote: iOS smart punctuation
- * curls the quotes as it is typed (single and double, either side, back to straight ones), a copy may
- * carry non-breaking or zero-width spaces (removed: the code holds no space of its own), and whitespace
- * or line breaks around it are dropped.
+ * A code as the owner may have typed or pasted it, back to what the Mac wrote. Today's Mac writes ONE
+ * opaque token after the prefix (base64url): every space and line break inside it is dropped (a pasted
+ * code may wrap). An older Mac wrote the invite's JSON: iOS smart punctuation curls its quotes as it is
+ * typed (single and double, either side, back to straight ones), a copy may carry non-breaking or
+ * zero-width spaces (removed: the code holds no space of its own), and whitespace or line breaks around
+ * it are dropped. The decoded invite is checked the same way for both forms.
  */
 function normalizeCode(text: string): string {
-  return text
+  const code = text
     .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'")
     .replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
     .replace(/\u00a0|\u2007|\u202f|\u200b|\u200c|\u200d|\u2060|\ufeff/g, "")
     .trim();
+  if (!code.startsWith(CODE_PREFIX)) return code;
+  const rest = code.slice(CODE_PREFIX.length).trimStart();
+  return CODE_PREFIX + (rest.startsWith("{") ? rest : rest.replace(/\s+/g, ""));
 }
 
 /**

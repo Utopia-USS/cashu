@@ -244,6 +244,70 @@ it("refuses no_recovery_secret without a kept secret, and never offers the actio
   expect(other.relay.status(second.env.vault).identityLost).toBe(true);
 });
 
+it("gives a vault switched on without a secret its hash at the next host start, once", async () => {
+  const { env, secrets, relay } = await setupWithSecrets();
+  // An earlier build (or a wiring without the store) enabled the vault: no hash at the relay.
+  const before = await enabledRelayHost(env, { ...env.relay, fetch: recoveryRulesFetch(env.fake) });
+  expect(vaultHash(env)).toBeUndefined();
+  await before.stop();
+
+  const vaultExistedAtSet: boolean[] = [];
+  secrets.onSet = () => {
+    vaultExistedAtSet.push(env.fake.documents(`vaults/${env.vault}`).has(`vaults/${env.vault}`));
+  };
+  const host = await env.start(relay);
+  env.timers.advance(0);
+  await until(() => host.relay.pending() === 0 && vaultHash(env) !== undefined);
+  const record = secrets.records.get(env.vault);
+  expect(record?.current.length).toBe(32);
+  expect(record?.next).toBeUndefined();
+  // Kept before the admin's commit that set the hash; the membership is unchanged.
+  expect(vaultExistedAtSet).toEqual([true]);
+  expect(vaultHash(env)).toBe(sha256b64(record?.current as Uint8Array));
+  expect(memberUidsOf(env)).toEqual([env.relay.auth.record?.uid]);
+  expect([...env.fake.documents(`vaults/${env.vault}/recoveries/`).keys()]).toEqual([]);
+  await host.stop();
+
+  // The next start finds the hash and changes nothing (no second secret, no hash write).
+  let hashWrites = 0;
+  const again = await env.start({
+    ...relay,
+    fetch: (url, init) => {
+      if (url.endsWith(":commit") && init.body?.includes('"recoveryHash"')) hashWrites += 1;
+      return relay.fetch(url, init);
+    },
+  });
+  env.timers.advance(0);
+  await until(() => again.relay.pending() === 0);
+  await vaultQueueDrained(again, env.vault);
+  expect(hashWrites).toBe(0);
+  expect(vaultExistedAtSet).toEqual([true]);
+  expect(secrets.records.get(env.vault)?.current).toEqual(record?.current);
+  expect(vaultHash(env)).toBe(sha256b64(record?.current as Uint8Array));
+
+  // With the hash in place, a later identity loss can be undone.
+  await loseIdentity(env, again, "After the backfill");
+  await until(() => again.relay.status(env.vault).canReconnect);
+  expect((await again.relay.reconnect(env.vault)).result).toEqual({ kind: "done" });
+});
+
+it("gives a vault switched off without a secret its hash when it is switched on again", async () => {
+  const { env, secrets, relay } = await setupWithSecrets();
+  const before = await enabledRelayHost(env, { ...env.relay, fetch: recoveryRulesFetch(env.fake) });
+  expect((await before.relay.disable(env.vault)).result).toEqual({ kind: "done" });
+  await before.stop();
+  expect(vaultHash(env)).toBeUndefined();
+
+  // Off: no remote at open, so nothing at start; the enable writes the hash.
+  const host = await env.start(relay);
+  env.timers.advance(0);
+  await until(() => host.relay.pending() === 0);
+  expect(vaultHash(env)).toBeUndefined();
+  expect((await host.relay.enable(env.vault)).result).toEqual({ kind: "done" });
+  const record = secrets.records.get(env.vault);
+  expect(vaultHash(env)).toBe(sha256b64(record?.current as Uint8Array));
+});
+
 it("survives a lost confirmation and a second identity loss: both secrets kept until one is confirmed", async () => {
   const { env, secrets, relay } = await setupWithSecrets();
   const host = await enabledRelayHost(env, relay);

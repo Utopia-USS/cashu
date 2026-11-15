@@ -5,6 +5,7 @@ import type { ProfileRole } from "@cashu/domain/core/notifications";
 import { useEffect, useEffectEvent, useState, useSyncExternalStore } from "react";
 import { useCameraAccess } from "../../platform/camera";
 import { useVaultSyncStatus } from "../../sync/usePhoneSync";
+import { type FirstSyncStep, firstSyncStep } from "./firstSyncStep";
 import type { PairingPorts } from "./joiner";
 import { pairFlow } from "./pairFlow";
 import { type CameraAccess, type PairFailure, scanAgainHelps } from "./pairState";
@@ -56,8 +57,8 @@ export type PairScreenState =
       readonly kind: "firstSync";
       /** The profile's name once it arrived. */
       readonly profile: string | null;
-      /** Events applied of the estimate (the first sync's progress), when known. */
-      readonly progress: { readonly applied: number; readonly expected: number } | null;
+      /** The first sync's step and its exact counts; null while nothing is known yet. */
+      readonly progress: FirstSyncStep | null;
       /** The profile and its accounts are here: "Open cashU" works. */
       readonly canOpen: boolean;
       /** The app lock will be off once the flow is done: the note suggests turning on Face ID. */
@@ -217,7 +218,7 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
       return {
         kind: "firstSync",
         profile: ready ? args.profileName(state.vault) : null,
-        progress: status?.progress ?? null,
+        progress: firstSyncStep(status),
         canOpen: ready,
         suggestLock: args.lockAfter !== true,
         done: ready && status?.syncing !== true,

@@ -47,9 +47,12 @@ import {
   crypto,
   devices,
   type EventSink,
+  type FrameCodec,
   type InboundBatch,
   type LocalRecoveryResult,
   type RelayStatus,
+  type SegmentCursor,
+  type SegmentInfo,
   type StuckKind,
   type StuckRecord,
   type SyncEngine,
@@ -71,8 +74,6 @@ import {
 
 /** Events per sink transaction on the phone (the engine default is 25,000: one long JS-thread block). */
 const MAX_BATCH_EVENTS = 1500;
-/** The first-sync estimate: bytes of a sealed log per event (measured ~50 B on the M4 import). */
-const BYTES_PER_EVENT = 50;
 
 type VaultPhase = "opening" | "receiving" | "ready" | "waiting" | "removed" | "failed";
 
@@ -93,8 +94,8 @@ export interface VaultSyncStatus {
   readonly unpushed: boolean;
   /** The relay's last call outcome (value-free). */
   readonly relay?: RelayStatus;
-  /** Events applied in the running pass and the estimate of the whole first sync. */
-  readonly progress?: { readonly applied: number; readonly expected: number };
+  /** The first sync's progress while its pass runs (`FirstSyncProgress`). */
+  readonly progress?: FirstSyncProgress;
   /**
    * While the local log is audited (the open, and the replay after a pass that brought frames): frames
    * verified of those to verify. Absent otherwise.
@@ -112,6 +113,19 @@ export interface VaultSyncStatus {
    * writer's id and registry name, how it holds and since when. Absent when every stream moves.
    */
   readonly stuck?: readonly VaultStuckWriter[];
+}
+
+/**
+ * The first sync's progress, counted exactly (never an estimate): `done` of `total` bytes of the other
+ * devices' data segments the relay listed when the pass started. `receiving`: bytes that arrived and
+ * verified (the local log's earlier bytes included); `saving`: bytes whose events are in the view, with
+ * `events` saved by this pass. The replay check after it is `VaultSyncStatus.replay`.
+ */
+interface FirstSyncProgress {
+  readonly phase: "receiving" | "saving";
+  readonly done: number;
+  readonly total: number;
+  readonly events: number;
 }
 
 /** One writer whose frames this phone cannot read (yet). */
@@ -205,19 +219,21 @@ function ensureClockGuard(store: Store, device: string): void {
   initializeMetaClockGuard(store.driver, device);
 }
 
-/** The sink wrapper: a macrotask before every transaction, applied foreign events counted. */
+/** The sink wrapper: a macrotask before every transaction, the applied foreign batches reported. */
 function yieldingSink(
   sink: EventSink,
   yieldToUi: () => Promise<void>,
-  onForeignApplied: (events: number) => void,
+  onForeignApplied: (batches: readonly InboundBatch[], applied: number) => void,
 ): EventSink {
   const wrapped: EventSink = {
     cursors: () => sink.cursors(),
     async applyBatches(batches: readonly InboundBatch[]) {
       await yieldToUi();
       const outcome = await sink.applyBatches(batches);
-      const foreign = batches.reduce((n, b) => (b.own ? n : n + b.events.length), 0);
-      if (foreign > 0) onForeignApplied(foreign);
+      const foreign = batches.filter((b) => !b.own && b.events.length > 0);
+      let applied = 0;
+      for (const [i, b] of batches.entries()) if (!b.own) applied += outcome[i]?.applied ?? 0;
+      if (foreign.length > 0) onForeignApplied(foreign, applied);
       return outcome;
     },
     reset: () => sink.reset(),
@@ -405,6 +421,113 @@ function sighted(
   return watch === undefined ? wrapped : { ...wrapped, watch };
 }
 
+/**
+ * The first sync's exact counts (`FirstSyncProgress`), per other device and data segment: the bytes
+ * the relay listed, the end of the last frame that arrived and verified, and the view's cursor.
+ */
+class FirstSyncTracker {
+  readonly #listed = new Map<string, Map<number, number>>();
+  readonly #received = new Map<string, Map<number, number>>();
+  readonly #cursors = new Map<string, SegmentCursor>();
+  readonly total: number;
+  phase: FirstSyncProgress["phase"] = "receiving";
+  events = 0;
+
+  constructor(
+    listed: readonly SegmentInfo[],
+    local: readonly SegmentInfo[],
+    cursors: ReadonlyMap<string, SegmentCursor>,
+  ) {
+    let total = 0;
+    for (const s of listed) {
+      put(this.#listed, s.device, s.seg, s.size);
+      total += s.size;
+    }
+    this.total = total;
+    for (const s of local) {
+      const listedSize = this.#listed.get(s.device)?.get(s.seg);
+      if (listedSize !== undefined)
+        put(this.#received, s.device, s.seg, Math.min(s.size, listedSize));
+    }
+    for (const [device, cursor] of cursors) this.#cursors.set(device, cursor);
+  }
+
+  /** A frame of `device` ending at `seg:end` arrived and verified (or was opened again). */
+  verified(device: string, seg: number, end: number): boolean {
+    const listed = this.#listed.get(device)?.get(seg);
+    if (listed === undefined) return false;
+    const before = this.#received.get(device)?.get(seg) ?? 0;
+    if (end <= before) return false;
+    put(this.#received, device, seg, Math.min(end, listed));
+    this.phase = "receiving";
+    return true;
+  }
+
+  /** Foreign batches reached the view, `events` of their events new to it. */
+  applied(batches: readonly InboundBatch[], events: number): void {
+    for (const batch of batches) this.#cursors.set(batch.device, batch.cursor);
+    this.events += events;
+    this.phase = "saving";
+  }
+
+  progress(): FirstSyncProgress {
+    let done = 0;
+    if (this.phase === "receiving") {
+      for (const segments of this.#received.values())
+        for (const size of segments.values()) done += size;
+    } else {
+      for (const [device, segments] of this.#listed) {
+        const cursor = this.#cursors.get(device);
+        if (cursor === undefined) continue;
+        for (const [seg, size] of segments) {
+          if (seg < cursor.seg) done += size;
+          else if (seg === cursor.seg) done += Math.min(cursor.offset, size);
+        }
+      }
+    }
+    return {
+      phase: this.phase,
+      done: Math.min(done, this.total),
+      total: this.total,
+      events: this.events,
+    };
+  }
+}
+
+function put(
+  map: Map<string, Map<number, number>>,
+  device: string,
+  seg: number,
+  size: number,
+): void {
+  let segments = map.get(device);
+  if (segments === undefined) {
+    segments = new Map();
+    map.set(device, segments);
+  }
+  segments.set(seg, size);
+}
+
+/** `codec` with every opened frame of another device's data stream reported (`FirstSyncTracker`). */
+function reportingCodec(
+  codec: FrameCodec,
+  device: string,
+  onOpened: (writer: string, seg: number, end: number) => void,
+): FrameCodec {
+  return {
+    seal: (plain, at, prev) => codec.seal(plain, at, prev),
+    async open(sealed, at, prev) {
+      const opened = await codec.open(sealed, at, prev);
+      const head = opened.head;
+      if (head.stream === 1 && head.device !== device && head.seg >= 1)
+        onOpened(head.device, head.seg, head.offset);
+      return opened;
+    },
+    link: (sealed, at, prev) => codec.link(sealed, at, prev),
+    genesis: (vault, writer, stream) => codec.genesis(vault, writer, stream),
+  };
+}
+
 /** A durable result as the client sees it (the eids stay on the phone). */
 function outcomeOf(result: DurableCommandResult<unknown>): DurableOutcome {
   switch (result.kind) {
@@ -478,6 +601,8 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
   };
   let opened: Opened | undefined;
   let closed = false;
+  /** The running first sync's counts (a pass of a `receiving` vault); undefined otherwise. */
+  let firstSync: FirstSyncTracker | undefined;
   /** Per remote, what the running pass saw of this device's own segments. */
   let sights: RemoteSight[] = deps.remotes.map(() => ({ listed: false, own: new Map() }));
   /**
@@ -582,16 +707,22 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
         device,
         local,
         remotes,
-        codec: createOwnLogCodec({
-          sodium: deps.sodium,
-          ring: authority.ring,
-          signer: authority.identity,
-        }),
+        codec: reportingCodec(
+          createOwnLogCodec({
+            sodium: deps.sodium,
+            ring: authority.ring,
+            signer: authority.identity,
+          }),
+          device,
+          (writer, seg, end) => {
+            if (firstSync?.verified(writer, seg, end)) set({ progress: firstSync.progress() });
+          },
+        ),
         gate: authority.gate,
-        sink: yieldingSink(store.sink(), deps.yieldToUi, (events) => {
-          const progress = status.progress;
-          if (progress !== undefined)
-            set({ progress: { ...progress, applied: progress.applied + events } });
+        sink: yieldingSink(store.sink(), deps.yieldToUi, (batches, events) => {
+          if (firstSync === undefined) return;
+          firstSync.applied(batches, events);
+          set({ progress: firstSync.progress() });
         }),
         clockStore: metaClockStore(store.driver, device),
         // Every view has its guard by now (the demo's is seeded with its fixture, a paired one above);
@@ -695,9 +826,12 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
     if (mode === "push" && !status.unpushed) return undefined;
     if (deps.remotes.length === 0) return undefined;
     const first = status.phase === "receiving";
-    set({ syncing: true, ...(first ? { progress: { applied: 0, expected: 0 } } : {}) });
+    set({ syncing: true });
     try {
-      if (first) set({ progress: { applied: 0, expected: await expectedEvents() } });
+      if (first) {
+        firstSync = await firstSyncTracker(current.local);
+        set({ progress: firstSync.progress() });
+      }
       sights = deps.remotes.map(() => ({ listed: false, own: new Map() }));
       const startedAt = deps.now();
       const result = await current.engine.sync();
@@ -705,7 +839,8 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
       // A pass that brought anything is replayed and checked like the open (fail closed).
       if (first || result.pulledFrames > 0 || result.applied > 0 || result.rebuilt) {
         const recovered = await current.engine.recoverLocal();
-        set({}, ["replay"]);
+        // The first sync's last step was the check: its counts end with it.
+        set({}, first ? ["replay", "progress"] : ["replay"]);
         settle(current.candidate, recovered);
         // Only a ring that gained a key or a recovery pin is written (each write is a window for a
         // kill mid-write; the KeyStore's replace is atomic, `platform/keystore.ts`).
@@ -737,6 +872,7 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
         !result.pushPending &&
         !result.needsUpgrade;
       const stuck = stuckWriters(result.stuck, current.candidate);
+      firstSync = undefined;
       set(
         {
           syncing: false,
@@ -754,6 +890,7 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
       );
       return result;
     } catch (error) {
+      firstSync = undefined;
       if (error instanceof DeviceAuthorityRefusal && revoked(current.candidate)) {
         set({ phase: "removed", syncing: false }, ["progress"]);
         return undefined;
@@ -764,19 +901,26 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
     }
   };
 
-  /** The first sync's size: every foreign segment byte at the remotes, at ~50 B per event. */
-  const expectedEvents = async (): Promise<number> => {
-    let bytes = 0;
+  /**
+   * The first sync's counts from what the remotes list (other devices' data segments, the largest size
+   * any remote lists), the local log and the view's cursors. A remote that does not answer lists
+   * nothing: the total is 0 and the screen says it waits.
+   */
+  const firstSyncTracker = async (local: SqlLogTransport): Promise<FirstSyncTracker> => {
+    const largest = new Map<string, SegmentInfo>();
     for (const remote of deps.remotes) {
       try {
         for (const segment of await remote.list(vault)) {
-          if (segment.device !== device) bytes += segment.size;
+          if (segment.device === device || segment.seg < 1) continue;
+          const key = `${segment.device}/${segment.seg}`;
+          if (segment.size > (largest.get(key)?.size ?? 0)) largest.set(key, segment);
         }
       } catch {
-        // Unknown size: the progress shows applied events only.
+        // Unknown size (see above).
       }
     }
-    return Math.ceil(bytes / BYTES_PER_EVENT);
+    const held = (await local.list(vault)).filter((s) => s.device !== device && s.seg >= 1);
+    return new FirstSyncTracker([...largest.values()], held, await store.sink().cursors());
   };
 
   return {

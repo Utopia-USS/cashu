@@ -66,6 +66,38 @@ describe("pairing", () => {
     expect(decodeInvite("cashu-pair:{}")).toBeUndefined();
   });
 
+  it("the QR is one opaque base64url token over the invite's JSON; the old JSON form still decodes", () => {
+    const { creator } = createSimVault();
+    const { qr } = invite(creator);
+    const token = qr.slice("cashu-pair:".length);
+    expect(qr.startsWith("cashu-pair:")).toBe(true);
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+    // Oracle: Node's own base64url decoder, not the code under test.
+    const json = Buffer.from(token, "base64url").toString("utf8");
+    expect(Buffer.from(json, "utf8").toString("base64url")).toBe(token);
+    const body = JSON.parse(json) as Record<string, unknown>;
+    expect(body.inviter).toBe(creator.id);
+    expect(json).not.toContain(toHex(creator.identity.box.publicKey));
+    // A code from an older Mac: the same JSON after the prefix.
+    const legacy = `cashu-pair:${json}`;
+    expect(decodeInvite(legacy)).toEqual(decodeInvite(qr));
+    // The strict field checks apply to the token form too.
+    const bad = Buffer.from(JSON.stringify({ ...body, eph: "zz" }), "utf8").toString("base64url");
+    expect(decodeInvite(`cashu-pair:${bad}`)).toBeUndefined();
+    const extraRv = { ...body, rv: "x".repeat(513) };
+    expect(
+      decodeInvite(`cashu-pair:${Buffer.from(JSON.stringify(extraRv)).toString("base64url")}`),
+    ).toBeUndefined();
+    // Not a token: stray characters, padding, a cut token, not JSON inside.
+    expect(decodeInvite(`cashu-pair:${token}=`)).toBeUndefined();
+    expect(decodeInvite(`cashu-pair:${token.slice(0, -3)}`)).toBeUndefined();
+    expect(decodeInvite(`cashu-pair:${token.slice(0, 10)}+${token.slice(11)}`)).toBeUndefined();
+    expect(
+      decodeInvite(`cashu-pair:${Buffer.from("not json").toString("base64url")}`),
+    ).toBeUndefined();
+    expect(decodeInvite("cashu-pair:")).toBeUndefined();
+  });
+
   it("wipes the inviter and aborts before challenge when durable hello registration fails", async () => {
     const { creator } = createSimVault();
     const phone = new SimDevice("phone", creator.remote);
@@ -232,6 +264,11 @@ describe("pairing", () => {
     expect(restored.ok).toBe(true);
     if (!restored.ok) return;
     expect(restored.value.snapshotPending()).toEqual(snapshot);
+    // A snapshot an older build saved holds the invite in the old JSON form: it still restores.
+    const legacyInvite = `cashu-pair:${Buffer.from(qr.slice("cashu-pair:".length), "base64url").toString("utf8")}`;
+    expect(
+      PairingJoiner.restorePending(options, { ...snapshot, invite: legacyInvite }, phone.now()).ok,
+    ).toBe(true);
     const other = createDeviceIdentity(sodium);
     expect(
       PairingJoiner.restorePending({ ...options, identity: other }, snapshot, phone.now()).ok,
