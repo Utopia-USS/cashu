@@ -388,18 +388,24 @@ export class Store {
    * Apply wire-form batches in order in ONE transaction (S29c-B3: one per sync pull), each batch's
    * cursor persisted with it. The outcome of each batch is that of a sequential apply; `touchedTables`
    * of every outcome is the union of the whole call. Subscribers are notified once, after commit.
+   * The derivers run once, after every batch is folded, over the union of the batches' dirty
+   * partitions: a deriver is a function of the view its inputs produced (`Deriver`), so this derives
+   * what a run after each batch would, without re-deriving a partition once per batch (a first sync
+   * of a log written by many commands touched every merchant group in every batch).
    */
   applyWireBatches(batches: readonly WireBatch[]): readonly ApplyResult[] {
     const touched = new TouchedTables(this.#internal);
     const results: Omit<ApplyResult, "touchedTables">[] = [];
     this.driver.transaction(() => {
+      const pending = new PendingDerive();
       for (const batch of batches) {
         const view = batch.events.filter((w) => !isSyncStatement(w));
         const raws = view.map((w) => fromWire(w, { vault: this.vault, device: batch.device }));
-        const result = this.#applyInTransaction(raws, batch.device, touched);
+        const result = this.#applyInTransaction(raws, batch.device, touched, pending);
         if (batch.cursor) this.#saveCursor(batch.device, batch.cursor);
         results.push({ ...result, statements: batch.events.length - view.length });
       }
+      this.#derive(pending, touched);
     });
     this.#hub.notify(touched.set);
     return results.map((r) => ({ ...r, touchedTables: touched.set }));
@@ -410,7 +416,9 @@ export class Store {
     const touched = new TouchedTables(this.#internal);
     let result: Omit<ApplyResult, "touchedTables" | "statements"> | undefined;
     this.driver.transaction(() => {
-      result = this.#applyInTransaction(envelopes, null, touched);
+      const pending = new PendingDerive();
+      result = this.#applyInTransaction(envelopes, null, touched, pending);
+      this.#derive(pending, touched);
     });
     this.#hub.notify(touched.set);
     return {
@@ -433,6 +441,7 @@ export class Store {
     raws: readonly unknown[],
     device: string | null,
     touched: TouchedTables,
+    pending: PendingDerive,
   ): Omit<ApplyResult, "touchedTables" | "statements"> {
     const rejected: { eid?: string; error: string }[] = [];
     const conflicts: string[] = [];
@@ -518,7 +527,7 @@ export class Store {
     const flips = fresh.length > 0 ? updateSuppression(this.#log, fresh, this.#suppression) : [];
     const applied = flips.filter((f) => f.from === "new" && f.to === "applied").length;
     const suppressed = flips.filter((f) => f.from === "new" && f.to === "suppressed").length;
-    this.#fold(flips, touched);
+    this.#fold(flips, touched, pending);
     return {
       applied,
       duplicates,
@@ -587,9 +596,13 @@ export class Store {
     touched.add("unknown_events");
   }
 
-  /** Steps 3 and 4: identity, then every materializer's share of the flips. */
-  #fold(flips: readonly StateFlip[], touched: TouchedTables): void {
+  /**
+   * Steps 3 and 4: identity, then every materializer's share of the flips; their dirty partitions go
+   * to `pending` for the derivers (`#derive`, once per transaction).
+   */
+  #fold(flips: readonly StateFlip[], touched: TouchedTables, pending: PendingDerive): void {
     if (flips.length === 0) return;
+    pending.folded = true;
     const identityInvolved = flips.some(
       (f) =>
         this.#identity.isIdentityType(f.event.type) &&
@@ -601,7 +614,7 @@ export class Store {
     for (const t of change?.tables ?? []) touched.add(t);
 
     const sql = viewSql(this.#stmts, touched);
-    const dirty = new DirtyCollector();
+    const dirty = pending.dirty;
     const byRunner = new Map<MaterializerRunner, StateFlip[]>();
     for (const f of flips) {
       if (f.from === "new" && f.to !== "applied") continue; // never folded, nothing to undo
@@ -626,9 +639,18 @@ export class Store {
       if (mine.every((f) => f.from === "new") && r.canAppend(events)) r.append(events, sql, dirty);
       else r.refoldPartitions(events, sql, dirty);
     }
-    if (this.modules.derivers.length === 0) return;
-    markContributions(dirty, touched.set, this.modules.contributions);
-    runDerivers(this.modules.derivers, dirty.partitions, deriveContext(this.#deriveDeps, sql));
+  }
+
+  /** Step 5: every deriver over the partitions the transaction's folds dirtied (none folded: none). */
+  #derive(pending: PendingDerive, touched: TouchedTables): void {
+    if (!pending.folded || this.modules.derivers.length === 0) return;
+    const sql = viewSql(this.#stmts, touched);
+    markContributions(pending.dirty, touched.set, this.modules.contributions);
+    runDerivers(
+      this.modules.derivers,
+      pending.dirty.partitions,
+      deriveContext(this.#deriveDeps, sql),
+    );
   }
 
   /** Every deriver's full derivation, on `sql` (rebuild). */
@@ -900,6 +922,12 @@ export class Store {
     this.detach();
     this.driver.close();
   }
+}
+
+/** The derivation one apply transaction owes: the partitions its folds dirtied, if any fold ran. */
+class PendingDerive {
+  readonly dirty = new DirtyCollector();
+  folded = false;
 }
 
 /** The companion derivers of `opts.modules` this store does not register (`companionReads` off). */

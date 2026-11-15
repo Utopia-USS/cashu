@@ -9,6 +9,7 @@ import { type SelectOption, useToast } from "@cashu/ui";
 import { cur0s } from "@cashu/ui-logic/core/format";
 import { useRef, useState } from "react";
 import { commandFailure, useDurableCommands } from "../../useDurableCommand.js";
+import { ruleMerchants } from "./merchantRules.js";
 
 const queries = budgetDesktopQueries();
 
@@ -21,7 +22,9 @@ export interface CategoriesDrawerOptions {
 
 export function useCategoriesDrawer({ currency, onClose }: CategoriesDrawerOptions) {
   const toast = useToast();
-  const live = useQuery(queries.uncategorized, { currency });
+  // Only merchants a rule may be saved for: a bank's generic phrase ("PRZELEW") is never offered, the store
+  // refuses a rule on it (`generic_merchant`).
+  const live = ruleMerchants(useQuery(queries.uncategorized, { currency }));
   const [rows] = useState(live);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});

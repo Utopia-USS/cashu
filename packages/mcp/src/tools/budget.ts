@@ -51,6 +51,14 @@ async function setMerchantCategory(
   if (!result.ok) {
     if (result.reason === "no_merchant")
       throw new ToolError("no such merchant in this profile's transactions", "not_found");
+    // A bank's generic phrase (a card payment or transfer with no payee named) stands for many
+    // merchants: the store keeps no rule on it.
+    if (result.reason === "generic_merchant")
+      throw new ToolError(
+        "no rule saved: this merchant is a generic bank phrase covering payments to different payees; the owner can categorize those payments one by one in the app",
+        "generic_merchant",
+        { system: true },
+      );
     throw new ToolError("category update refused", "invalid");
   }
   return {
@@ -102,7 +110,7 @@ export function budgetTools(): readonly ToolSpec<NativeToolStore>[] {
       name: "uncategorized_merchants",
       module: "budget",
       description:
-        "Merchants without a category (by count) and the list of category keys for set_merchant_category.",
+        "Merchants without a category (by count) and the list of category keys for set_merchant_category. Payments without a named merchant are not listed: the owner categorizes them one by one in the app.",
       handler: uncategorizedMerchants,
       properties: { limit: { type: "integer", minimum: 1, maximum: 200, default: 30 } },
     }),

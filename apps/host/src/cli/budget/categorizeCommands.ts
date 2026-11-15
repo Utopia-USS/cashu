@@ -83,6 +83,11 @@ export async function runCategorizeCommand(
     key,
     isCurrent,
   );
+  if (result.kind === "refused" && result.reason === "generic_merchant") {
+    // The store keeps no rule on a bank's generic phrase ("PRZELEW"): say so instead of a raw refusal.
+    io.stderr(`${io.t.tr(S.genericMerchant)(merchant)}\n`);
+    return 1;
+  }
   if (result.kind !== "completed")
     return reportCliCommandFailure(io, result, key, setMerchantCategory.id);
   if (!isCurrent())

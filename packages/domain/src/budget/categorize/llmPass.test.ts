@@ -19,6 +19,16 @@ describe("llm pass of categorize_all", () => {
     expect(unknownMerchants(rows)).toEqual(["B", "Ａ", "\u{1F600}"]);
   });
 
+  it("unknown merchants: a generic bank phrase is never asked about, a merchant behind it is", () => {
+    const rows = [
+      { amount: D("-1"), merchantKey: "ZAKUP PRZY UZYCIU KARTY", source: "default" },
+      { amount: D("-1"), merchantKey: "PRZELEW", source: "default" },
+      { amount: D("-1"), merchantKey: "blik", source: "default" },
+      { amount: D("-1"), merchantKey: "ZAKUP PRZY UZYCIU KARTY SKLEP TEST", source: "default" },
+    ];
+    expect(unknownMerchants(rows)).toEqual(["ZAKUP PRZY UZYCIU KARTY SKLEP TEST"]);
+  });
+
   it("codePointCompare is Python str order", () => {
     expect(["b", "a", "\u{10000}", "￿", "ab"].sort(codePointCompare)).toEqual([
       "a",

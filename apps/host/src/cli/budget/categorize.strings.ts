@@ -20,6 +20,12 @@ export const S = {
     en: (merchant: string, category: string, count: number) =>
       `${merchant} → ${category} (${count} transactions)`,
   } satisfies TranslationVariants<(merchant: string, category: string, count: number) => string>,
+  genericMerchant: {
+    pl: (merchant: string) =>
+      `Nie można ustawić reguły dla „${merchant}”: to ogólna fraza banku, pod którą kryją się płatności dla różnych odbiorców. Zamiast tego przypisz kategorię pojedynczej płatności w aplikacji.`,
+    en: (merchant: string) =>
+      `No rule can be set for "${merchant}": it is a generic bank phrase that covers payments to many different payees. Categorize the single payment in the app instead.`,
+  } satisfies TranslationVariants<(merchant: string) => string>,
   cloudRisk: {
     pl: "Kategoryzacja w chmurze wysyła do Anthropic dopuszczone nazwy sprzedawców z płatności kartą. Nazwa sprzedawcy może zawierać imię i nazwisko osoby prowadzącej firmę. Dodatkowe szczegóły transakcji nie są dołączane. Domyślnie działa lokalna Ollama.",
     en: "Cloud categorization sends eligible merchant names from card payments to Anthropic. A merchant name may include the personal name of a sole trader. No additional transaction details are included. Local Ollama remains the default.",

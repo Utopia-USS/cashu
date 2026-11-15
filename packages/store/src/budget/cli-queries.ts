@@ -14,7 +14,7 @@ export interface CashCliRow {
   readonly currency: string;
 }
 /** The pool's rows in one other currency: their own balance, never added to the pool's. */
-export interface CashCliPart {
+interface CashCliPart {
   /** `budget.netWorthLineMeta` name: the pool's name plus the currency code, as net worth shows it. */
   readonly name: string;
   readonly currency: string;

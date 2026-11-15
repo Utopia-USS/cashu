@@ -18,6 +18,7 @@ import {
   type DatedAmount,
   defaultBudgetSettings,
   isCategoryKey,
+  isMerchantRuleKey,
   isOwnerDecided,
   isStructural,
   matchTransfers,
@@ -342,11 +343,14 @@ export const setTransactionCategory = defineCommand({
  * Pin a merchant to a category (Python `recategorize_merchant` via POST /merchant-category): a
  * manual, locked `categoryRule.set`; its rows follow by derivation (rows with their own decision,
  * structural transfers and cash legs keep theirs). Nothing is emitted when the rule already says so.
+ * A key that names no merchant (a bank's generic phrase such as "ZAKUP PRZY UZYCIU KARTY") is refused
+ * (`generic_merchant`): a rule on it would file every payment of that kind alike.
  */
 export const setMerchantCategory = defineCommand({
   id: "budget.setMerchantCategory",
   input: z.object({ merchantKey: ownerMerchantKey, category: categoryKey }),
   run(ctx, input) {
+    if (!isMerchantRuleKey(input.merchantKey)) return refuse("generic_merchant");
     const prev = ruleByMerchant(ctx.read, input.merchantKey);
     if (prev?.locked && prev.source === "manual" && prev.category === input.category) {
       return ok({ changed: false, updated: 0 });
@@ -371,11 +375,16 @@ export const setMerchantCategory = defineCommand({
   },
 });
 
-/** Agent suggestion: an unlocked rule, subordinate to every owner and structural decision. */
+/**
+ * Agent suggestion: an unlocked rule, subordinate to every owner and structural decision. A bank's
+ * generic phrase is refused (`generic_merchant`) like the owner's pin: no rule files every payment of
+ * that kind alike. Nothing is written then (this command never sets a single row's category).
+ */
 export const learnMerchantCategory = defineCommand({
   id: "budget.learnMerchantCategory",
   input: z.object({ merchantKey: z.string().min(1), category: categoryKey }),
   run(ctx, input) {
+    if (!isMerchantRuleKey(input.merchantKey)) return refuse("generic_merchant");
     if (
       ctx.read<{ present: number }>(
         "SELECT 1 AS present FROM transactions WHERE merchant_key = ? LIMIT 1",
@@ -414,6 +423,8 @@ export const learnMerchantCategory = defineCommand({
  * `transfer` or `cash_withdrawal`), never over a locked rule (`ruleUpsert`), and not when the rule
  * already says so. The answers come from the classifier port (S09b), whose cloud variant only ever
  * saw `classifierMerchants(read).cloud` (PRIVACY(D-09.5)); this command sends nothing anywhere.
+ * An answer for a bank's generic phrase (`isMerchantRuleKey` false) never becomes a rule: it is
+ * skipped and only counted (`skippedGeneric`), the other answers are still cached.
  */
 export const cacheLlmRules = defineCommand({
   id: "budget.cacheLlmRules",
@@ -422,7 +433,12 @@ export const cacheLlmRules = defineCommand({
   }),
   run(ctx, input) {
     const answers = new Map<string, string>();
+    const generic = new Set<string>();
     for (const it of input.items) {
+      if (!isMerchantRuleKey(it.merchantKey)) {
+        generic.add(it.merchantKey);
+        continue;
+      }
       const category = acceptMerchantAnswer(it.category);
       if (category !== null) answers.set(it.merchantKey, category);
     }
@@ -440,7 +456,7 @@ export const cacheLlmRules = defineCommand({
       });
       cached += 1;
     }
-    return ok({ cached });
+    return ok({ cached, skippedGeneric: generic.size });
   },
 });
 

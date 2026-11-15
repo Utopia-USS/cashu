@@ -28,6 +28,7 @@ export {
   txnMerchantKey,
   txnText,
 } from "./engine.js";
+export { GENERIC_MERCHANT_KEYS, isMerchantRuleKey } from "./genericMerchants.js";
 export type {
   Answer,
   ClassifierFailure,

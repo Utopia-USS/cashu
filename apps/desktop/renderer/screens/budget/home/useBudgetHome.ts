@@ -27,6 +27,7 @@ import { useState } from "react";
 import { commandFailure, useDurableCommands } from "../../useDurableCommand.js";
 import { useBudgetCurrency } from "../expenses/budgetCurrency.js";
 import { spendingSlices } from "../expenses/expensesModel.js";
+import { merchantRuleOffer, ruleMerchants } from "../expenses/merchantRules.js";
 import {
   averageSpending,
   averageSurplusBefore,
@@ -220,7 +221,9 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
   warm(queries.monthClose, reads.close);
   const spending = useQuery(budgetScreenSpending, reads.spending);
   const drillRows = useQuery(queries.drill, reads.drill);
-  const uncategorized = useQuery(queries.uncategorized, { currency });
+  const uncategorizedRows = useQuery(queries.uncategorized, { currency });
+  // Only merchants a rule may be saved for: the drawer behind the tile offers nothing else.
+  const uncategorized = ruleMerchants(uncategorizedRows);
   const subscriptions = useQuery(queries.subscriptions);
   const loaded = useQuery(queries.monthClose, reads.close);
   const settings = useQuery(queries.settings);
@@ -388,12 +391,13 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
       toast(CD.notSaved(commandFailure(result)), 9000);
       return;
     }
-    if (category === "cash_withdrawal" || !row.merchantKey) return;
-    const merchantKey = row.merchantKey;
-    const name = row.counterparty || row.merchant || merchantKey;
+    // No offer (and no toast, as for a row without a merchant) for a bank's generic phrase: the store
+    // refuses a rule on it.
+    const offer = merchantRuleOffer(row, category);
+    if (!offer) return;
     toast(E.changed(labelFor(category)), 9000, {
-      label: E.allFrom(name),
-      onClick: () => void applyMerchant(merchantKey, category),
+      label: E.allFrom(offer.name),
+      onClick: () => void applyMerchant(offer.merchantKey, category),
     });
   };
   const drillKey = `${f.drill}|${mode}|${anchor}|${currency}`;
@@ -561,7 +565,7 @@ export function useBudgetHome({ today, filters: f, onFilters }: BudgetHomeOption
         title: H.needsCategory,
         summary: H.uncategorized(
           uncategorized.length,
-          uncategorized.length >= UNCATEGORIZED_CAP,
+          uncategorizedRows.length >= UNCATEGORIZED_CAP,
           cur(uncategorized.reduce((a, r) => a.add(r.total), D("0.00")).toFloat(), currency),
           budget.categoryLabel("other", language),
         ),

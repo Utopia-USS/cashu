@@ -88,12 +88,6 @@ export interface RecurringSeries {
 
 const groupKey = (payee: string, currency: string): string => JSON.stringify([payee, currency]);
 
-/** True when `amount` (positive) is within `tolerance` of `typical` either way, as one amount cluster. */
-function inBand(amount: Decimal, typical: Decimal, tolerance: Decimal): boolean {
-  const factor = ONE.add(tolerance);
-  return amount.mul(factor).gte(typical) && amount.lte(typical.mul(factor));
-}
-
 /**
  * The charges of one (payee, currency) group's candidates (`own`, in their order) among the group's
  * outflows (`rows`: non-internal, negative, in book order), each list oldest first (book order on
@@ -113,19 +107,37 @@ export function groupSeries<T extends { readonly bookingDate: IsoDate; readonly 
     a.bookingDate < b.bookingDate ? -1 : a.bookingDate > b.bookingDate ? 1 : 0,
   );
   const loose: T[] = [];
+  // A charge is in a candidate's band (one amount cluster) when `amount x (1 + tolerance) >= typical`
+  // and `amount <= typical x (1 + tolerance)`. The factor, each candidate's ceiling and each charge's
+  // scaled amount are the same decimals for every pair, so each is computed once, on first use (the
+  // same operations in the same order as one product per pair: identical results, and a decimal
+  // signal is raised by the same input; this loop is the hot spot of the recurring deriver).
+  let factor: Decimal | undefined;
+  const ceilings: (Decimal | undefined)[] = own.map(() => undefined);
   for (const t of byDate) {
     const amount = t.amount.copyAbs();
+    let scaled: Decimal | undefined;
     let best = -1;
+    let bestDistance: Decimal | undefined;
     for (const [i, c] of own.entries()) {
-      if (!inBand(amount, c.typicalAmount, tolerance)) continue;
-      if (
-        best === -1 ||
-        amount
-          .sub(c.typicalAmount)
-          .copyAbs()
-          .lt(amount.sub((own[best] as RecurringCandidate).typicalAmount).copyAbs())
-      )
+      factor ??= ONE.add(tolerance);
+      scaled ??= amount.mul(factor);
+      if (!scaled.gte(c.typicalAmount)) continue;
+      const ceiling = ceilings[i] ?? c.typicalAmount.mul(factor);
+      ceilings[i] = ceiling;
+      if (!amount.lte(ceiling)) continue;
+      if (best === -1) {
         best = i;
+        bestDistance = undefined;
+        continue;
+      }
+      // nearest typical amount wins; a tie keeps the earlier candidate
+      const distance = amount.sub(c.typicalAmount).copyAbs();
+      bestDistance ??= amount.sub((own[best] as RecurringCandidate).typicalAmount).copyAbs();
+      if (distance.lt(bestDistance)) {
+        best = i;
+        bestDistance = distance;
+      }
     }
     if (best === -1) loose.push(t);
     else members[best]?.push(t);

@@ -170,6 +170,16 @@ export function recurringPayments(ctx: Context): L.LabelledTree {
     }),
   };
 }
+const ONE_BY_ONE =
+  "payments without a named merchant (only a generic bank phrase) are not listed: no rule fits them; the owner categorizes them one by one in the app";
+
+/**
+ * Uncategorized outflow merchants a rule may be saved for. A bank's generic phrase
+ * (`budget.isMerchantRuleKey` false) names no merchant and can get no rule (`set_merchant_category`
+ * refuses it), so it is not listed; its spending stays in the share denominator ("of all
+ * uncategorized spending") and `one_by_one` says, value-free, that such payments are categorized
+ * one by one in the app.
+ */
 export function uncategorizedMerchants(ctx: Context, args: ToolArgs): L.LabelledTree {
   const totals = new Map<string, Decimal>();
   const rows = new Map<
@@ -180,6 +190,8 @@ export function uncategorizedMerchants(ctx: Context, args: ToolArgs): L.Labelled
     if (t.amount.gte(ZERO) || t.isInternalTransfer || t.categorySource !== "default") continue;
     const merchant = budget.merchantKey(t.counterpartyName, t.reference, t.description);
     if (!merchant) continue;
+    totals.set(t.currency, (totals.get(t.currency) ?? ZERO).sub(t.amount));
+    if (!budget.isMerchantRuleKey(merchant)) continue;
     const key = JSON.stringify([merchant, t.currency]);
     const previous = rows.get(key);
     rows.set(key, {
@@ -188,7 +200,6 @@ export function uncategorizedMerchants(ctx: Context, args: ToolArgs): L.Labelled
       count: (previous?.count ?? 0) + 1,
       total: (previous?.total ?? ZERO).sub(t.amount),
     });
-    totals.set(t.currency, (totals.get(t.currency) ?? ZERO).sub(t.amount));
   }
   return {
     base_note: L.fixedText("share: of all uncategorized spending in that currency"),
@@ -203,5 +214,6 @@ export function uncategorizedMerchants(ctx: Context, args: ToolArgs): L.Labelled
         total: L.amount(row.total),
       })),
     categories: budget.CATEGORY_KEYS.map(L.category),
+    one_by_one: L.fixedText(ONE_BY_ONE),
   };
 }

@@ -61,9 +61,12 @@ export interface CompanionTxnRow {
   readonly date: IsoDate;
   readonly amount: Decimal;
   readonly currency: string;
-  /** The counterparty name, else the cash title, else the description's first 40 characters. */
+  /**
+   * The merchant's display name (`budget.merchantName`): the counterparty, else the title, else the
+   * description, with mBank's date suffix cut; it names the field `merchantKey` is keyed on.
+   */
   readonly payee: string;
-  /** The statement text (`reference || description`); null when it equals `payee`. */
+  /** The statement text: the reference, else the description, that is not `payee`; null when none. */
   readonly title: string | null;
   /** The effective category key; null when uncategorized (or never categorized). */
   readonly category: string | null;
@@ -80,7 +83,6 @@ export interface CompanionTxnRow {
 }
 
 const SUGGESTED_SOURCES: ReadonlySet<string> = new Set(["llm", "llm_full", "llm_fallback"]);
-const PAYEE_DESCRIPTION_CHARS = 40;
 const LIST_DEFAULT = 100;
 const LIST_MAX = 300;
 const SEARCH_DEFAULT = 200;
@@ -136,17 +138,14 @@ interface SqlRow {
   readonly merchantKey: string | null;
 }
 
-/** The row's display payee: counterparty, else the cash title, else the description's start. */
-function payeeOf(
-  name: string | null,
-  reference: string | null,
-  description: string | null,
-  cash: boolean,
-): string {
-  if (name) return name;
-  if (cash && reference) return reference;
-  if (description) return Array.from(description).slice(0, PAYEE_DESCRIPTION_CHARS).join("");
-  return reference ?? "";
+/**
+ * The row's display payee: the field its merchant key is keyed on (counterparty, else the title,
+ * else the bank's description), shown as `merchantName` does (mBank's transaction date suffix and
+ * location padding cut), so the payee always names what a rule on `merchantKey` covers. The desktop
+ * derives its merchant and key from the same fields in the same order (`categoryTransactions`).
+ */
+function payeeOf(name: string | null, reference: string | null, description: string | null) {
+  return budget.merchantName(name, reference, description);
 }
 
 function toRow(r: SqlRow): CompanionTxnRow {
@@ -155,15 +154,17 @@ function toRow(r: SqlRow): CompanionTxnRow {
   const internal = r.internal === 1;
   const cash = r.accountType === budget.CASH_ACCOUNT_TYPE;
   const uncategorized = amount.lt(D("0")) && !internal && source === "default";
-  const payee = payeeOf(r.name, r.reference, r.description, cash);
-  const text = r.reference || r.description || null;
+  const payee = payeeOf(r.name, r.reference, r.description);
+  // The statement line: the first bank text that is not the payee itself (mBank's raw title with its
+  // transaction date when the payee is its cut form; the description when the title is the payee).
+  const text = [r.reference, r.description].find((t) => t && t !== payee) ?? null;
   return {
     gid: r.gid,
     date: r.date,
     amount,
     currency: r.currency,
     payee,
-    title: text === payee ? null : text,
+    title: text,
     category: uncategorized ? null : r.category,
     categorySource: source,
     suggested: SUGGESTED_SOURCES.has(source),
@@ -436,11 +437,9 @@ function largestUncategorized(
     iban: string | null;
     category: string | null;
     internal: number;
-    accountType: string;
   }>(
     `SELECT t.gid, t.amount, t.booking_date AS date, t.counterparty_name AS name, t.reference,
-       t.description, t.counterparty_iban AS iban, t.category, t.is_internal_transfer AS internal,
-       a.type AS accountType
+       t.description, t.counterparty_iban AS iban, t.category, t.is_internal_transfer AS internal
      FROM transactions t JOIN accounts a ON a.id = t.account_id
      WHERE t.category_source = 'default' AND t.booking_date >= ? AND t.booking_date <= ?
        AND t.currency = ? AND ${VISIBLE} AND t.amount LIKE '-%' AND t.is_internal_transfer = 0
@@ -457,10 +456,9 @@ function largestUncategorized(
     );
     if (!amount.lt(ZERO) || !flow) continue;
     if (largest === null || amount.lt(largest.amount)) {
-      const cash = t.accountType === budget.CASH_ACCOUNT_TYPE;
       largest = {
         gid: t.gid,
-        payee: payeeOf(t.name, t.reference, t.description, cash),
+        payee: payeeOf(t.name, t.reference, t.description),
         date: t.date,
         amount,
       };
@@ -1056,12 +1054,7 @@ export const budgetSearch = defineQuery({
             hits.map((h) => ({
               key: h.gid,
               merchantKey: shared,
-              payee: payeeOf(
-                h.name,
-                h.reference,
-                h.description,
-                h.accountType === budget.CASH_ACCOUNT_TYPE,
-              ),
+              payee: payeeOf(h.name, h.reference, h.description),
               date: h.date,
               amount: D(h.amount),
               currency: h.currency,

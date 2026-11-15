@@ -64,8 +64,14 @@ function setup(): MoneyStore {
 interface Payment {
   readonly date: string;
   readonly amount: string;
-  readonly name: string;
+  /** The counterparty; null for an mBank card row (an empty `#Nadawca/Odbiorca`). */
+  readonly name: string | null;
+  /** The test's handle: the title too, unless `title` is given. */
   readonly key: string;
+  /** The bank's title when it is not the handle (null: an empty `#Tytuł`). */
+  readonly title?: string | null;
+  /** The bank's description (mBank `#Opis operacji`); the handle when absent. */
+  readonly desc?: string;
 }
 
 /** Bank payments with their own counterparty (the merchant), none categorized. */
@@ -77,8 +83,8 @@ function importPayments(handle: VaultHandle, payments: readonly Payment[]): void
     currency: "PLN",
     counterpartyName: p.name,
     counterpartyIban: null,
-    description: p.key,
-    reference: p.key,
+    description: p.desc ?? p.key,
+    reference: p.title === undefined ? p.key : p.title,
     bankTransactionId: null,
     source: "csv",
     raw: { synthetic: p.key },
@@ -99,14 +105,14 @@ function importPayments(handle: VaultHandle, payments: readonly Payment[]): void
 
 function categoryOf(fixture: MoneyStore, key: string) {
   return fixture.a.store.read<{ category: string | null; source: string }>(
-    "SELECT category, category_source AS source FROM transactions WHERE reference = ?",
+    "SELECT category, category_source AS source FROM transactions WHERE json_extract(raw, '$.synthetic') = ?",
     key,
   )[0];
 }
 
 function gidOf(fixture: MoneyStore, key: string): string {
   const gid = fixture.a.store.read<{ gid: string }>(
-    "SELECT gid FROM transactions WHERE reference = ?",
+    "SELECT gid FROM transactions WHERE json_extract(raw, '$.synthetic') = ?",
     key,
   )[0]?.gid;
   if (!gid) throw new Error(`missing synthetic payment ${key}`);
@@ -243,6 +249,36 @@ describe("categorize deck with the real synchronous store", () => {
     expect(deck.card.card.payee).toBe("Synthetic Birch");
     expect([deck.card.done, deck.card.total]).toEqual([2, 3]);
     expect(deck.card.rule?.on).toBe(false);
+  });
+
+  it("offers the rule for an mBank card payment's merchant, never for the bank's phrase", async () => {
+    const fixture = setup();
+    const CARD = "ZAKUP PRZY UŻYCIU KARTY";
+    importPayments(fixture.a, [
+      // no title and no counterparty: only the bank's phrase names them (the newest card first)
+      { date: "2026-11-11", amount: "-30.00", name: null, key: "bare-1", title: null, desc: CARD },
+      { date: "2026-11-10", amount: "-41.00", name: null, key: "bare-2", title: null, desc: CARD },
+      {
+        date: "2026-11-09",
+        amount: "-12.50",
+        name: null,
+        key: "shop-1",
+        title: "SKLEP TEST 0331/MIASTO TEST   DATA TRANSAKCJI: 2026-11-08",
+        desc: CARD,
+      },
+    ]);
+    const deck = await open(fixture);
+    expect(deck.card.card.payee).toBe(CARD);
+    expect(deck.card.rule).toBeNull();
+    expect(screen.queryByText(/Same for every/)).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Groceries" }));
+    // only this payment is filed: no rule, the other bare card payment still waits
+    expect(categoryOf(fixture, "bare-1")?.category).toBe("groceries");
+    expect(categoryOf(fixture, "bare-2")?.source).toBe("default");
+    expect(fixture.a.store.read("SELECT count(*) AS n FROM category_rules")).toEqual([{ n: 0 }]);
+    await fireEvent.press(screen.getByText("Skip"));
+    expect(deck.card.card.payee).toBe("SKLEP TEST 0331/MIASTO TEST");
+    expect(deck.card.rule?.label).toBe("Same for every SKLEP TEST 0331/MIASTO TEST payment");
   });
 
   it("moves a skipped card to the end of the deck", async () => {

@@ -65,8 +65,14 @@ afterEach(() => {
 interface Payment {
   readonly date: string;
   readonly amount: string;
-  readonly payee: string;
+  /** The counterparty; null for an mBank card row (an empty `#Nadawca/Odbiorca`). */
+  readonly payee: string | null;
+  /** The test's handle: the title too, unless `title` is given. */
   readonly ref: string;
+  /** The bank's title when it is not the handle (null: an empty `#Tytuł`). */
+  readonly title?: string | null;
+  /** The bank's description (mBank `#Opis operacji`); the handle when absent. */
+  readonly desc?: string;
   readonly iban?: string;
 }
 
@@ -78,8 +84,8 @@ function importPayments(handle: VaultHandle, number: string, payments: readonly 
     currency: "PLN",
     counterpartyName: p.payee,
     counterpartyIban: p.iban ?? null,
-    description: p.ref,
-    reference: p.ref,
+    description: p.desc ?? p.ref,
+    reference: p.title === undefined ? p.ref : p.title,
     bankTransactionId: null,
     source: "csv",
     raw: { synthetic: p.ref },
@@ -113,7 +119,7 @@ function seed(fixture: MoneyStore) {
 
 const gidOf = (fixture: MoneyStore, ref: string): string => {
   const gid = fixture.a.store.read<{ gid: string }>(
-    "SELECT gid FROM transactions WHERE reference = ?",
+    "SELECT gid FROM transactions WHERE json_extract(raw, '$.synthetic') = ?",
     ref,
   )[0]?.gid;
   if (!gid) throw new Error(`missing synthetic transaction ${ref}`);
@@ -153,10 +159,11 @@ function PaymentSheet({
   return <PaymentSheetView {...props} />;
 }
 
-async function show(ref: string) {
+async function show(ref: string, extra: readonly Payment[] = []) {
   const fixture = moneyStore();
   closers.push(() => fixture.close());
   seed(fixture);
+  if (extra.length > 0) importPayments(fixture.a, MONEY_OWN_A, extra);
   let props: PaymentSheetState | undefined;
   await render(
     <Frame fixture={fixture}>
@@ -227,6 +234,54 @@ describe("the payment sheet over the real synchronous store", () => {
       ready().rule?.onToggle(true);
     });
     expect(fixture.a.store.read("SELECT category FROM category_rules")).toEqual([]);
+  });
+
+  // mBank card payments: an empty `#Nadawca/Odbiorca`, the merchant in `#Tytuł` (with the bank's
+  // transaction date), the operation type in `#Opis operacji` (synthetic, as connectors/mbank-csv).
+  const CARD = "ZAKUP PRZY UŻYCIU KARTY";
+  const CARD_ROWS: Payment[] = [
+    {
+      date: "2026-11-02",
+      amount: "-14.50",
+      payee: null,
+      ref: "cafe-1",
+      title: "KAWIARNIA TEST/WARSZAWA        DATA TRANSAKCJI: 2026-11-01",
+      desc: CARD,
+    },
+    {
+      date: "2026-11-09",
+      amount: "-12.50",
+      payee: null,
+      ref: "cafe-2",
+      title: "KAWIARNIA TEST/WARSZAWA        DATA TRANSAKCJI: 2026-11-08",
+      desc: CARD,
+    },
+    // no title and no counterparty: only the bank's phrase is left
+    { date: "2026-11-03", amount: "-30.00", payee: null, ref: "bare-1", title: null, desc: CARD },
+    { date: "2026-11-10", amount: "-41.00", payee: null, ref: "bare-2", title: null, desc: CARD },
+  ];
+
+  it("names an mBank card payment by its merchant and offers the rule for that merchant", async () => {
+    const { ready } = await show("cafe-2", CARD_ROWS);
+    expect(ready().payee).toBe("KAWIARNIA TEST/WARSZAWA");
+    expect(ready().statement).toBe("KAWIARNIA TEST/WARSZAWA        DATA TRANSAKCJI: 2026-11-08");
+    expect(ready().rule).toMatchObject({
+      title: "Same for every KAWIARNIA TEST/WARSZAWA payment",
+      count: 2,
+    });
+    expect(screen.queryByText(/Same for every ZAKUP/)).toBeNull();
+  });
+
+  it("offers no rule for a payment named only by the bank's generic phrase", async () => {
+    const { fixture, ready } = await show("bare-2", CARD_ROWS);
+    expect(ready().payee).toBe(CARD);
+    expect(ready().rule).toBeNull();
+    expect(screen.queryByText(/Same for every/)).toBeNull();
+    // the payment itself is still filed by hand
+    await fireEvent.press(screen.getByRole("button", { name: "More" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Travel" }));
+    expect(ready().category?.selected).toBe("travel");
+    expect(fixture.a.store.read("SELECT count(*) AS n FROM category_rules")).toEqual([{ n: 0 }]);
   });
 
   it("explains an own transfer and offers no category", async () => {

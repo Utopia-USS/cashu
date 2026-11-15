@@ -138,7 +138,10 @@ export function usePaymentSheet(args: {
     if (!writing.current) write(txn, key);
   };
   const pin = detail.merchantRule?.locked ? detail.merchantRule : null;
-  const merchantKey = row.merchantKey;
+  // The rule is offered only for a key that names a merchant: never for an empty one or a bank's
+  // generic phrase ("ZAKUP PRZY UZYCIU KARTY"), which would file every such payment alike.
+  const merchantKey =
+    row.merchantKey !== null && budget.isMerchantRuleKey(row.merchantKey) ? row.merchantKey : null;
 
   return {
     kind: "ready",

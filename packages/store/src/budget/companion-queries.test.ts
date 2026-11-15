@@ -525,9 +525,13 @@ describe("budgetSearch", () => {
       expect(search("ZABKA").total).toBe(1);
       expect(search("paliwo").total).toBe(3);
       expect(search("fuel").total).toBe(3);
-      expect(search("50%").rows.map((r) => r.payee)).toEqual(["Opłata 50% rabatu"]);
+      // no counterparty: the payee is the title ("fee"), the field the merchant key is keyed on (as on
+      // the desktop); the description the search found is the statement line
+      expect(search("50%").rows.map((r) => [r.payee, r.title])).toEqual([
+        ["fee", "Opłata 50% rabatu"],
+      ]);
       // prefix tokens: punctuation separates words, so "5%" is the prefix "5" of "50"
-      expect(search("5%").rows.map((r) => r.payee)).toEqual(["Opłata 50% rabatu"]);
+      expect(search("5%").rows.map((r) => r.payee)).toEqual(["fee"]);
       expect(search("   ")).toEqual({ rows: [], total: 0, summary: null });
       // the total and the shared merchant come from every hit, not only the page
       const page = runQuery(store, budgetSearch, { q: "orlen", lang: "en", limit: 1 }).value;
@@ -544,7 +548,7 @@ describe("budgetSearch", () => {
     const { store, env } = vault();
     try {
       ingest(store, env, "PLN", OWN_A, [
-        { date: "2026-02-01", amount: "-30.00", name: null, ref: "s1", desc: "OPŁATA ZA ŚMIECI" },
+        { date: "2026-02-01", amount: "-30.00", name: null, ref: "OPŁATA ZA ŚMIECI" },
         { date: "2026-02-02", amount: "-12.00", name: "LODZ KALISKA", ref: "lodz" },
         { date: "2026-02-03", amount: "-5.12", name: "ŁÓDŹ FABRYCZNA", ref: "lodz-2" },
         { date: "2026-02-04", amount: "-120.40", name: 'KIOSK "POD *"', ref: "kiosk" },
@@ -552,7 +556,7 @@ describe("budgetSearch", () => {
       ]);
       const payees = (q: string) =>
         runQuery(store, budgetSearch, { q, lang: "pl" }).value.rows.map((r) => r.payee);
-      // a diacritic word only in an upper-case description
+      // a diacritic word only in an upper-case title
       expect(payees("śmieci")).toEqual(["OPŁATA ZA ŚMIECI"]);
       expect(payees("SMIECI")).toEqual(["OPŁATA ZA ŚMIECI"]);
       // l-stroke folded (normalizeText) on both sides
@@ -598,7 +602,9 @@ describe("budgetTransactionDetail", () => {
       expect(newest?.transferCounterpart).toBeNull();
       expect(detail("orlen-1")?.earlier).toEqual([]);
       expect(detail("orlen-1")?.sameMerchantCount).toBe(3);
-      expect(detail("fee")).toMatchObject({ row: { payee: "Opłata 50% rabatu", title: "fee" } });
+      expect(detail("fee")).toMatchObject({
+        row: { payee: "fee", title: "Opłata 50% rabatu", merchantKey: "FEE" },
+      });
       expect(
         runQuery(store, budgetTransactionDetail, { txn: "0".repeat(32), lang: "pl" }).value,
       ).toBeNull();
@@ -644,7 +650,7 @@ describe("budgetUncategorizedRows", () => {
       expect(triage.rows.map((r) => [r.payee, r.suggestion])).toEqual([
         ["QUUX STUDIO", null],
         ["FOOBAR SHOP", "gifts"],
-        ["Opłata 50% rabatu", null],
+        ["fee", null],
       ]);
       const one = runQuery(store, budgetUncategorizedRows, { limit: 1 }).value;
       expect([one.rows.length, one.total]).toEqual([1, 3]);
@@ -654,7 +660,7 @@ describe("budgetUncategorizedRows", () => {
         currency: "PLN",
       }).value;
       expect([february.rows.map((r) => r.payee), february.total]).toEqual([
-        ["QUUX STUDIO", "FOOBAR SHOP", "Opłata 50% rabatu"],
+        ["QUUX STUDIO", "FOOBAR SHOP", "fee"],
         3,
       ]);
       expect(runQuery(store, budgetUncategorizedRows, { month: "2026-01" }).value.total).toBe(0);

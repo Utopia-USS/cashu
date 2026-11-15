@@ -7,7 +7,7 @@
 import { format2 } from "../../decimal.js";
 import { ibanKey } from "../../iban.js";
 import { sha1Hex } from "../../sha1.js";
-import { normalizeText, PY_WS, pyUpper } from "../../text.js";
+import { normalizeText, PY_WS, pyStrip, pyUpper } from "../../text.js";
 import { memo, type RawTransaction } from "./types.js";
 
 export type HashInput = Pick<
@@ -93,6 +93,23 @@ export function merchantKey(...fields: readonly (string | null | undefined)[]): 
     if (!f) continue;
     const s = normalizeText(stripTxDateSuffix(f).replace(LOCATION_PADDING, ""));
     if (s) return s;
+  }
+  return "";
+}
+
+const DISPLAY_WS = new RegExp(`[${PY_WS}]+`, "gu");
+
+/**
+ * The display name of the field `merchantKey` keys on (same arguments, same order, same field):
+ * mBank's `DATA TRANSAKCJI: <date>` suffix and the trailing location padding cut, whitespace runs
+ * folded to one space, case and diacritics kept. `normalizeText(merchantName(...f)) === merchantKey(...f)`
+ * for every input, so a payee shown with this name is exactly the merchant a rule on its key covers.
+ */
+export function merchantName(...fields: readonly (string | null | undefined)[]): string {
+  for (const f of fields) {
+    if (!f) continue;
+    const cut = stripTxDateSuffix(f).replace(LOCATION_PADDING, "");
+    if (normalizeText(cut)) return pyStrip(cut.replace(DISPLAY_WS, " "));
   }
   return "";
 }

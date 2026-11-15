@@ -161,6 +161,52 @@ describe("native budget desktop adapters", () => {
       f.store.close();
     }
   });
+  it("leaves generic bank phrases out of the uncategorized merchants before the 30 cap; their rows stay categorizable one by one", () => {
+    const f = fixture();
+    try {
+      // Three generic phrases with the largest totals, then 30 synthetic merchants.
+      const generic = ["PRZELEW", "ZAKUP PRZY UŻYCIU KARTY", "blik"];
+      f.seed("PLN", [
+        ...generic.map((ref, i) => ({ date: "2026-02-01", amount: `-${900 + i}`, name: "", ref })),
+        ...Array.from({ length: 30 }, (_, i) => ({
+          date: "2026-02-02",
+          amount: `-${100 + i}`,
+          name: `Synthetic merchant ${String(i).padStart(2, "0")}`,
+          ref: "shop",
+        })),
+      ]);
+      const rows = runQuery(f.store, queries.uncategorized, { currency: "PLN" }).value;
+      expect(rows.map((row) => row.merchantKey)).toEqual(
+        Array.from(
+          { length: 30 },
+          (_, i) => `SYNTHETIC MERCHANT ${String(29 - i).padStart(2, "0")}`,
+        ),
+      );
+      const drill = () =>
+        runQuery(f.store, queries.drill, {
+          currency: "PLN",
+          category: "other",
+          period: {},
+          sort: "amount",
+          order: "asc",
+        }).value;
+      const genericRows = drill().filter((row) => row.amount.lte(D("-900")));
+      expect(genericRows).toHaveLength(3);
+      const card = genericRows.find((row) => row.amount.eq(D("-901")));
+      run(f.store, f.env, setTransactionCategory, { txn: card?.key, category: "gifts" });
+      expect(drill().filter((row) => row.amount.lte(D("-900")))).toHaveLength(2);
+      const gifts = runQuery(f.store, queries.drill, {
+        currency: "PLN",
+        category: "gifts",
+        period: {},
+        sort: "date",
+        order: "asc",
+      }).value;
+      expect(gifts.map((row) => row.amount.eq(D("-901")))).toEqual([true]);
+    } finally {
+      f.store.close();
+    }
+  });
   it("retains stale subscriptions and uses the latest booking as the reference for active status", () => {
     const a = fixture(),
       b = fixture();

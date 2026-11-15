@@ -2,6 +2,7 @@
 
 import type { Decimal } from "../../decimal.js";
 import { ZERO } from "../../decimal.js";
+import { isMerchantRuleKey } from "./genericMerchants.js";
 import { AUTO_CATEGORY_KEYS, STRUCTURAL_CATEGORIES } from "./taxonomy.js";
 
 /** Python `sorted` of str: code point order (JavaScript's default sort is UTF-16 order, Q16). */
@@ -19,7 +20,9 @@ export function codePointCompare(a: string, b: string): number {
 
 /**
  * The merchants the LLM pass asks about: merchant keys of outflows whose effective source is
- * `default` (the engine could not decide), without `""`, sorted by code point.
+ * `default` (the engine could not decide), sorted by code point. Only keys a rule may be keyed on
+ * (`isMerchantRuleKey`): never `""` and never a bank's generic operation phrase, which names no
+ * merchant, so it is never sent to a classifier, local or cloud (its answer could become no rule).
  */
 export function unknownMerchants(
   rows: Iterable<{
@@ -29,8 +32,9 @@ export function unknownMerchants(
   }>,
 ): string[] {
   const out = new Set<string>();
-  for (const r of rows) if (r.amount.lt(ZERO) && r.source === "default") out.add(r.merchantKey);
-  out.delete("");
+  for (const r of rows)
+    if (r.amount.lt(ZERO) && r.source === "default" && isMerchantRuleKey(r.merchantKey))
+      out.add(r.merchantKey);
   return [...out].sort(codePointCompare);
 }
 

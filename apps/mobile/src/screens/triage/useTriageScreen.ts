@@ -4,7 +4,7 @@
 // here, by a merchant rule, or on another device) never reshuffles the rest; Skip moves the card to the
 // end. A pick files the payment (and, with the toggle on, pins the merchant first), then the next card.
 // The deck holds one page of the query; when it runs out while more wait, the done state continues.
-import { type core, type IsoDate, Money } from "@cashu/domain";
+import { budget, type core, type IsoDate, Money } from "@cashu/domain";
 import { setMerchantCategory, setTransactionCategory } from "@cashu/store/budget/commands";
 import { budgetUncategorizedRows } from "@cashu/store/budget/companion";
 import { useCommand, useQuery } from "@cashu/store-react";
@@ -160,7 +160,10 @@ export function useTriageScreen(args: {
   const options = categoryOptionsOf(categories);
   const suggested =
     row.suggestion === null ? undefined : categories.find((c) => c.key === row.suggestion);
-  const merchantKey = row.merchantKey;
+  // The rule is offered only for a key that names a merchant: never for an empty one or a bank's
+  // generic phrase ("ZAKUP PRZY UZYCIU KARTY"), which would file every such payment alike.
+  const merchantKey =
+    row.merchantKey !== null && budget.isMerchantRuleKey(row.merchantKey) ? row.merchantKey : null;
   // A card that leaves the live total joins `done`, so the sum holds while the deck runs.
   const total = done + live.total;
 

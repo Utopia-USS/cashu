@@ -363,7 +363,7 @@ describe("LLM result commands (D-09.5)", () => {
         { merchantKey: "ZXQ D", category: "nope" },
       ],
     });
-    expect(out.ok && out.value).toEqual({ cached: 1 });
+    expect(out.ok && out.value).toEqual({ cached: 1, skippedGeneric: 0 });
     expect(catOf(store, gidOf(store, "-5.00"))).toEqual({
       category: "dining",
       category_source: "llm",
@@ -376,6 +376,54 @@ describe("LLM result commands (D-09.5)", () => {
       items: [{ merchantKey: "ZXQ KAWIARNIA", category: "dining" }],
     });
     expect(again.ok && again.events).toEqual([]);
+  });
+
+  it("generic bank phrases: the agent's and the LLM's rules are refused, nothing is written", () => {
+    const { store, env } = vault();
+    // Card purchases and a transfer with no counterparty and no title: the key is the operation type.
+    ingest(store, env, [
+      { ...raw("-5.00"), description: "ZAKUP PRZY UŻYCIU KARTY" },
+      { ...raw("-6.00"), description: "ZAKUP PRZY UŻYCIU KARTY" },
+      { ...raw("-7.00"), description: "PRZELEW" },
+      raw("-8.00", { cp: "ZXQ KAWIARNIA" }),
+    ]);
+    const keys = store.read<{ merchant_key: string }>(
+      "SELECT DISTINCT merchant_key FROM transactions ORDER BY merchant_key",
+    );
+    expect(keys.map((k) => k.merchant_key)).toEqual([
+      "PRZELEW",
+      "ZAKUP PRZY UZYCIU KARTY",
+      "ZXQ KAWIARNIA",
+    ]);
+    const before = ["-5.00", "-6.00", "-7.00"].map((a) => catOf(store, gidOf(store, a)));
+    for (const merchantKey of ["ZAKUP PRZY UZYCIU KARTY", "Przelew", "zakup przy użyciu karty"]) {
+      expect(
+        run(store, env, learnMerchantCategory, { merchantKey, category: "groceries" }),
+      ).toEqual({ ok: false, reason: "generic_merchant" });
+    }
+    const out = run(store, env, cacheLlmRules, {
+      items: [
+        { merchantKey: "ZAKUP PRZY UZYCIU KARTY", category: "groceries" },
+        { merchantKey: "PRZELEW", category: "housing" },
+        { merchantKey: "ZXQ KAWIARNIA", category: "dining" },
+      ],
+    });
+    expect(out.ok && out.value).toEqual({ cached: 1, skippedGeneric: 2 });
+    expect(store.read("SELECT merchant_key FROM category_rules")).toEqual([
+      { merchant_key: "ZXQ KAWIARNIA" },
+    ]);
+    expect(["-5.00", "-6.00", "-7.00"].map((a) => catOf(store, gidOf(store, a)))).toEqual(before);
+    expect(catOf(store, gidOf(store, "-8.00"))).toEqual({
+      category: "dining",
+      category_source: "llm",
+    });
+    // A merchant behind the same card phrase is a rule key and still learns.
+    ingest(store, env, [{ ...raw("-9.00"), description: "ZAKUP PRZY UŻYCIU KARTY SKLEP TEST" }]);
+    const learned = run(store, env, learnMerchantCategory, {
+      merchantKey: "ZAKUP PRZY UZYCIU KARTY SKLEP TEST",
+      category: "groceries",
+    });
+    expect(learned.ok && learned.value).toMatchObject({ changed: true, updated: 1 });
   });
 
   it("setLlmCategories: llm_full claims, never over a manual claim or on a cash account", () => {

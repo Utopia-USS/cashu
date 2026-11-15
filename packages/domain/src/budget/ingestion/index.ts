@@ -23,6 +23,7 @@ export {
   dedupHashV2,
   type HashInput,
   merchantKey,
+  merchantName,
   stripTxDateSuffix,
 } from "./contentKey.js";
 export { type ImportPlan, planImport, type RowStatus, type StoredTxn } from "./dedup.js";

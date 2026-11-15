@@ -42,6 +42,11 @@ export function budgetDesktopQueries(sources: BudgetDesktopSources = {}) {
         });
       },
     }),
+    /**
+     * The uncategorized outflow merchants a rule may be saved for (largest total first, at most 30).
+     * A bank's generic phrase (`budget.isMerchantRuleKey` false) names no merchant and can get no
+     * rule, so it is left out here, before the cap; its rows stay in the drill to categorize one by one.
+     */
     uncategorized: defineQuery({
       id: "budget.desktopUncategorized",
       run(read, args: { currency: string }): UncategorizedMerchant[] {
@@ -61,7 +66,7 @@ export function budgetDesktopQueries(sources: BudgetDesktopSources = {}) {
             row.reference,
             row.description,
           );
-          if (!merchantKey) continue;
+          if (!budget.isMerchantRuleKey(merchantKey)) continue;
           const previous = groups.get(merchantKey);
           groups.set(merchantKey, {
             merchantKey,
