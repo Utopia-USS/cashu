@@ -8,13 +8,11 @@
 // length-prefixed fields and canonical JSON; nothing signs raw caller bytes. Key material never
 // leaves crypto: devices/ only calls `identity.sign`.
 
-import { blake2b } from "@noble/hashes/blake2.js";
 import {
   type DeviceIdentity,
   type RecoveryIdentity,
   verifyContextSignature,
 } from "../crypto/core.js";
-import { concat, toHex, utf8 } from "./bytes.js";
 
 export type StatementContext =
   | "cashu/registry/v1"
@@ -58,26 +56,40 @@ export type StatementVerifier = (
 ) => boolean;
 
 /**
- * A verifier that remembers results by a hash of (context, key, signature, body): folds re-run over
- * the whole event set on every change, so without it each pass would re-verify every statement.
- * Bounded; the oldest entries are dropped first (no cliff where everything is re-verified at once).
+ * A verifier that remembers results by (context, key, signature, body): folds re-run over the whole
+ * event set on every change, so without it each pass would re-verify every statement. The cache key is
+ * those exact bytes, one character per byte, length-prefixed so it cannot be split two ways: no hash,
+ * so no collision, and far cheaper than the JS BLAKE2b of the body it replaced (which cost about as
+ * much as the check it saved and made a host's start replay take minutes). Bounded by entries and by
+ * key characters; the oldest entries are dropped first (no cliff where everything is re-verified).
  */
-export function memoizedVerifier(maxEntries = 200_000): StatementVerifier {
+export function memoizedVerifier(
+  maxEntries = 200_000,
+  maxChars = 32 * 1024 * 1024,
+): StatementVerifier {
   const cache = new Map<string, boolean>();
+  let chars = 0;
   return (context, body, signature, publicKey) => {
-    const key = toHex(
-      blake2b(concat(utf8(context), new Uint8Array([0]), publicKey, signature, body), {
-        dkLen: 32,
-      }),
-    );
+    const key = `${context}\0${publicKey.length}\0${signature.length}\0${latin1(publicKey)}${latin1(signature)}${latin1(body)}`;
     const hit = cache.get(key);
     if (hit !== undefined) return hit;
     const ok = verifyStatement(context, body, signature, publicKey);
-    if (cache.size >= maxEntries) {
-      const oldest = cache.keys().next();
-      if (!oldest.done) cache.delete(oldest.value);
-    }
     cache.set(key, ok);
+    chars += key.length;
+    while (cache.size > maxEntries || chars > maxChars) {
+      const oldest = cache.keys().next();
+      if (oldest.done) break;
+      cache.delete(oldest.value);
+      chars -= oldest.value.length;
+    }
     return ok;
   };
+}
+
+/** One character (code 0-255) per byte: a cheap, exact string form of bytes for a map key. */
+function latin1(bytes: Uint8Array): string {
+  let out = "";
+  for (let at = 0; at < bytes.length; at += 4096)
+    out += String.fromCharCode(...bytes.subarray(at, at + 4096));
+  return out;
 }

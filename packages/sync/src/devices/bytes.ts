@@ -50,10 +50,22 @@ export function isHex(value: unknown, bytes?: number): value is string {
 }
 
 export function fromHex(hex: string): Uint8Array {
-  if (!HEX.test(hex)) throw new RangeError("invalid hex");
+  if (hex.length % 2 !== 0) throw new RangeError("invalid hex");
   const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  for (let i = 0; i < out.length; i++) {
+    const high = nibble(hex.charCodeAt(2 * i));
+    const low = nibble(hex.charCodeAt(2 * i + 1));
+    if (high < 0 || low < 0) throw new RangeError("invalid hex");
+    out[i] = (high << 4) | low;
+  }
   return out;
+}
+
+/** The value of one lowercase hex digit, or -1. */
+function nibble(code: number): number {
+  if (code >= 48 && code <= 57) return code - 48;
+  if (code >= 97 && code <= 102) return code - 87;
+  return -1;
 }
 
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

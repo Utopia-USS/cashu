@@ -149,8 +149,8 @@ export interface SyncEngineOptions {
   /** The sync history the host persisted for this vault (`PullHistory`); absent: none known. */
   readonly pullHistory?: PullHistory;
   /**
-   * The verified-prefix checkpoint of `recoverLocal` (carrier.ts `RecoveryCheckpointOptions`; the phone).
-   * Absent (the hosts): every `recoverLocal` opens and verifies the whole local log, as before.
+   * The verified-prefix checkpoint of `recoverLocal` (carrier.ts `RecoveryCheckpointOptions`; the phone
+   * and the native host). Absent: every `recoverLocal` opens and verifies the whole local log.
    */
   readonly recoveryCheckpoint?: RecoveryCheckpointOptions;
   /** Yield to the host between ~8 ms slices of local work (recovery, replay, pull). Absent: never. */

@@ -39,6 +39,7 @@ import { sessionGuards } from "./nativeVault/guards.js";
 import { pairingPruner, pairingWrites, reconcilePendingPairings } from "./nativeVault/pairing.js";
 import { existing, sidecars } from "./nativeVault/paths.js";
 import { reconcileAttemptHistory } from "./nativeVault/recovery.js";
+import { nativeRecoveryCheckpoint } from "./nativeVault/recoveryCheckpoint.js";
 import { revocation } from "./nativeVault/revocation.js";
 import { REVOKE_COMMAND } from "./nativeVault/revokeIntent.js";
 import { syncControl } from "./nativeVault/sync.js";
@@ -147,6 +148,8 @@ export async function openNativeVault(
         }),
         gate: candidate.gate,
         sink: store.sink(),
+        // A start (and the replay after each pass) verifies only the frames after the last audit.
+        recoveryCheckpoint: nativeRecoveryCheckpoint(meta, candidate),
         clockStore: metaClockStore(store.driver, entry.deviceId),
         clockGuard: metaClockGuardStore(store.driver, entry.deviceId),
         physicalClock: { now },
