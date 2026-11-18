@@ -5,9 +5,24 @@
 // resolves; new directories are fsynced into their parent. Private: directories are created 0700 and
 // files 0600. The root itself is never created: a missing or unreadable root rejects with
 // `TransportError("unavailable")` (an unmounted volume must not turn into an empty vault).
+//
+// Windows differs in two ways (and only there; macOS and Linux behave as described above):
+// - A directory cannot be fsynced (FlushFileBuffers needs write access to the handle, so it fails with
+//   EPERM, which would read as "folder unreachable" on every append). `syncDir` is a no-op there, the
+//   rule `syncDirectory` in host/privateFs.ts follows: the file's own bytes are fsynced before the
+//   rename, and NTFS journals the directory change itself.
+// - A rename over a file, or a removal, fails while another handle has that file open without
+//   FILE_SHARE_DELETE (EPERM / EACCES / EBUSY), where POSIX just replaces or unlinks the name. Node opens
+//   files with FILE_SHARE_DELETE, and every handle this class opens is closed before its call resolves
+//   (the temp file is closed before it is renamed over the segment), so such a holder is a short-lived
+//   one: a concurrent `read` of the same segment, an antivirus or indexer scan of the fresh file, a
+//   cloud-sync client copying it. `rename` and `remove` therefore wait that out (`retryWhileLocked`,
+//   about two seconds; graceful-fs does the same for renames on Windows) before the error maps to
+//   unavailable. A folder whose permission is really gone reports unavailable that much later there.
 import { watch as fsWatch, mkdirSync } from "node:fs";
 import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { type FolderEntry, type FolderFs, TransportError } from "@cashu/sync";
 
 const DIR_MODE = 0o700;
@@ -28,8 +43,12 @@ function mapError(e: unknown): unknown {
   return c === "EACCES" || c === "EPERM" ? unavailable() : e;
 }
 
-/** fsync a directory so the entries created, renamed or removed in it are on stable storage. */
-async function syncDir(dir: string): Promise<void> {
+/**
+ * fsync a directory so the entries created, renamed or removed in it are on stable storage. A no-op on
+ * Windows, where a directory cannot be fsynced (see the header).
+ */
+export async function syncDir(dir: string, platform: NodeJS.Platform): Promise<void> {
+  if (platform === "win32") return;
   const handle = await open(dir, "r");
   try {
     await handle.sync();
@@ -38,12 +57,47 @@ async function syncDir(dir: string): Promise<void> {
   }
 }
 
+/** The pauses between tries while a Windows file is held open by another handle (about 2.3 s). */
+const LOCK_RETRY_DELAYS_MS = [10, 20, 40, 80, 160, 320, 640, 1000] as const;
+/** The errors Windows reports for a name another handle keeps open (ERROR_ACCESS_DENIED, sharing). */
+const LOCKED = new Set(["EPERM", "EACCES", "EBUSY"]);
+
+/**
+ * Runs `op`, and on Windows tries it again while it fails because another handle keeps the file open
+ * (see the header), up to `LOCK_RETRY_DELAYS_MS`; then the last error propagates. Elsewhere `op` runs
+ * once: EPERM / EACCES there mean permission lost on the folder and map to unavailable at once.
+ */
+export async function retryWhileLocked<T>(
+  op: () => Promise<T>,
+  platform: NodeJS.Platform,
+  wait: (ms: number) => Promise<unknown> = sleep,
+): Promise<T> {
+  if (platform !== "win32") return op();
+  for (const delay of LOCK_RETRY_DELAYS_MS) {
+    try {
+      return await op();
+    } catch (e) {
+      const c = code(e);
+      if (c === undefined || !LOCKED.has(c)) throw e;
+    }
+    await wait(delay);
+  }
+  return op();
+}
+
+export interface NodeFolderFsOptions {
+  /** The OS whose file-system rules apply (tests); the running one by default. */
+  readonly platform?: NodeJS.Platform;
+}
+
 export class NodeFolderFs implements FolderFs {
   readonly root: string;
+  readonly #platform: NodeJS.Platform;
 
   /** `root` is an absolute path to an existing directory (the folder; never created here). */
-  constructor(root: string) {
+  constructor(root: string, options: NodeFolderFsOptions = {}) {
     this.root = root;
+    this.#platform = options.platform ?? process.platform;
   }
 
   /** The relative `/`-separated `path` split into components; `..` and empty parts are refused. */
@@ -86,7 +140,7 @@ export class NodeFolderFs implements FolderFs {
         if (code(e) === "ENOENT") throw unavailable();
         throw mapError(e);
       }
-      await syncDir(parent);
+      await syncDir(parent, this.#platform);
     }
   }
 
@@ -176,16 +230,19 @@ export class NodeFolderFs implements FolderFs {
     const src = this.#abs(from);
     const dst = this.#abs(to);
     return this.#guard(async () => {
-      await rename(src, dst);
-      await syncDir(dirname(dst));
-      if (dirname(src) !== dirname(dst)) await syncDir(dirname(src));
+      await retryWhileLocked(() => rename(src, dst), this.#platform);
+      await syncDir(dirname(dst), this.#platform);
+      if (dirname(src) !== dirname(dst)) await syncDir(dirname(src), this.#platform);
     });
   }
 
-  /** Only temp files and superseded copies are removed: no fsync, a resurrected one is harmless. */
+  /**
+   * Only temp files and superseded copies are removed: no fsync, a resurrected one is harmless. On
+   * Windows a removal waits out a short-lived holder of the file, as `rename` does.
+   */
   async remove(path: string): Promise<void> {
     const abs = this.#abs(path);
-    return this.#guard(() => rm(abs, { force: true }));
+    return this.#guard(() => retryWhileLocked(() => rm(abs, { force: true }), this.#platform));
   }
 
   /**

@@ -1,18 +1,20 @@
 // Test helpers for the local host: temp data dirs (never a real location), the fixture host spawned
 // with Node type stripping, and process bookkeeping so no test leaves a host running.
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveReal } from "../guard.js";
 import { hostRunPaths } from "../host/paths.js";
 import { spawnDetachedHost } from "../host/spawn.js";
+import { removeTempDir } from "./tempDirs.js";
 
 const FIXTURE = fileURLToPath(new URL("./fixtureHost.ts", import.meta.url));
-const RESOLVE_TS = fileURLToPath(
-  new URL("../../../../tools/node-ts/resolveTs.ts", import.meta.url),
-);
+/** An `--import` specifier: a plain path on POSIX, a file URL on Windows (Node reads `D:\...` as a URL). */
+const RESOLVE_TS_URL = new URL("../../../../tools/node-ts/resolveTs.ts", import.meta.url);
+const RESOLVE_TS =
+  process.platform === "win32" ? RESOLVE_TS_URL.href : fileURLToPath(RESOLVE_TS_URL);
 
 /** A fresh temp directory (resolved), removed by `cleanup`. */
 export function tempDir(prefix = "cashu-host-"): string {
@@ -70,6 +72,6 @@ export function cleanup(): void {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
   }
   children.clear();
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs) removeTempDir(dir);
   dirs.clear();
 }

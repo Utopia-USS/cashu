@@ -3,7 +3,7 @@
 // contract suite unchanged over the own-log carrier on this adapter (shared folder and replicas kept
 // in step by the simulated sync service), as packages/sync runs it over its test adapter.
 import { realpathSync } from "node:fs";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -17,7 +17,7 @@ import {
 import { describeCarrierContract, type TestSigners, testSigners } from "@cashu/sync/testing";
 import { CloudSim } from "@cashu/sync/testing/folder";
 import { describe, expect, it } from "vitest";
-import { NodeFolderFs } from "./folderFs.js";
+import { NodeFolderFs, retryWhileLocked, syncDir } from "./folderFs.js";
 
 const tempRoot = (name: string) =>
   mkdtemp(join(realpathSync(tmpdir()), `cashu-node-host-${name}-`));
@@ -65,6 +65,83 @@ describe("NodeFolderFs", () => {
     const stop = fs.watch("w", () => {});
     expect(await mode(join(root, "w"))).toBe(0o700);
     stop();
+  });
+
+  // Windows refuses to fsync a directory (EPERM): the win32 rules skip it and still append durably.
+  it("never fsyncs a directory under the Windows rules and keeps it everywhere else", async () => {
+    const missing = join(await tempRoot("nosync"), "missing");
+    await expect(syncDir(missing, "win32")).resolves.toBeUndefined();
+    await expect(syncDir(missing, "linux")).rejects.toMatchObject({ code: "ENOENT" });
+    const root = await tempRoot("win32");
+    const fs = new NodeFolderFs(root, { platform: "win32" });
+    await fs.write("v/d/.000001.seg.a.tmp", bytes(1, 2));
+    await fs.rename("v/d/.000001.seg.a.tmp", "v/d/000001.seg");
+    expect([...((await fs.read("v/d/000001.seg", 0)) ?? [])]).toEqual([1, 2]);
+    await fs.remove("v/d/000001.seg");
+    expect(await fs.list("v/d")).toEqual([]);
+  });
+
+  describe("waiting out a file another handle keeps open (Windows)", () => {
+    const failing = (codes: readonly (string | undefined)[]) => {
+      let calls = 0;
+      const op = async () => {
+        const c = codes[calls++];
+        if (c === undefined) return "done";
+        throw Object.assign(new Error("synthetic"), { code: c });
+      };
+      return { op, calls: () => calls };
+    };
+    const noWait = async () => {};
+
+    it("retries EPERM, EACCES and EBUSY until the holder lets go", async () => {
+      const { op, calls } = failing(["EPERM", "EACCES", "EBUSY"]);
+      await expect(retryWhileLocked(op, "win32", noWait)).resolves.toBe("done");
+      expect(calls()).toBe(4);
+    });
+
+    it("gives up after the last pause with the last error", async () => {
+      const waits: number[] = [];
+      const { op, calls } = failing(Array.from({ length: 20 }, () => "EBUSY"));
+      const wait = async (ms: number) => {
+        waits.push(ms);
+      };
+      await expect(retryWhileLocked(op, "win32", wait)).rejects.toMatchObject({ code: "EBUSY" });
+      expect(calls()).toBe(waits.length + 1);
+      expect(waits.reduce((a, b) => a + b, 0)).toBeLessThan(2500);
+    });
+
+    it("never retries another error, and nothing at all off Windows", async () => {
+      const enoent = failing(["ENOENT"]);
+      await expect(retryWhileLocked(enoent.op, "win32", noWait)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(enoent.calls()).toBe(1);
+      for (const platform of ["darwin", "linux"] as const) {
+        const eperm = failing(["EPERM"]);
+        await expect(retryWhileLocked(eperm.op, platform, noWait)).rejects.toMatchObject({
+          code: "EPERM",
+        });
+        expect(eperm.calls()).toBe(1);
+      }
+    });
+  });
+
+  // A reader still holding the segment while an append renames over it, then letting go: whether
+  // Windows replaces the open file at once or refuses until the handle closes, the append lands.
+  it.runIf(ON_WINDOWS)("renames over a segment another handle briefly keeps open", async () => {
+    const root = await tempRoot("held");
+    const fs = new NodeFolderFs(root);
+    await fs.write("v/.a.tmp", bytes(1));
+    await fs.rename("v/.a.tmp", "v/000001.seg");
+    await fs.write("v/.b.tmp", bytes(1, 2));
+    const held = await open(join(root, "v", "000001.seg"), "r");
+    const released = new Promise((r) => setTimeout(r, 150)).then(() => held.close());
+    try {
+      await fs.rename("v/.b.tmp", "v/000001.seg");
+    } finally {
+      await released;
+    }
+    expect([...((await fs.read("v/000001.seg", 0)) ?? [])]).toEqual([1, 2]);
   });
 
   it("keeps every path under the root", async () => {

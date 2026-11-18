@@ -3,7 +3,6 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -13,6 +12,7 @@ import { builtinRegistry } from "@cashu/domain/core";
 import type { CliExecParams, HostFrame } from "@cashu/host-protocol";
 import { acquireHostLock, connectHost, NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import {
   builtinModules,
   createProfile,
@@ -47,7 +47,7 @@ const sodium = await crypto.loadNodeSodium();
 const NOW = Date.UTC(2026, 10, 3, 12);
 const roots: string[] = [];
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) removeTempDir(root);
 });
 
 describe("native vault session", () => {

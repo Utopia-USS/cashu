@@ -17,7 +17,12 @@
 //      back from the Credential Manager;
 //   7. `host status`: the same build id as in 3 (the runtime hashes the install folder; nothing the host wrote
 //      at run time may land in it);
-//   8. `host stop`; the default data dir (%LOCALAPPDATA%\cashU) was never created.
+//   8. `host stop`;
+//   9. a second host on a fresh data dir under %LOCALAPPDATA% (`smoke-cashu-<random>`, synthetic, removed again):
+//      the default data dir sits in the user's profile tree, where the first Windows CI run refused every data dir
+//      (the owner-only DACL, packages/node-host/src/host/windowsAcl.ts), so a start there is proven too;
+//      `host status`, `host stop`;
+//  10. the default data dir (%LOCALAPPDATA%\cashU) was never created.
 // Afterwards (also after a failure) the host is stopped, the app uninstalled, the Credential Manager items this
 // run created deleted and the temp folder removed (--keep keeps the folder for a look). Right after the install
 // the run registers `cashu://` for this install the way the app does at every start (the window never starts
@@ -57,6 +62,11 @@ const NOT_RUNNING = 3;
 const COMMAND_TIMEOUT_MS = 180_000;
 const INSTALL_TIMEOUT_MS = 300_000;
 const PROFILE = { name: "Smoke", slug: "smoke" };
+/**
+ * The name prefix of the step-9 data dir under %LOCALAPPDATA%. Not `cashu*`: the path guard refuses those
+ * (packages/node-host/src/guard.ts, the owner's real data dirs), and the packaged default must stay untouched.
+ */
+const PROFILE_TREE_PREFIX = "smoke-cashu-";
 /** The `cashu://` scheme the packaged app registers for the current user at every start. */
 const SCHEME_KEY = "HKCU\\Software\\Classes\\cashu";
 
@@ -308,6 +318,35 @@ function cleanUp(ctx, credentialsBefore, keep) {
       env: ctx.env,
     });
     process.stdout.write(`    ..  host stop: exit ${stop.status}\n`);
+    if (ctx.profileTree !== null) {
+      const treeStop = runToFiles(
+        ctx,
+        "cleanup-profile-tree-stop",
+        ctx.exe,
+        [ctx.shim, "host", "stop"],
+        { env: ctx.profileTree.env },
+      );
+      process.stdout.write(
+        `    ..  host stop (${ctx.profileTree.dataDir}): exit ${treeStop.status}\n`,
+      );
+    }
+  }
+  if (ctx.profileTree !== null) {
+    // Never kept: it sits in the user's profile tree, outside the temp folder. A failure here must not skip
+    // the uninstall below.
+    try {
+      rmSync(ctx.profileTree.dataDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 1_000,
+      });
+      process.stdout.write(`    ..  removed ${ctx.profileTree.dataDir}\n`);
+    } catch (error) {
+      process.stdout.write(
+        `    ..  could not remove ${ctx.profileTree.dataDir}: ${error instanceof Error ? error.message : error}\n`,
+      );
+    }
   }
   if (credentialsBefore !== null) {
     let after = [];
@@ -409,6 +448,8 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     schemeRegistered: false,
     /** Whether the key outlived the uninstall (undefined: not checked). */
     schemeLeft: undefined,
+    /** Step 9's data dir under %LOCALAPPDATA% and the env that points the shim at it, once created. */
+    profileTree: null,
   };
   const defaultDataDir = env.LOCALAPPDATA ? join(env.LOCALAPPDATA, "cashU") : null;
   const defaultExisted = defaultDataDir !== null && existsSync(defaultDataDir);
@@ -506,6 +547,24 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     shim(ctx, "status-after", ["host", "status"], NOT_RUNNING);
     ok("host stopped");
 
+    step("A host on a fresh data dir under %LOCALAPPDATA% (the user's profile tree)");
+    if (!env.LOCALAPPDATA) throw new Error("LOCALAPPDATA is not set");
+    const treeDir = realpathSync.native(mkdtempSync(join(env.LOCALAPPDATA, PROFILE_TREE_PREFIX)));
+    ctx.profileTree = { dataDir: treeDir, env: smokeEnv(env, { dataDir: treeDir, workspacesDir }) };
+    const inTree = (label, args, expected = 0) =>
+      expectStatus(
+        `cashu ${args.join(" ")} (${treeDir})`,
+        runToFiles(ctx, label, ctx.exe, [ctx.shim, ...args], { env: ctx.profileTree.env }),
+        expected,
+      );
+    inTree("tree-help", ["--help"]);
+    const treeStatus = inTree("tree-status", ["host", "status"]);
+    if (statusBuild(treeStatus.stdout) !== first)
+      throw new Error(`host status on ${treeDir}:\n${treeStatus.stdout}`);
+    inTree("tree-stop", ["host", "stop"]);
+    inTree("tree-status-after", ["host", "status"], NOT_RUNNING);
+    ok(`a host ran on ${treeDir} (build ${first}) and stopped`);
+
     if (defaultDataDir !== null && !defaultExisted) {
       if (existsSync(defaultDataDir))
         throw new Error(
@@ -515,6 +574,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     }
   } catch (error) {
     printHostLogs(dataDir);
+    if (ctx.profileTree !== null) printHostLogs(ctx.profileTree.dataDir);
     throw error;
   } finally {
     try {

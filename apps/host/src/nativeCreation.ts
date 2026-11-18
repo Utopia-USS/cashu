@@ -54,6 +54,7 @@ import {
 import { createOwnLogCodec, createSyncEngine, crypto, devices, FolderTransport } from "@cashu/sync";
 import { SqlAttemptJournal } from "./attemptJournal.js";
 import { takeWriterLease } from "./lease.js";
+import { errorName, type HostLog } from "./log.js";
 import { readNativeRecoveryWrap } from "./nativeCreationArtifacts.js";
 import {
   type CreationStage,
@@ -109,6 +110,22 @@ export interface NativeCreationOptions {
   readonly sodium?: crypto.Sodium;
   /** Synthetic fault injection after a durable phase record; never bound by the ordinary host. */
   readonly faultAfterPhase?: (stage: CreationStage) => void;
+  /** The host log: a commit that ends `outcome_unknown` records why (error class and code only). */
+  readonly log?: HostLog;
+}
+
+/**
+ * The log fields of an error a commit ended on: the class name and, when the error carries them, its
+ * short `code` (an errno code such as EPERM, a TransportError code) and failed `syscall`. Never the
+ * message, which may quote a path or a value; the log keeps only strings that look like a code.
+ */
+function failureFields(error: unknown): Record<string, string> {
+  const fields: Record<string, string> = { error: errorName(error) };
+  if (typeof error === "object" && error !== null) {
+    if ("code" in error && typeof error.code === "string") fields.code = error.code;
+    if ("syscall" in error && typeof error.syscall === "string") fields.syscall = error.syscall;
+  }
+  return fields;
 }
 
 function privateDirectory(path: string): void {
@@ -674,8 +691,11 @@ export function createNativeCreationService(options: NativeCreationOptions) {
         inventory: readExistingNativeInventory(dataDir).fingerprint,
       });
       return readyOf(operationId, vaultId, input.slug);
-    } catch {
+    } catch (error) {
+      // The stage is the last one completed: the fault lies after it. Logged so a failed Create can
+      // be read from host.log (the journal keeps only the stage).
       const stage = journal.snapshot().pending?.stage ?? "recorded";
+      options.log?.error("host.creation.outcome-unknown", { stage, ...failureFields(error) });
       return { kind: "outcome_unknown", operationId, stage };
     }
   };

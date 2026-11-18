@@ -7,14 +7,17 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SHIM_SOURCE_FLAGS } from "./sourceFlags.js";
 
 const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
 const SHIM = join(REPO, "apps/cli/src/index.ts");
 const HOST_CLI = join(REPO, "apps/host/src/cli.ts");
 const SYNTHETIC_HOST = join(REPO, "apps/host/src/testing/syntheticCliHost.ts");
-const RESOLVE_TS = join(REPO, "tools/node-ts/resolveTs.ts");
-const INTERPOSER = fileURLToPath(import.meta.url);
-const TEMP = realpathSync(tmpdir());
+// The canonical form the host compares: Windows takes the native realpath (on-disk case, long names
+// instead of 8.3 short ones), as `resolveReal` in @cashu/node-host does.
+const real = (path: string) =>
+  process.platform === "win32" ? realpathSync.native(path) : realpathSync(path);
+const TEMP = real(tmpdir());
 
 function testPath(value: string | undefined, label: string): string {
   if (value === undefined || !isAbsolute(value) || resolve(value) !== value) {
@@ -25,7 +28,7 @@ function testPath(value: string | undefined, label: string): string {
     throw new Error(`CLI test interposer: ${label} is outside the temporary directory`);
   }
   const root = join(TEMP, rel.split(sep)[0] as string);
-  if (!basename(root).startsWith("cashu-") || realpathSync(root) !== root) {
+  if (!basename(root).startsWith("cashu-") || real(root) !== root) {
     throw new Error(`CLI test interposer: ${label} has no fresh cashU test root`);
   }
   // Reject a symlink at any existing component. A failure test intentionally has a regular file
@@ -59,22 +62,12 @@ if (entry !== SHIM && entry !== SYNTHETIC_HOST) {
 }
 const dataDir = testPath(process.env.CASHU_DATA_DIR, "data dir");
 const home = testPath(process.env.HOME, "HOME");
-if (realpathSync(home) !== home || !lstatSync(home).isDirectory()) {
+if (real(home) !== home || !lstatSync(home).isDirectory()) {
   throw new Error("CLI test interposer requires an existing canonical HOME");
 }
 
-const expected = [
-  "--no-warnings",
-  "--experimental-transform-types",
-  "--import",
-  RESOLVE_TS,
-  "--import",
-  INTERPOSER,
-  HOST_CLI,
-  "run",
-  "--data-dir",
-  dataDir,
-];
+// The shim hands its own source flags on to the host it starts (`sourceRunFlags`).
+const expected = [...SHIM_SOURCE_FLAGS, HOST_CLI, "run", "--data-dir", dataDir];
 const originalSpawn = childProcess.spawn;
 childProcess.spawn = ((...input: unknown[]) => {
   const [command, args, options] = input;
@@ -97,7 +90,7 @@ childProcess.spawn = ((...input: unknown[]) => {
   ) {
     throw new Error("CLI test interposer refused an unexpected host spawn");
   }
-  actual[6] = SYNTHETIC_HOST;
+  actual[SHIM_SOURCE_FLAGS.length] = SYNTHETIC_HOST;
   return Reflect.apply(originalSpawn, childProcess, [command, actual, spawnOptions]);
 }) as typeof childProcess.spawn;
 syncBuiltinESMExports();

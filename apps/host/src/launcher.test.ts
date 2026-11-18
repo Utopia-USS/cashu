@@ -2,7 +2,7 @@
 // shim with the caller's arguments, quoted for any path, written 0700 in a 0700 dir, rewritten only
 // when it changed. The Windows text is checked here on any platform; running it needs Windows.
 import { spawnSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { LauncherValueError, launcherPath, launcherScript, writeLauncher } from "./launcher.js";
@@ -63,6 +63,43 @@ describe("launcher", () => {
     },
   );
 
+  // Runs `path` the way Node runs a .cmd: cmd.exe /d /s /c, where /s strips the outer pair of quotes.
+  const viaCmd = (path: string, args = "") =>
+    spawnSync("cmd.exe", ["/d", "/s", "/c", `""${path}"${args}"`], {
+      encoding: "utf8",
+      windowsVerbatimArguments: true,
+    });
+
+  it.runIf(process.platform === "win32")(
+    "returns the program's exit code under cmd /c, to a calling batch and to PowerShell",
+    () => {
+      const dir = tempDir("cashu launcher ");
+      writeLauncher(dir, {
+        command: process.execPath,
+        args: ["-e", "process.exitCode = Number(process.argv[1])"],
+      });
+      const path = launcherPath(dir, "win32");
+      // A batch that CALLs the launcher, shows the ERRORLEVEL it got back and returns it.
+      const caller = join(dir, "caller.cmd");
+      writeFileSync(
+        caller,
+        `@call "${path}" %1\r\n@echo returned %ERRORLEVEL%\r\n@exit /b %ERRORLEVEL%\r\n`,
+      );
+      for (const code of [0, 7, 255]) {
+        expect(viaCmd(path, ` ${code}`).status).toBe(code);
+        const called = viaCmd(caller, ` ${code}`);
+        expect(called.stdout).toBe(`returned ${code}\r\n`);
+        expect(called.status).toBe(code);
+        const ps = spawnSync(
+          "powershell.exe",
+          ["-NoProfile", "-NonInteractive", "-Command", `& '${path}' ${code}; exit $LASTEXITCODE`],
+          { encoding: "utf8" },
+        );
+        expect(ps.status).toBe(code);
+      }
+    },
+  );
+
   it.runIf(process.platform === "win32")(
     "keeps the program's exit code and reads nothing a rewrite appends while the program runs",
     () => {
@@ -78,12 +115,10 @@ describe("launcher", () => {
         args: ["-e", grow],
         env: { X_LAUNCHER: path },
       });
-      const run = spawnSync("cmd.exe", ["/d", "/s", "/c", `""${path}""`], {
-        encoding: "utf8",
-        windowsVerbatimArguments: true,
-      });
+      const run = viaCmd(path);
       expect(run.stdout).not.toContain("LEAKED");
       expect(run.status).toBe(7);
+      expect(readFileSync(path, "utf8")).toContain("LEAKED");
     },
   );
 
@@ -112,19 +147,19 @@ describe("launcher", () => {
         "setlocal DisableDelayedExpansion",
         'set "ELECTRON_RUN_AS_NODE=1"',
         'set "X_2=x & y"',
-        '"C:\\Program Files\\cashU\\cashU.exe" "C:\\Program Files\\cashU\\resources\\shim.mjs" "a & b ^ (c) !d" "D:\\dir\\\\" %* & exit /b',
+        '"C:\\Program Files\\cashU\\cashU.exe" "C:\\Program Files\\cashU\\resources\\shim.mjs" "a & b ^ (c) !d" "D:\\dir\\\\" %* & call exit /b %%ERRORLEVEL%%',
         "",
       ].join("\r\n"),
     );
     expect(launcherScript({ command: "C:\\a.exe", args: [] }, WINDOWS)).toBe(
-      '@echo off\r\nsetlocal DisableDelayedExpansion\r\n"C:\\a.exe" %* & exit /b\r\n',
+      '@echo off\r\nsetlocal DisableDelayedExpansion\r\n"C:\\a.exe" %* & call exit /b %%ERRORLEVEL%%\r\n',
     );
   });
 
-  it("ends the script with the program call and `exit /b` on one line", () => {
+  it("ends the script with the program call and the `exit /b` of its code on one line", () => {
     const lines = launcherScript({ command: "C:\\a.exe", args: ["x"] }, WINDOWS).split("\r\n");
     expect(lines.at(-1)).toBe("");
-    expect(lines.at(-2)).toBe('"C:\\a.exe" "x" %* & exit /b');
+    expect(lines.at(-2)).toBe('"C:\\a.exe" "x" %* & call exit /b %%ERRORLEVEL%%');
   });
 
   it("writes non-ASCII paths under the profile through the variables cmd.exe expands", () => {
@@ -138,7 +173,7 @@ describe("launcher", () => {
         "@echo off",
         "setlocal DisableDelayedExpansion",
         'set "ELECTRON_RUN_AS_NODE=1"',
-        '"%LOCALAPPDATA%\\Programs\\cashU\\cashU.exe" "%USERPROFILE%\\src\\cashu\\apps\\cli\\src\\index.ts" %* & exit /b',
+        '"%LOCALAPPDATA%\\Programs\\cashU\\cashU.exe" "%USERPROFILE%\\src\\cashu\\apps\\cli\\src\\index.ts" %* & call exit /b %%ERRORLEVEL%%',
         "",
       ].join("\r\n"),
     );

@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
+import { acquireHostLock, hostRunPaths, resolveReal } from "@cashu/node-host";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import { crypto } from "@cashu/sync";
 import { afterEach, expect, it } from "vitest";
 import { main } from "./main.js";
@@ -11,11 +12,11 @@ const VAULT = "a".repeat(32);
 const DEVICE = "b".repeat(32);
 const created: string[] = [];
 afterEach(() => {
-  for (const path of created.splice(0)) rmSync(path, { recursive: true, force: true });
+  for (const path of created.splice(0)) removeTempDir(path);
 });
 
 function candidate() {
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-t44-provider-")));
+  const dataDir = resolveReal(mkdtempSync(join(tmpdir(), "cashu-t44-provider-")));
   created.push(dataDir);
   const inventoryDir = join(dataDir, "native", "v1");
   const vaultRoot = join(dataDir, "vaults", VAULT);
@@ -78,8 +79,34 @@ it("requires a preflight and a live exact host lock before any OS KeyStore is op
   await expect(factory.open(lock)).rejects.toThrow("native_host_lock_required");
 });
 
+/** Below vitest's 5 s test budget, so a host that never serves fails with its own stderr. */
+const SERVING_WAIT_MS = 4_000;
+
+/**
+ * Waits for the "serving" line, but fails at once with the host's stderr when `main` returns or
+ * throws first (a start refusal), and after a bounded wait when it does neither.
+ */
+async function servingOrFailure(
+  serving: Promise<void>,
+  running: Promise<number>,
+  errors: readonly string[],
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), SERVING_WAIT_MS);
+  });
+  try {
+    const outcome = await Promise.race([serving.then(() => "serving" as const), running, timeout]);
+    if (outcome === "serving") return;
+    const reason = outcome === "timeout" ? "did not serve in time" : `exited with ${outcome}`;
+    throw new Error(`host ${reason} before serving; stderr:\n${errors.join("\n")}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 it("ordinary run serves clean setup under a host lock and validates a supplied bundle stamp", async () => {
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-t44-new-")));
+  const dataDir = resolveReal(mkdtempSync(join(tmpdir(), "cashu-t44-new-")));
   created.push(dataDir);
   const errors: string[] = [];
   let signal: (() => void) | undefined;
@@ -99,7 +126,7 @@ it("ordinary run serves clean setup under a host lock and validates a supplied b
     build: "test",
   };
   const running = main(["run", "--data-dir", dataDir], io);
-  await serving;
+  await servingOrFailure(serving, running, errors);
   expect(errors).toEqual([]);
   expect(existsSync(join(dataDir, "run"))).toBe(true);
   expect(signal).toBeTypeOf("function");

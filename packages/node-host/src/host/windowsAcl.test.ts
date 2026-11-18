@@ -1,5 +1,7 @@
-// The owner-only data dir DACL with an injected command runner (runs on every OS): the exact system
-// commands, the idempotent skip, the fail-closed outcomes and the SDDL / whoami parsing. The real
+// The owner-only data dir DACL with an injected command runner and directory listing (runs on every
+// OS): the exact system commands, the idempotent skip, the removal of every other account's entry, the
+// reset of the entries below, the fail-closed outcomes and the SDDL / whoami parsing. A small icacls
+// model below applies the commands to the SDDL, so each test also sees the DACL they leave. The real
 // icacls is exercised by windowsAcl.integration.test.ts on Windows.
 import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,7 +12,9 @@ import { HostPathError } from "./paths.js";
 import {
   type AclCommandResult,
   type AclCommandRunner,
+  type AclDirEntry,
   ADMINISTRATORS_SID,
+  daclProblems,
   isOwnerOnlyDacl,
   makeOwnerOnly,
   parseIntegrityLevel,
@@ -19,6 +23,7 @@ import {
   parseWhoamiSid,
   powerShellQuoted,
   SYSTEM_SID,
+  sddlTrusteeSid,
 } from "./windowsAcl.js";
 
 afterEach(cleanup);
@@ -30,7 +35,7 @@ const WHOAMI = "C:\\Windows\\System32\\whoami.exe";
 const ICACLS = "C:\\Windows\\System32\\icacls.exe";
 const POWERSHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 
-const OWNER_ONLY = `D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;${SID})`;
+const OWNER_ONLY = `D:PAI(A;OICI;FA;;;${SID})(A;OICI;FA;;;SY)`;
 const INHERITED = "D:AI(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIIDIO;0x1301bf;;;AU)";
 
 /** An `icacls /save` listing as icacls writes it: UTF-16LE, the name line, then the SDDL. */
@@ -49,21 +54,69 @@ const groups = (level: number) =>
     `"Verbindliche Beschriftung\\Hohe Verbindlichkeitsstufe","Bezeichnung","S-1-16-${level}",""`,
   ].join("\r\n");
 
+/** The SDDL aliases these tests write, as icacls resolves them. */
+const ALIASES: Readonly<Record<string, string>> = {
+  SY: SYSTEM_SID,
+  BA: ADMINISTRATORS_SID,
+  BU: "S-1-5-32-545",
+  AU: "S-1-5-11",
+  CO: "S-1-3-0",
+  OW: "S-1-3-4",
+  WD: "S-1-1-0",
+};
+const sidOf = (trustee: string) => ALIASES[trustee] ?? trustee;
+const acesOf = (sddl: string) => [...sddl.matchAll(/\(([^()]*)\)/g)].map(([, ace = ""]) => ace);
+const field = (ace: string, index: number) => ace.split(";")[index] ?? "";
+const sddlOf = (control: string, aces: readonly string[]) =>
+  `D:${control}${aces.map((ace) => `(${ace})`).join("")}`;
+
+/**
+ * What the icacls commands of `makeOwnerOnly` do to the dir's DACL: `/inheritance:r /grant:r` drops
+ * the inherited entries and the named SIDs' grants, then grants them (OI)(CI)F; `/remove` drops every
+ * entry of the given SIDs, `/remove:d` their deny entries. Explicit entries of others survive the first.
+ */
+function icaclsOn(sddl: string, args: readonly string[]): string {
+  const control = /^D:([A-Z]*)/.exec(sddl)?.[1] ?? "";
+  const aces = acesOf(sddl);
+  const named = args.filter((arg) => arg.startsWith("*")).map((arg) => arg.slice(1).split(":")[0]);
+  if (args[1] === "/inheritance:r") {
+    const kept = aces.filter(
+      (ace) =>
+        !field(ace, 1).includes("ID") &&
+        !(field(ace, 0) === "A" && named.includes(sidOf(field(ace, 5)))),
+    );
+    const granted = named.map((sid) => `A;OICI;FA;;;${sid === SYSTEM_SID ? "SY" : sid}`);
+    return sddlOf("PAI", [...kept, ...granted]);
+  }
+  const denyOnly = args[1] === "/remove:d";
+  return sddlOf(
+    control,
+    aces.filter(
+      (ace) => !named.includes(sidOf(field(ace, 5))) || (denyOnly && field(ace, 0) !== "D"),
+    ),
+  );
+}
+
 /**
  * A fake Windows: whoami answers `SID` (and `groups` for /groups), PowerShell the dir's SDDL with
- * `owner` (default `SID`), `/save` writes the current DACL, the grant moves it to `afterGrant`. Every
- * call is recorded.
+ * `owner` (default `SID`), `/save` writes the current DACL, the other icacls commands change it as
+ * `icaclsOn` says (`stubborn`: `/remove` changes nothing), `below` is the tree under the dir. Every
+ * call and every listed folder is recorded.
  */
 function fakeWindows(options: {
   dacl: string;
-  afterGrant?: string;
   grantStatus?: number;
+  resetStatus?: number;
+  removeStatus?: number;
+  stubborn?: boolean;
+  below?: Readonly<Record<string, readonly AclDirEntry[]>>;
   whoami?: AclCommandResult;
   owner?: string;
   powershell?: AclCommandResult;
   groups?: AclCommandResult;
 }) {
   const calls: Call[] = [];
+  const listed: string[] = [];
   let dacl = options.dacl;
   const run: AclCommandRunner = (file, args) => {
     calls.push({ file, args: [...args] });
@@ -75,21 +128,42 @@ function fakeWindows(options: {
       const owner = options.owner ?? SID;
       return options.powershell ?? { status: 0, stdout: `O:${owner}G:${owner}${dacl}\r\n` };
     }
-    if (args[1] === "/save") {
-      writeFileSync(args[2] as string, listing(dacl));
-      return { status: 0, stdout: "" };
+    if (file !== ICACLS) return { status: 1, stdout: "" };
+    const status = (code: number | undefined) => ({ status: code ?? 0, stdout: "" });
+    switch (args[1]) {
+      case "/save":
+        writeFileSync(args[2] as string, listing(dacl));
+        return status(0);
+      case "/reset":
+        return status(options.resetStatus);
+      case "/inheritance:r":
+        if ((options.grantStatus ?? 0) === 0) dacl = icaclsOn(dacl, args);
+        return status(options.grantStatus);
+      case "/remove":
+      case "/remove:d":
+        if ((options.removeStatus ?? 0) === 0 && options.stubborn !== true)
+          dacl = icaclsOn(dacl, args);
+        return status(options.removeStatus);
+      default:
+        return status(1);
     }
-    if (args[1] === "/inheritance:r") {
-      if ((options.grantStatus ?? 0) !== 0) return { status: options.grantStatus ?? 1, stdout: "" };
-      dacl = options.afterGrant ?? OWNER_ONLY;
-      return { status: 0, stdout: "" };
-    }
-    return { status: 1, stdout: "" };
   };
-  return { calls, run };
+  const list = (folder: string): readonly AclDirEntry[] => {
+    listed.push(folder);
+    return options.below?.[folder] ?? [];
+  };
+  return { calls, listed, run, list, dacl: () => dacl };
 }
 
 const tempDir = () => trackDir(mkdtempSync(join(tmpdir(), "cashu-acl-test-")));
+
+/** The options of a run against `win`. */
+const on = (win: ReturnType<typeof fakeWindows>, temp = tempDir()) => ({
+  env: ENV,
+  run: win.run,
+  list: win.list,
+  tempDir: temp,
+});
 
 const failure = (fn: () => void) => {
   try {
@@ -110,6 +184,11 @@ const GRANT_CALL = {
   file: ICACLS,
   args: [DIR, "/inheritance:r", "/grant:r", `*${SID}:(OI)(CI)F`, "*S-1-5-18:(OI)(CI)F", "/q"],
 };
+const RESET_ALL_CALL = { file: ICACLS, args: ["C:\\cashu\\*", "/reset", "/t", "/q"] };
+const removeCall = (verb: "/remove" | "/remove:d", ...sids: string[]) => ({
+  file: ICACLS,
+  args: [DIR, verb, ...sids.map((sid) => `*${sid}`), "/q"],
+});
 
 /** The `/save` call into a fresh folder of `temp`. */
 const saveCall = (temp: string) => ({
@@ -117,11 +196,25 @@ const saveCall = (temp: string) => ({
   args: [DIR, "/save", expect.stringContaining(join(temp, "cashu-acl-")), "/q"],
 });
 
+/** A data dir with a run folder and a token inside it. */
+const TREE: Readonly<Record<string, readonly AclDirEntry[]>> = {
+  "C:\\cashu": [{ name: "run", kind: "dir" }],
+  "C:\\cashu\\run": [{ name: "host.token", kind: "file" }],
+};
+
 describe("owner-only data dir DACL", () => {
-  it("sets a protected DACL for the user and SYSTEM, then checks it, by absolute tool paths", () => {
+  it("leaves a DACL that is already owner-only alone (no rewrite, no walk on later starts)", () => {
+    const temp = tempDir();
+    const win = fakeWindows({ dacl: `D:PAI(A;CIOI;FA;;;${SID})(A;OICI;FA;;;SY)`, below: TREE });
+    makeOwnerOnly(DIR, on(win, temp));
+    expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL, saveCall(temp)]);
+    expect(win.listed).toEqual([]);
+  });
+
+  it("protects a fresh, inheriting dir for the user and SYSTEM, by absolute tool paths", () => {
     const temp = tempDir();
     const win = fakeWindows({ dacl: INHERITED });
-    makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: temp });
+    makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([
       WHOAMI_CALL,
       OWNER_CALL,
@@ -129,53 +222,173 @@ describe("owner-only data dir DACL", () => {
       GRANT_CALL,
       saveCall(temp),
     ]);
+    expect(win.dacl()).toBe(OWNER_ONLY);
+    expect(win.listed).toEqual([DIR]);
     expect(readdirSync(temp)).toEqual([]);
   });
 
-  it("leaves a DACL that is already owner-only alone (no rewrite on later starts)", () => {
+  it("resets the entries below to inherit before it narrows the dir (one recursive reset)", () => {
     const temp = tempDir();
-    const win = fakeWindows({ dacl: `D:PAI(A;CIOI;FA;;;${SID})(A;OICI;FA;;;SY)` });
-    makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: temp });
+    const win = fakeWindows({ dacl: INHERITED, below: TREE });
+    makeOwnerOnly(DIR, on(win, temp));
+    expect(win.calls).toEqual([
+      WHOAMI_CALL,
+      OWNER_CALL,
+      saveCall(temp),
+      RESET_ALL_CALL,
+      GRANT_CALL,
+      saveCall(temp),
+    ]);
+    expect(win.listed).toEqual([DIR, "C:\\cashu\\run"]);
+  });
+
+  it("never resets through a link: with one below, each other entry is reset on its own", () => {
+    const temp = tempDir();
+    const win = fakeWindows({
+      dacl: INHERITED,
+      below: {
+        "C:\\cashu": [
+          { name: "run", kind: "dir" },
+          { name: "elsewhere", kind: "link" },
+        ],
+        "C:\\cashu\\run": [{ name: "host.token", kind: "file" }],
+        "C:\\cashu\\elsewhere": [{ name: "not-ours", kind: "file" }],
+      },
+    });
+    makeOwnerOnly(DIR, on(win, temp));
+    expect(win.calls).toEqual([
+      WHOAMI_CALL,
+      OWNER_CALL,
+      saveCall(temp),
+      { file: ICACLS, args: ["C:\\cashu\\run", "/reset", "/q"] },
+      { file: ICACLS, args: ["C:\\cashu\\run\\host.token", "/reset", "/q"] },
+      GRANT_CALL,
+      saveCall(temp),
+    ]);
+    expect(win.listed).toEqual([DIR, "C:\\cashu\\run"]);
+  });
+
+  it("removes an explicit Administrators entry that /grant:r leaves (the CI runner's %TEMP%)", () => {
+    const temp = tempDir();
+    const win = fakeWindows({
+      dacl: `D:AI(A;OICI;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;FA;;;${SID})`,
+    });
+    makeOwnerOnly(DIR, on(win, temp));
+    expect(win.calls).toEqual([
+      WHOAMI_CALL,
+      OWNER_CALL,
+      saveCall(temp),
+      GRANT_CALL,
+      removeCall("/remove", ADMINISTRATORS_SID),
+      saveCall(temp),
+    ]);
+    expect(win.dacl()).toBe(OWNER_ONLY);
+  });
+
+  it("removes deny entries: another account's with all its entries, the user's own as denies", () => {
+    const temp = tempDir();
+    const win = fakeWindows({ dacl: `${OWNER_ONLY}(D;OICI;FA;;;WD)(D;;WD;;;${SID})` });
+    makeOwnerOnly(DIR, on(win, temp));
+    expect(win.calls).toEqual([
+      WHOAMI_CALL,
+      OWNER_CALL,
+      saveCall(temp),
+      GRANT_CALL,
+      removeCall("/remove", "S-1-1-0"),
+      removeCall("/remove:d", SID),
+      saveCall(temp),
+    ]);
+    expect(win.dacl()).toBe(OWNER_ONLY);
+  });
+
+  it("names explicit entries given by SDDL aliases by their SIDs; inherited ones go with /inheritance:r", () => {
+    const temp = tempDir();
+    const logon = "S-1-5-5-0-4242";
+    const win = fakeWindows({
+      dacl: `D:AI(A;OICIIO;FA;;;CO)(A;;0x1301bf;;;OW)(A;OICI;0x1200a9;;;BU)(A;;FA;;;${logon})(A;OICIID;FA;;;AU)(A;OICIID;FA;;;SY)`,
+    });
+    makeOwnerOnly(DIR, on(win, temp));
+    expect(win.calls).toEqual([
+      WHOAMI_CALL,
+      OWNER_CALL,
+      saveCall(temp),
+      GRANT_CALL,
+      removeCall("/remove", "S-1-3-0", "S-1-3-4", "S-1-5-32-545", logon),
+      saveCall(temp),
+    ]);
+    expect(win.dacl()).toBe(OWNER_ONLY);
+  });
+
+  it("refuses before any change when another account's entry has no SID to name it by", () => {
+    const temp = tempDir();
+    const win = fakeWindows({
+      dacl: `D:AI(A;OICI;FA;;;DA)(A;OICI;FA;;;LA)(A;OICIID;FA;;;SY)`,
+      below: TREE,
+    });
+    expect(failure(() => makeOwnerOnly(DIR, on(win, temp)))).toBe(
+      "C:\\cashu could not be made private to this user: other accounts hold entries icacls cannot be given by SID (DA, LA); remove them, then start again",
+    );
     expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL, saveCall(temp)]);
+  });
+
+  it("fails closed naming every SID left over after the change", () => {
+    const win = fakeWindows({
+      dacl: `D:AI(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;S-1-5-21-9-9-9-1002)(D;;FA;;;S-1-5-18)`,
+      stubborn: true,
+    });
+    expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
+      "C:\\cashu could not be made private to this user: its access list is still not private after the change: other accounts keep access (S-1-5-32-544, S-1-5-21-9-9-9-1002); deny entries remain (S-1-5-18)",
+    );
+  });
+
+  it("fails closed, naming the dir, when icacls cannot reset, set or remove", () => {
+    const reset = fakeWindows({ dacl: INHERITED, below: TREE, resetStatus: 5 });
+    expect(failure(() => makeOwnerOnly(DIR, on(reset)))).toBe(
+      "C:\\cashu could not be made private to this user: icacls could not reset the access lists of the entries inside it",
+    );
+    // The dir stays as it was, so the next start runs the whole step again.
+    expect(reset.calls.at(-1)).toEqual(RESET_ALL_CALL);
+    expect(reset.dacl()).toBe(INHERITED);
+    const grant = fakeWindows({ dacl: INHERITED, grantStatus: 5 });
+    expect(failure(() => makeOwnerOnly(DIR, on(grant)))).toBe(
+      "C:\\cashu could not be made private to this user: icacls could not set its access list",
+    );
+    const remove = fakeWindows({ dacl: `D:AI(A;OICI;FA;;;BA)`, removeStatus: 5 });
+    expect(failure(() => makeOwnerOnly(DIR, on(remove)))).toBe(
+      "C:\\cashu could not be made private to this user: icacls could not remove the entries of S-1-5-32-544",
+    );
+  });
+
+  it("fails closed before any change when the entries below cannot be listed", () => {
+    const win = fakeWindows({ dacl: INHERITED });
+    const list = () => {
+      throw new Error("EACCES");
+    };
+    expect(failure(() => makeOwnerOnly(DIR, { ...on(win), list }))).toBe(
+      "C:\\cashu could not be made private to this user: the entries inside it could not be listed",
+    );
+    expect(win.calls.some((call) => call.args[1] !== "/save" && call.file === ICACLS)).toBe(false);
   });
 
   it("falls back to windir when SystemRoot is unset", () => {
     const win = fakeWindows({ dacl: OWNER_ONLY });
-    makeOwnerOnly(DIR, { env: { windir: "C:\\Windows" }, run: win.run, tempDir: tempDir() });
+    makeOwnerOnly(DIR, { ...on(win), env: { windir: "C:\\Windows" } });
     expect(win.calls[0]).toEqual(WHOAMI_CALL);
   });
 
-  it("fails closed, naming the dir, when icacls cannot set the DACL", () => {
-    const win = fakeWindows({ dacl: INHERITED, grantStatus: 5 });
-    expect(failure(() => makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: tempDir() }))).toBe(
-      "C:\\cashu could not be made private to this user: icacls could not set its access list",
-    );
-  });
-
-  it("fails closed when another account keeps an explicit entry", () => {
-    const win = fakeWindows({
-      dacl: INHERITED,
-      afterGrant: `D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;${SID})(A;OICI;0x1200a9;;;S-1-5-21-9-9-9-1002)`,
-    });
-    expect(failure(() => makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: tempDir() }))).toBe(
-      "C:\\cashu could not be made private to this user: other accounts keep access (remove them, then start again)",
-    );
-  });
-
   it("fails closed without a SID, a SystemRoot, or for a drive or share root", () => {
-    const opts = (run: AclCommandRunner) => ({ env: ENV, run, tempDir: tempDir() });
     const noSid = fakeWindows({ dacl: INHERITED, whoami: { status: 1, stdout: "" } });
-    expect(failure(() => makeOwnerOnly(DIR, opts(noSid.run)))).toBe(
+    expect(failure(() => makeOwnerOnly(DIR, on(noSid)))).toBe(
       "C:\\cashu could not be made private to this user: the user's SID is unreadable (whoami)",
     );
     const noRoot = fakeWindows({ dacl: INHERITED });
-    expect(
-      failure(() => makeOwnerOnly(DIR, { env: {}, run: noRoot.run, tempDir: tempDir() })),
-    ).toBe("C:\\cashu could not be made private to this user: SystemRoot is not set");
+    expect(failure(() => makeOwnerOnly(DIR, { ...on(noRoot), env: {} }))).toBe(
+      "C:\\cashu could not be made private to this user: SystemRoot is not set",
+    );
     expect(noRoot.calls).toEqual([]);
     for (const root of ["C:\\", "\\\\server\\share\\", "relative\\dir"]) {
       const win = fakeWindows({ dacl: INHERITED });
-      expect(failure(() => makeOwnerOnly(root, opts(win.run)))).toBe(
+      expect(failure(() => makeOwnerOnly(root, on(win)))).toBe(
         `${root} could not be made private to this user: a drive or share root is never a data dir`,
       );
       expect(win.calls).toEqual([]);
@@ -186,9 +399,7 @@ describe("owner-only data dir DACL", () => {
     const other = "S-1-5-21-1111111111-2222222222-3333333333-1002";
     for (const dacl of [INHERITED, OWNER_ONLY]) {
       const win = fakeWindows({ dacl, owner: other });
-      expect(
-        failure(() => makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: tempDir() })),
-      ).toBe(
+      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
         `C:\\cashu could not be made private to this user: it is owned by another account (${other}); take ownership as this user, then start again`,
       );
       expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL]);
@@ -199,9 +410,9 @@ describe("owner-only data dir DACL", () => {
       ["LA", "LA"],
     ] as const) {
       const win = fakeWindows({ dacl: OWNER_ONLY, owner });
-      expect(
-        failure(() => makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: tempDir() })),
-      ).toContain(`it is owned by another account (${shown})`);
+      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toContain(
+        `it is owned by another account (${shown})`,
+      );
     }
   });
 
@@ -212,7 +423,7 @@ describe("owner-only data dir DACL", () => {
       owner: "BA",
       groups: { status: 0, stdout: groups(12288) },
     });
-    makeOwnerOnly(DIR, { env: ENV, run: elevated.run, tempDir: temp });
+    makeOwnerOnly(DIR, on(elevated, temp));
     expect(elevated.calls).toEqual([WHOAMI_CALL, OWNER_CALL, GROUPS_CALL, saveCall(temp)]);
     for (const answer of [
       { status: 0, stdout: groups(8192) },
@@ -220,9 +431,7 @@ describe("owner-only data dir DACL", () => {
       { status: 1, stdout: groups(12288) },
     ]) {
       const win = fakeWindows({ dacl: OWNER_ONLY, owner: "BA", groups: answer });
-      expect(
-        failure(() => makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: tempDir() })),
-      ).toBe(
+      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
         "C:\\cashu could not be made private to this user: it is owned by another account (S-1-5-32-544); take ownership as this user, then start again",
       );
     }
@@ -235,7 +444,7 @@ describe("owner-only data dir DACL", () => {
       owner: "LA",
       whoami: { status: 0, stdout: `"desktop-1\\administrator","${admin}"` },
     });
-    makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: tempDir() });
+    makeOwnerOnly(DIR, on(win));
     expect(win.calls).toHaveLength(3);
   });
 
@@ -247,16 +456,16 @@ describe("owner-only data dir DACL", () => {
       { status: 0, stdout: "Get-Acl : Zugriff verweigert" },
     ]) {
       const win = fakeWindows({ dacl: OWNER_ONLY, powershell });
-      expect(
-        failure(() => makeOwnerOnly(DIR, { env: ENV, run: win.run, tempDir: tempDir() })),
-      ).toBe("C:\\cashu could not be made private to this user: its owner is unreadable (Get-Acl)");
+      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
+        "C:\\cashu could not be made private to this user: its owner is unreadable (Get-Acl)",
+      );
     }
   });
 
   it("quotes the dir for PowerShell, typographic single quotes included", () => {
     const dir = "C:\\Users\\O'Brien\\it\u2019s $(calc) `x` [1]\\cashu";
     const win = fakeWindows({ dacl: OWNER_ONLY });
-    makeOwnerOnly(dir, { env: ENV, run: win.run, tempDir: tempDir() });
+    makeOwnerOnly(dir, on(win));
     expect(win.calls[1]).toEqual({
       file: POWERSHELL,
       args: [
@@ -283,9 +492,9 @@ describe("owner-only data dir DACL", () => {
       }
       return { status: 0, stdout: "" };
     };
-    expect(failure(() => makeOwnerOnly(DIR, { env: ENV, run, tempDir: tempDir() }))).toBe(
-      "C:\\cashu could not be made private to this user: its access list is unreadable",
-    );
+    expect(
+      failure(() => makeOwnerOnly(DIR, { env: ENV, run, list: () => [], tempDir: tempDir() })),
+    ).toBe("C:\\cashu could not be made private to this user: its access list is unreadable");
   });
 });
 
@@ -318,8 +527,8 @@ describe("whoami and SDDL parsing", () => {
     const expected = {
       control: "PAI",
       aces: [
-        { type: "A", flags: "OICI", trustee: SYSTEM_SID },
-        { type: "A", flags: "OICI", trustee: SID },
+        { type: "A", flags: "OICI", rights: "FA", trustee: SYSTEM_SID },
+        { type: "A", flags: "OICI", rights: "FA", trustee: SID },
       ],
     };
     expect(parseSavedDacl(listing(sddl))).toEqual(expected);
@@ -343,8 +552,12 @@ describe("whoami and SDDL parsing", () => {
       return dacl !== undefined && isOwnerOnlyDacl(dacl, SID);
     };
     expect(owner(OWNER_ONLY)).toBe(true);
-    // A deny entry for others narrows access further.
-    expect(owner(`${OWNER_ONLY}(D;OICI;FA;;;WD)`)).toBe(true);
+    expect(owner(OWNER_ONLY.replace(/FA/g, "0x1f01ff"))).toBe(true);
+    // Exact: no deny entry either (one for Everyone would lock the user out too).
+    expect(owner(`${OWNER_ONLY}(D;OICI;FA;;;WD)`)).toBe(false);
+    expect(owner(`${OWNER_ONLY}(D;OICI;FA;;;S-1-5-21-9-9-9-1002)`)).toBe(false);
+    // Full control, not a narrower grant.
+    expect(owner(`D:PAI(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;${SID})`)).toBe(false);
     expect(owner(INHERITED)).toBe(false);
     expect(owner(OWNER_ONLY.replace("D:PAI", "D:AI"))).toBe(false);
     expect(owner(`${OWNER_ONLY}(A;OICI;FA;;;AU)`)).toBe(false);
@@ -359,5 +572,44 @@ describe("whoami and SDDL parsing", () => {
     const dacl = parseSavedDacl(listing("D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;LA)"));
     expect(dacl !== undefined && isOwnerOnlyDacl(dacl, admin)).toBe(true);
     expect(dacl !== undefined && isOwnerOnlyDacl(dacl, SID)).toBe(false);
+  });
+
+  it("maps the machine-independent SDDL aliases to SIDs and keeps the relative ones", () => {
+    expect(sddlTrusteeSid("BA")).toBe(ADMINISTRATORS_SID);
+    expect(sddlTrusteeSid("CO")).toBe("S-1-3-0");
+    expect(sddlTrusteeSid("OW")).toBe("S-1-3-4");
+    expect(sddlTrusteeSid("WD")).toBe("S-1-1-0");
+    expect(sddlTrusteeSid("au")).toBe("S-1-5-11");
+    expect(sddlTrusteeSid("LA")).toBe("LA");
+    expect(sddlTrusteeSid("DA")).toBe("DA");
+    expect(sddlTrusteeSid(SID.toLowerCase())).toBe(SID);
+    const dacl = parseSavedDacl(listing("D:AI(A;OICIIO;GA;;;CO)(A;OICIID;0x1301bf;;;AU)"));
+    expect(dacl?.aces.map((ace) => [ace.trustee, ace.rights])).toEqual([
+      ["S-1-3-0", "GA"],
+      ["S-1-5-11", "0X1301BF"],
+    ]);
+  });
+
+  it("describes what keeps a DACL from owner-only, by SIDs", () => {
+    const problems = (sddl: string) => {
+      const dacl = parseSavedDacl(listing(sddl));
+      return dacl === undefined ? ["unparsed"] : daclProblems(dacl, SID);
+    };
+    expect(problems(OWNER_ONLY)).toEqual([]);
+    expect(problems(INHERITED)).toEqual([
+      "it still inherits its parent's access list",
+      "other accounts keep access (S-1-5-32-544, S-1-5-11)",
+      `no full control inherited below for ${SID}`,
+    ]);
+    expect(problems(`D:PAI(A;OICI;FA;;;SY)(A;OICIIO;FA;;;${SID})(D;;FA;;;WD)(A;;FA;;;OW)`)).toEqual(
+      [
+        "other accounts keep access (S-1-3-4)",
+        "deny entries remain (S-1-1-0)",
+        `no full control inherited below for ${SID}`,
+      ],
+    );
+    expect(problems(`D:PAI(A;OICI;FA;;;${SID})`)).toEqual([
+      "no full control inherited below for S-1-5-18",
+    ]);
   });
 });

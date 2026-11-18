@@ -6,15 +6,25 @@
 //   macOS, Linux  `<data dir>/bin/cashu`: a POSIX sh script, every word single-quoted.
 //   Windows       `<data dir>\bin\cashu.cmd` (C6): a cmd script with CRLF line ends,
 //                   @echo off / setlocal DisableDelayedExpansion / set "K=V"... /
-//                   "<command>" "<arg>"... %* & exit /b
+//                   "<command>" "<arg>"... %* & call exit /b %%ERRORLEVEL%%
 // Delayed expansion is switched off explicitly: a user can turn it on for every cmd.exe in the
 // registry (Command Processor\DelayedExpansion), and then a `!` in a path or argument would be
 // expanded as a variable reference.
 // cmd.exe reads a script line by line at byte offsets while it runs, so a launcher rewritten during a
 // long `cashu mcp` session would otherwise be read on from the old offset after the program returns.
-// The program call and `exit /b` share one line, parsed whole before the program starts, so nothing
-// after it is ever read. `exit /b` without a number leaves ERRORLEVEL as the program set it (only a
-// given number sets it, per the `exit` reference), which is the script's exit code.
+// The program call and the `exit /b` share one line, parsed whole before the program starts, so
+// nothing after it is ever read.
+// The exit code: the `exit /b` must carry the program's code as a number. A bare `exit /b` leaves
+// ERRORLEVEL set, but `cmd /c launcher.cmd` (how Node, PowerShell and agents run a .cmd) exits with
+// the return code of the last command, and a bare `exit /b` returns 0 there (seen on windows-latest:
+// a program exiting 7 gave 0). `exit /b %ERRORLEVEL%` cannot be written on that line either: a line's
+// `%` references are expanded once when it is read, before the program has run. So the line holds
+// `%%ERRORLEVEL%%`, which that first expansion turns into the text `%ERRORLEVEL%`, and CALL expands
+// its command once more when it runs, after the program: `call exit /b 7`. CALL of an internal
+// command runs it in the current batch context (only `call :label` opens a new one), so that `exit
+// /b 7` ends the launcher with 7, read by `cmd /c` as its exit code, by a calling batch (`call
+// cashu.cmd`) as ERRORLEVEL and by PowerShell as $LASTEXITCODE. Only the CALL's own command is
+// expanded again, never the program's arguments (`%*`).
 // cmd.exe treats everything inside double quotes literally except `%` (variable expansion) and `"`
 // (the end of the quote), so a value holding either, a CR, LF or NUL is refused, and so is an env key
 // outside [A-Za-z_][A-Za-z0-9_]*. An argument's trailing backslashes are doubled so the program's own
@@ -97,7 +107,7 @@ function windowsScript(program: Program, env: LauncherTarget["env"]): string {
   if (command === "" || command.endsWith("\\")) throw new LauncherValueError("command");
   const args = program.args.map((arg) => cmdValue(arg, "argument", env).replace(/\\+$/, "$&$&"));
   const words = [command, ...args].map((word) => `"${word}"`);
-  lines.push(`${words.join(" ")} %* & exit /b`);
+  lines.push(`${words.join(" ")} %* & call exit /b %%ERRORLEVEL%%`);
   return lines.map((line) => `${line}\r\n`).join("");
 }
 

@@ -5,6 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { removeConnectorOwner } from "./connectorRemoval.js";
 import { ConnectorCatalog } from "./connectors/catalog.js";
 import type { HostStores, OpenVault } from "./stores.js";
+import { connectorsUnsupported } from "./testing/platform.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -103,63 +104,78 @@ function fixture() {
   };
 }
 
-it("clears known secrets before a durable binding removal, then history and catalog", async () => {
-  const f = fixture();
-  expect(await removeConnectorOwner(f.input)).toEqual({
-    status: "completed",
-    value: { bindings: 1, runs: 1 },
-  });
-  expect(f.steps[0]).toBe("clear:api_key");
-  expect(f.steps[1]).toMatch(/^command:/);
-  expect(f.catalog.list()).toEqual([]);
-});
+it.skipIf(connectorsUnsupported)(
+  "clears known secrets before a durable binding removal, then history and catalog",
+  async () => {
+    const f = fixture();
+    expect(await removeConnectorOwner(f.input)).toEqual({
+      status: "completed",
+      value: { bindings: 1, runs: 1 },
+    });
+    expect(f.steps[0]).toBe("clear:api_key");
+    expect(f.steps[1]).toMatch(/^command:/);
+    expect(f.catalog.list()).toEqual([]);
+  },
+);
 
-it("keeps the original binding attempt key after an uncertain native command", async () => {
-  const f = fixture();
-  f.setUncertain(true);
-  const first = await removeConnectorOwner(f.input);
-  expect(first).toMatchObject({
-    status: "outcome_unknown",
-    attempt: { command: "connector.owner.removeAllBindings" },
-  });
-  f.setAttemptPhase("may_append");
-  const second = await removeConnectorOwner(f.input);
-  expect(second).toMatchObject({
-    status: "outcome_unknown",
-    attempt: first.status === "outcome_unknown" ? first.attempt : undefined,
-  });
-  expect(f.catalog.list()).toHaveLength(1);
-  expect(f.steps.filter((step) => step.startsWith("command:"))).toHaveLength(1);
-});
+it.skipIf(connectorsUnsupported)(
+  "keeps the original binding attempt key after an uncertain native command",
+  async () => {
+    const f = fixture();
+    f.setUncertain(true);
+    const first = await removeConnectorOwner(f.input);
+    expect(first).toMatchObject({
+      status: "outcome_unknown",
+      attempt: { command: "connector.owner.removeAllBindings" },
+    });
+    f.setAttemptPhase("may_append");
+    const second = await removeConnectorOwner(f.input);
+    expect(second).toMatchObject({
+      status: "outcome_unknown",
+      attempt: first.status === "outcome_unknown" ? first.attempt : undefined,
+    });
+    expect(f.catalog.list()).toHaveLength(1);
+    expect(f.steps.filter((step) => step.startsWith("command:"))).toHaveLength(1);
+  },
+);
 
-it("fences a concurrent binding before the final removal command", async () => {
-  const f = fixture();
-  f.setRebindDuringCleanup(true);
-  expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
-  expect(f.steps.filter((step) => step.startsWith("command:"))).toEqual([]);
-  expect(f.catalog.removalActive("sample-fetch")).toBe(true);
-  expect(() => f.catalog.installPending(f.source)).toThrow("removal in progress");
-});
+it.skipIf(connectorsUnsupported)(
+  "fences a concurrent binding before the final removal command",
+  async () => {
+    const f = fixture();
+    f.setRebindDuringCleanup(true);
+    expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
+    expect(f.steps.filter((step) => step.startsWith("command:"))).toEqual([]);
+    expect(f.catalog.removalActive("sample-fetch")).toBe(true);
+    expect(() => f.catalog.installPending(f.source)).toThrow("removal in progress");
+  },
+);
 
-it("retries a known terminal refusal with a new key under the existing fence", async () => {
-  const f = fixture();
-  f.setUncertain(true);
-  expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
-  const firstKey = f.steps.find((step) => step.startsWith("command:"));
-  f.setAttemptPhase("terminal");
-  f.setUncertain(false);
-  expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "completed" });
-  const keys = f.steps.filter((step) => step.startsWith("command:"));
-  expect(keys).toHaveLength(2);
-  expect(keys[1]).not.toBe(firstKey);
-  expect(f.catalog.removalActive("sample-fetch")).toBe(false);
-});
+it.skipIf(connectorsUnsupported)(
+  "retries a known terminal refusal with a new key under the existing fence",
+  async () => {
+    const f = fixture();
+    f.setUncertain(true);
+    expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
+    const firstKey = f.steps.find((step) => step.startsWith("command:"));
+    f.setAttemptPhase("terminal");
+    f.setUncertain(false);
+    expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "completed" });
+    const keys = f.steps.filter((step) => step.startsWith("command:"));
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).not.toBe(firstKey);
+    expect(f.catalog.removalActive("sample-fetch")).toBe(false);
+  },
+);
 
-it("reports unknown when a resumed removal loses full native inventory", async () => {
-  const f = fixture();
-  f.setUncertain(true);
-  expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
-  f.setInventoryReady(false);
-  expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
-  expect(f.catalog.removalActive("sample-fetch")).toBe(true);
-});
+it.skipIf(connectorsUnsupported)(
+  "reports unknown when a resumed removal loses full native inventory",
+  async () => {
+    const f = fixture();
+    f.setUncertain(true);
+    expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
+    f.setInventoryReady(false);
+    expect(await removeConnectorOwner(f.input)).toMatchObject({ status: "outcome_unknown" });
+    expect(f.catalog.removalActive("sample-fetch")).toBe(true);
+  },
+);

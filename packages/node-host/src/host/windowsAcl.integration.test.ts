@@ -1,9 +1,11 @@
-// The owner-only data dir DACL against the real icacls and PowerShell (Windows only): a fresh temp
-// dir and the entries already inside it end up with no principal but this user and SYSTEM, and a dir
+// The owner-only data dir DACL against the real icacls and PowerShell (Windows only): a fresh dir in
+// the user's profile Temp (os.tmpdir(), where the first Windows CI run refused every data dir) and in
+// the runner's RUNNER_TEMP when set, carrying an explicit entry of another account, ends up with
+// exactly this user and SYSTEM, and the entries already inside it with no other account; a dir
 // another account owns is refused. Only SIDs are read (the SDDL of `icacls /save`, the CSV of
 // `whoami`), never localized account names.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +13,7 @@ import { cleanup, tempDir, trackDir } from "../testing/hostHarness.js";
 import { HostPathError } from "./paths.js";
 import {
   type Dacl,
+  daclProblems,
   isOwnerOnlyDacl,
   makeOwnerOnly,
   parseSavedDacl,
@@ -46,24 +49,48 @@ function daclOf(path: string): Dacl {
   }
 }
 
-const principals = (dacl: Dacl) =>
-  [...new Set(dacl.aces.filter((ace) => !ace.type.endsWith("D")).map((ace) => ace.trustee))].sort();
+/** BUILTIN\Users: the other account the tests give an explicit entry. */
+const USERS_SID = "S-1-5-32-545";
+
+/** The trustees of every entry of `dacl` (grant or deny) other than `sid` and SYSTEM. */
+const othersIn = (dacl: Dacl, sid: string) =>
+  dacl.aces
+    .map((ace) => ace.trustee)
+    .filter(
+      (trustee) =>
+        trustee !== sid &&
+        trustee !== SYSTEM_SID &&
+        !(trustee === "LA" && /^S-1-5-21-(?:\d+-){3}500$/.test(sid)),
+    );
+
+function icacls(args: readonly string[]): void {
+  const out = spawnSync(join(system32(), "icacls.exe"), [...args, "/q"]);
+  expect(out.status).toBe(0);
+}
+
+/** The parents a data dir is made private in: the user's profile Temp, and RUNNER_TEMP on CI. */
+const PARENTS: readonly (readonly [string, string])[] = [
+  ["the user's temp folder (os.tmpdir())", tmpdir()],
+  ...(process.env.RUNNER_TEMP ? [["RUNNER_TEMP", process.env.RUNNER_TEMP] as const] : []),
+];
 
 describe.skipIf(process.platform !== "win32")("owner-only data dir DACL (Windows)", () => {
-  it("leaves only this user and SYSTEM on the dir and everything already below it", () => {
+  it.each(PARENTS)("leaves only this user and SYSTEM on a dir in %s and below it", (_, parent) => {
     const sid = userSid();
-    const dir = join(trackDir(tempDir()), "data");
-    mkdirSync(join(dir, "run"), { recursive: true });
-    writeFileSync(join(dir, "run", "host.token"), "synthetic");
+    const dir = trackDir(realpathSync.native(mkdtempSync(join(parent, "cashu-acl-it-"))));
+    const token = join(dir, "run", "host.token");
+    mkdirSync(join(dir, "run"));
+    writeFileSync(token, "synthetic");
+    // Another account's explicit entries, which /inheritance:r and /grant:r alone leave in place.
+    icacls([dir, "/grant", `*${USERS_SID}:(OI)(CI)R`]);
+    icacls([token, "/grant", `*${USERS_SID}:R`]);
+    expect(othersIn(daclOf(dir), sid)).toContain(USERS_SID);
     makeOwnerOnly(dir);
     const own = daclOf(dir);
+    expect(daclProblems(own, sid)).toEqual([]);
     expect(own.control).toContain("P");
-    expect(isOwnerOnlyDacl(own, sid)).toBe(true);
-    const owners = [sid, SYSTEM_SID].sort();
-    expect(principals(own)).toEqual(owners);
-    for (const child of [join(dir, "run"), join(dir, "run", "host.token")]) {
-      expect(principals(daclOf(child)).every((p) => owners.includes(p))).toBe(true);
-    }
+    expect(othersIn(own, sid)).toEqual([]);
+    for (const child of [join(dir, "run"), token]) expect(othersIn(daclOf(child), sid)).toEqual([]);
     // Idempotent: a second start finds it private and leaves it as it is.
     makeOwnerOnly(dir);
     expect(daclOf(dir)).toEqual(own);

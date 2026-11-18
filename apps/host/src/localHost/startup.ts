@@ -211,6 +211,7 @@ export async function openHostState(input: {
         lock: server.lock,
         now,
         createKeyStore: vaultSource.factory.creationKeyStoreFactory(),
+        log,
       });
       // Authenticate completed anchors before native sessions take exclusive SQLite opens.
       await creation.primeVerifiedCompleted();

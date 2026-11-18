@@ -16,7 +16,7 @@
 // (`test_build_marker_unsupported`) instead of running a build meant for a test dir on the real one.
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, posix } from "node:path";
 import { readBundleIdentity } from "./bundleIdentity.js";
 import { FLAVOR_IDS, FLAVORS } from "./flavor.js";
 
@@ -60,7 +60,9 @@ function invalid(): never {
  */
 function checkedDir(value: unknown): string {
   if (typeof value !== "string" || value.length > 1024 || value.includes("\0")) invalid();
-  if (!isAbsolute(value) || resolve(value) !== value || value === "/") invalid();
+  // Marker paths are macOS paths by definition (a Windows install refuses any marker), so they are
+  // read as POSIX on every platform, never with this platform's path rules.
+  if (!posix.isAbsolute(value) || posix.resolve(value) !== value || value === "/") invalid();
   const parts = value.toLowerCase().split("/");
   if (parts[1] === "applications") invalid();
   for (let index = 0; index + 2 < parts.length; index += 1) {

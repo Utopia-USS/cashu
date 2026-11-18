@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { ConnectorCatalog } from "../connectors/catalog.js";
+import { connectorsUnsupported } from "../testing/platform.js";
 import { ConnectorProposalReceipts } from "./connectorReceipt.js";
 import { connectorMcpPort } from "./connectors.js";
 
@@ -82,123 +83,129 @@ it("counts only bindings in the bound vault and fails closed after authority los
   await expect(port.list()).rejects.toThrow("connector_mcp_authority_lost");
 });
 
-it("reports a shipped connector verified in the future as invalid until its date", async () => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-mcp-catalog-"));
-  try {
-    const data = join(root, "data");
-    const shipped = join(root, "shipped");
-    const entry = join(shipped, "sample-file");
-    mkdirSync(data, { mode: 0o700 });
-    mkdirSync(join(entry, "fixtures"), { recursive: true });
-    writeFileSync(
-      join(entry, "connector.yaml"),
-      "api_version: 1\nid: sample-file\nname: Sample\nversion: '1'\nmaintainer: Synthetic\nlast_verified: 2026-10-30\ncountries: [PL, CZ]\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
-    );
-    writeFileSync(join(entry, "connector.py"), "print('synthetic')\n");
-    writeFileSync(join(entry, "README.md"), "Synthetic connector\n");
-    writeFileSync(join(entry, "fixtures", "sample.csv"), "synthetic\n");
-    const unverified = join(shipped, "missing-date");
-    mkdirSync(join(unverified, "fixtures"), { recursive: true });
-    writeFileSync(
-      join(unverified, "connector.yaml"),
-      "api_version: 1\nid: missing-date\nname: Missing Date\nversion: '1'\nmaintainer: Synthetic\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
-    );
-    writeFileSync(join(unverified, "connector.py"), "print('synthetic')\n");
-    writeFileSync(join(unverified, "README.md"), "Synthetic connector\n");
-    writeFileSync(join(unverified, "fixtures", "sample.csv"), "synthetic\n");
-    let now = Date.parse("2026-10-01T12:00:00Z");
-    const port = connectorMcpPort({
-      catalog: new ConnectorCatalog(data),
-      vault: { id: VAULT, store: { read: () => [] } } as never,
-      device,
-      receipts: {} as never,
-      shippedCatalog: shipped,
-      now: () => now,
-      isCurrent: () => true,
-    });
-    expect((await port.list()).catalog[0]?.valid).toBe(false);
-    expect((await port.list()).catalog[0]?.countries).toEqual(["PL", "CZ"]);
-    expect((await port.list()).catalog.find((row) => row.id === "missing-date")).toBeUndefined();
-    now = Date.parse("2026-10-31T12:00:00Z");
-    expect((await port.list()).catalog[0]?.valid).toBe(true);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+it.skipIf(connectorsUnsupported)(
+  "reports a shipped connector verified in the future as invalid until its date",
+  async () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-mcp-catalog-"));
+    try {
+      const data = join(root, "data");
+      const shipped = join(root, "shipped");
+      const entry = join(shipped, "sample-file");
+      mkdirSync(data, { mode: 0o700 });
+      mkdirSync(join(entry, "fixtures"), { recursive: true });
+      writeFileSync(
+        join(entry, "connector.yaml"),
+        "api_version: 1\nid: sample-file\nname: Sample\nversion: '1'\nmaintainer: Synthetic\nlast_verified: 2026-10-30\ncountries: [PL, CZ]\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
+      );
+      writeFileSync(join(entry, "connector.py"), "print('synthetic')\n");
+      writeFileSync(join(entry, "README.md"), "Synthetic connector\n");
+      writeFileSync(join(entry, "fixtures", "sample.csv"), "synthetic\n");
+      const unverified = join(shipped, "missing-date");
+      mkdirSync(join(unverified, "fixtures"), { recursive: true });
+      writeFileSync(
+        join(unverified, "connector.yaml"),
+        "api_version: 1\nid: missing-date\nname: Missing Date\nversion: '1'\nmaintainer: Synthetic\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
+      );
+      writeFileSync(join(unverified, "connector.py"), "print('synthetic')\n");
+      writeFileSync(join(unverified, "README.md"), "Synthetic connector\n");
+      writeFileSync(join(unverified, "fixtures", "sample.csv"), "synthetic\n");
+      let now = Date.parse("2026-10-01T12:00:00Z");
+      const port = connectorMcpPort({
+        catalog: new ConnectorCatalog(data),
+        vault: { id: VAULT, store: { read: () => [] } } as never,
+        device,
+        receipts: {} as never,
+        shippedCatalog: shipped,
+        now: () => now,
+        isCurrent: () => true,
+      });
+      expect((await port.list()).catalog[0]?.valid).toBe(false);
+      expect((await port.list()).catalog[0]?.countries).toEqual(["PL", "CZ"]);
+      expect((await port.list()).catalog.find((row) => row.id === "missing-date")).toBeUndefined();
+      now = Date.parse("2026-10-31T12:00:00Z");
+      expect((await port.list()).catalog[0]?.valid).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
-it("installs only a checked workspace connector as pending", async () => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-mcp-connectors-"));
-  try {
-    const workspace = join(root, "workspace");
-    const source = join(workspace, "connectors", "sample-file");
-    const data = join(root, "data");
-    mkdirSync(source, { recursive: true, mode: 0o700 });
-    mkdirSync(data, { mode: 0o700 });
-    writeFileSync(
-      join(source, "connector.yaml"),
-      "api_version: 1\nid: sample-file\nname: Sample\nversion: '1'\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
-    );
-    writeFileSync(join(source, "connector.py"), "print('synthetic')\n");
-    const catalog = new ConnectorCatalog(data);
-    const receipts = new ConnectorProposalReceipts(data);
-    const authority = {
-      catalog,
-      vault: {
-        id: VAULT,
-        store: {
-          read: (sql: string) =>
-            sql.includes("FROM profiles")
-              ? [
-                  {
-                    slug: "synthetic",
-                    name: "Synthetic",
-                    baseCurrency: "PLN",
-                    mcpPrivacy: "strict",
-                  },
-                ]
-              : [],
-        },
-      } as never,
-      device,
-      receipts,
-      workspace: {
-        bind: () => ({
-          isCurrent: () => true,
-          inspect: async () => ({ availability: "ready", path: workspace }),
-        }),
-      } as never,
-      now: () => Date.parse("2026-11-04T00:00:00Z"),
-      isCurrent: () => true,
-    };
-    const port = connectorMcpPort(authority);
-    await expect(port.propose({ path: root }, "bad-path")).rejects.toThrow(
-      "connector_path_invalid",
-    );
-    // Windows: a share or device path is refused as text, before anything resolves it.
-    const windowsPort = connectorMcpPort({ ...authority, platform: "win32" });
-    for (const path of ["\\\\attacker\\share\\sample-file", "\\\\?\\UNC\\attacker\\x"])
-      await expect(windowsPort.propose({ path }, `unc-${path.length}`)).rejects.toThrow(
+it.skipIf(connectorsUnsupported)(
+  "installs only a checked workspace connector as pending",
+  async () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-mcp-connectors-"));
+    try {
+      const workspace = join(root, "workspace");
+      const source = join(workspace, "connectors", "sample-file");
+      const data = join(root, "data");
+      mkdirSync(source, { recursive: true, mode: 0o700 });
+      mkdirSync(data, { mode: 0o700 });
+      writeFileSync(
+        join(source, "connector.yaml"),
+        "api_version: 1\nid: sample-file\nname: Sample\nversion: '1'\nmodule: budget\nkind: file\nrun: [python3, connector.py]\nfile:\n  extensions: [csv]\n",
+      );
+      writeFileSync(join(source, "connector.py"), "print('synthetic')\n");
+      const catalog = new ConnectorCatalog(data);
+      const receipts = new ConnectorProposalReceipts(data);
+      const authority = {
+        catalog,
+        vault: {
+          id: VAULT,
+          store: {
+            read: (sql: string) =>
+              sql.includes("FROM profiles")
+                ? [
+                    {
+                      slug: "synthetic",
+                      name: "Synthetic",
+                      baseCurrency: "PLN",
+                      mcpPrivacy: "strict",
+                    },
+                  ]
+                : [],
+          },
+        } as never,
+        device,
+        receipts,
+        workspace: {
+          bind: () => ({
+            isCurrent: () => true,
+            inspect: async () => ({ availability: "ready", path: workspace }),
+          }),
+        } as never,
+        now: () => Date.parse("2026-11-04T00:00:00Z"),
+        isCurrent: () => true,
+      };
+      const port = connectorMcpPort(authority);
+      await expect(port.propose({ path: root }, "bad-path")).rejects.toThrow(
         "connector_path_invalid",
       );
-    expect((await port.propose({ path: source }, "install-one")).status).toBe("pending");
-    expect(catalog.list()[0]?.approval).toBe("pending");
-    const reopened = new ConnectorProposalReceipts(data);
-    expect(reopened.status("install-one", VAULT, catalog)).toBe("completed");
-    await expect(port.propose({ catalogId: "different" }, "install-one")).rejects.toThrow(
-      "request_key_conflict",
-    );
-    // Creating a symlink needs Developer Mode or elevation on Windows.
-    if (process.platform !== "win32") {
-      const original = join(workspace, "connectors");
-      const moved = join(root, "moved-connectors");
-      renameSync(original, moved);
-      symlinkSync(moved, original);
+      // Windows: a share or device path is refused as text, before anything resolves it.
+      const windowsPort = connectorMcpPort({ ...authority, platform: "win32" });
+      for (const path of ["\\\\attacker\\share\\sample-file", "\\\\?\\UNC\\attacker\\x"])
+        await expect(windowsPort.propose({ path }, `unc-${path.length}`)).rejects.toThrow(
+          "connector_path_invalid",
+        );
       expect((await port.propose({ path: source }, "install-one")).status).toBe("pending");
-      await expect(
-        port.propose({ path: join(original, "sample-file") }, "install-two"),
-      ).rejects.toThrow("connector_path_invalid");
+      expect(catalog.list()[0]?.approval).toBe("pending");
+      const reopened = new ConnectorProposalReceipts(data);
+      expect(reopened.status("install-one", VAULT, catalog)).toBe("completed");
+      await expect(port.propose({ catalogId: "different" }, "install-one")).rejects.toThrow(
+        "request_key_conflict",
+      );
+      // Creating a symlink needs Developer Mode or elevation on Windows.
+      if (process.platform !== "win32") {
+        const original = join(workspace, "connectors");
+        const moved = join(root, "moved-connectors");
+        renameSync(original, moved);
+        symlinkSync(moved, original);
+        expect((await port.propose({ path: source }, "install-one")).status).toBe("pending");
+        await expect(
+          port.propose({ path: join(original, "sample-file") }, "install-two"),
+        ).rejects.toThrow("connector_path_invalid");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
+  },
+);

@@ -2,12 +2,13 @@
 // a real host socket, and spawned host processes (Node type stripping) with process bookkeeping so no
 // test leaves a host running.
 import { type ChildProcess, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { JsonValue, StoreToClient } from "@cashu/host-protocol/store";
 import { connectHost, type HostConnection, resolveReal } from "@cashu/node-host";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import { mintUlid } from "@cashu/store";
 import { memoryLog } from "../log.js";
 
@@ -222,6 +223,6 @@ export function cleanup(): void {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
   }
   children.clear();
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs) removeTempDir(dir);
   dirs.clear();
 }

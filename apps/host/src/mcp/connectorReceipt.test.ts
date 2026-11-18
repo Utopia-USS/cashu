@@ -1,17 +1,19 @@
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveReal } from "@cashu/node-host";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import { afterEach, expect, it } from "vitest";
 import type { ConnectorCatalog } from "../connectors/catalog.js";
 import { ConnectorProposalReceipts, connectorRequestHash } from "./connectorReceipt.js";
 
 const roots: string[] = [];
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) removeTempDir(root);
 });
 
 it("reopens an intent after a lost response and reconciles only matching pending content", () => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-proposal-receipt-"));
+  const root = mkdtempSync(join(resolveReal(tmpdir()), "cashu-proposal-receipt-"));
   roots.push(root);
   const data = join(root, "data");
   mkdirSync(data, { mode: 0o700 });
@@ -72,7 +74,7 @@ it("reopens an intent after a lost response and reconciles only matching pending
 });
 
 it("reads Windows' synthetic modes as private receipts", () => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-proposal-receipt-"));
+  const root = mkdtempSync(join(resolveReal(tmpdir()), "cashu-proposal-receipt-"));
   roots.push(root);
   const data = join(root, "data");
   mkdirSync(data, { mode: 0o700 });

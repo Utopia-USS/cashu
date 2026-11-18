@@ -1,13 +1,5 @@
 import { randomBytes } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
@@ -24,6 +16,7 @@ import {
 import { crypto } from "@cashu/sync";
 import { afterEach, expect, it, vi } from "vitest";
 import { takeWriterLease } from "./lease.js";
+import { memoryLog } from "./log.js";
 import { createNativeCreationService } from "./nativeCreation.js";
 import {
   type CreationStage,
@@ -118,18 +111,21 @@ async function fixture() {
   const createKeyStore: typeof createProductionKeyStore = (options) =>
     createTestKeyStore({ ...options, service, keyring: port });
   const sodium = await crypto.loadNodeSodium();
+  const log = memoryLog();
   return {
     dataDir,
     lock,
     items,
     createKeyStore,
     sodium,
+    log,
     create: (faultAfterPhase?: (stage: CreationStage) => void) =>
       createNativeCreationService({
         dataDir,
         lock,
         sodium,
         createKeyStore,
+        log,
         ...(faultAfterPhase ? { faultAfterPhase } : {}),
       }),
   };
@@ -218,6 +214,15 @@ it.each(["recorded", "keys", "artifacts", "history", "admission", "publishing"] 
         operationId: prepared.operationId,
         stage: phase,
       });
+      expect(f.log.lines.map((line) => JSON.parse(line))).toEqual([
+        {
+          at: new Date(0).toISOString(),
+          level: "error",
+          event: "host.creation.outcome-unknown",
+          stage: phase,
+          error: "Error",
+        },
+      ]);
       expect(readNativeCreationJournal(f.dataDir).pending?.operationId).toBe(prepared.operationId);
       expect((await f.create().prepare(input)).kind).toBe("refused");
       expect(await f.create().current({})).toEqual(result);
@@ -226,6 +231,43 @@ it.each(["recorded", "keys", "artifacts", "history", "admission", "publishing"] 
     }
   },
 );
+
+it("logs the code and syscall of the error a commit ended on, never its message", async () => {
+  const f = await fixture();
+  try {
+    const creation = f.create((stage) => {
+      if (stage === "artifacts")
+        throw Object.assign(
+          new Error("EPERM: operation not permitted, fsync 'C:\\synthetic\\log'"),
+          {
+            code: "EPERM",
+            syscall: "fsync",
+            path: "C:\\synthetic\\log",
+          },
+        );
+    });
+    const prepared = await creation.prepare(input);
+    if (prepared.kind !== "prepared") throw new Error("prepare refused in synthetic fixture");
+    const result = await creation.commit({
+      operationId: prepared.operationId,
+      phraseSession: prepared.phraseSession,
+    });
+    expect(result.kind).toBe("outcome_unknown");
+    expect(f.log.lines).toHaveLength(1);
+    expect(JSON.parse(f.log.lines[0] ?? "")).toEqual({
+      at: new Date(0).toISOString(),
+      level: "error",
+      event: "host.creation.outcome-unknown",
+      stage: "artifacts",
+      error: "Error",
+      code: "EPERM",
+      syscall: "fsync",
+    });
+    expect(f.log.lines[0]).not.toContain("synthetic");
+  } finally {
+    f.lock.release();
+  }
+});
 
 it("replaces only an uncommitted ephemeral preparation and keeps pending crash state", async () => {
   const f = await fixture();

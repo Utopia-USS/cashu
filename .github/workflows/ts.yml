@@ -130,6 +130,41 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
+      # DIAGNOSTIC only (never fails the job): which entries a freshly created folder carries in the user's profile
+      # Temp, in %LOCALAPPDATA% (the default data dir's parent) and in RUNNER_TEMP, and what is left after the
+      # icacls call that the owner-only data dir DACL starts with (packages/node-host/src/host/windowsAcl.ts).
+      # Prints SIDs (SDDL) only, for the owner-only DACL work; drop it once that is settled on real runners.
+      - name: "Diagnostic: ACLs of a fresh folder (owner-only data dir)"
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $sys32 = Join-Path $env:SystemRoot 'System32'
+          $icacls = Join-Path $sys32 'icacls.exe'
+          $whoami = Join-Path $sys32 'whoami.exe'
+          $sid = ((& $whoami /user /fo csv /nh) -split ',')[-1].Trim().Trim('"')
+          Write-Output "user SID: $sid"
+          & $whoami /groups /fo csv /nh | Select-String -SimpleMatch '"S-1-16-'
+          function Show-Sddl([string]$label, [string]$path) {
+            $listing = Join-Path $env:RUNNER_TEMP ('acl-diag-' + [guid]::NewGuid().ToString('N'))
+            & $icacls $path /save $listing /q | Out-Null
+            $owner = (Get-Acl -LiteralPath $path).Sddl -replace 'D:.*$', ''
+            $dacl = (Get-Content -LiteralPath $listing -Encoding Unicode | Select-Object -Skip 1 -First 1)
+            Write-Output "  $label  $owner  $dacl"
+            Remove-Item -LiteralPath $listing -Force -ErrorAction SilentlyContinue
+          }
+          foreach ($parent in @($env:TEMP, $env:LOCALAPPDATA, $env:RUNNER_TEMP)) {
+            Write-Output "== $parent"
+            Show-Sddl 'parent' $parent
+            $dir = Join-Path $parent ('acl-diag-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $dir | Out-Null
+            Show-Sddl 'fresh ' $dir
+            & $icacls $dir /inheritance:r /grant:r "*${sid}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' /q | Out-Null
+            Write-Output "  icacls /inheritance:r /grant:r exit $LASTEXITCODE"
+            Show-Sddl 'after ' $dir
+            Remove-Item -LiteralPath $dir -Recurse -Force
+          }
+
       - name: Install
         id: install
         run: |

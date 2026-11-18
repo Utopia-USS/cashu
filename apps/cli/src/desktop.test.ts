@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FLAVORS } from "@cashu/node-host/flavor";
 import { writeWindowsInstall } from "@cashu/node-host/testing/windows-install";
@@ -28,6 +28,13 @@ it("uses a built source desktop with the selected data dir and a fake launcher",
     { ELECTRON_RUN_AS_NODE: "1", CASHU_DATA_DIR: "/wrong" },
     dataDir,
     true,
+    // The macOS / Linux launch (`.bin/electron`) on every platform; the Windows one has its own test.
+    {
+      platform: "darwin",
+      electronBinary: () => {
+        throw new Error("macOS and Linux never ask the electron package");
+      },
+    },
   );
   expect(target).toMatchObject({
     command: join(app, "node_modules", ".bin", "electron"),
@@ -103,13 +110,33 @@ it("runs a Windows source checkout's Electron binary that the electron package e
   expect(desktopLaunch(...args, windows(join(checkout, "missing.exe")))).toBeNull();
 });
 
+// A synthetic electron package: the real one downloads and verifies its binary on the first require,
+// which a unit test must never do (it timed out on fresh CI runners).
 it("resolves the checkout's Electron binary through the electron package, null without one", () => {
-  const desktop = join(import.meta.dirname, "..", "..", "desktop");
-  const binary = sourceElectronBinary(desktop);
-  expect(binary).not.toBeNull();
-  expect(realpathSync(binary ?? "")).toContain(join("node_modules", "electron", "dist"));
-  expect(sourceElectronBinary("/cashu-nonexistent/apps/desktop")).toBeNull();
+  const desktop = tempDir("cashu-desktop-electron-");
+  writeFileSync(join(desktop, "package.json"), '{"name":"@cashu/desktop","private":true}\n');
+  const pkg = join(desktop, "node_modules", "electron");
+  mkdirSync(join(pkg, "dist"), { recursive: true });
+  const binary = join(pkg, "dist", "electron");
+  writeFileSync(binary, "");
+  writeFileSync(join(pkg, "package.json"), '{"name":"electron","main":"index.js"}\n');
+  writeFileSync(join(pkg, "index.js"), `module.exports = ${JSON.stringify(binary)};\n`);
+  expect(sourceElectronBinary(desktop)).toBe(binary);
+  // The package exports a path whose binary is missing (not downloaded yet): no binary.
+  writeFileSync(
+    join(pkg, "index.js"),
+    `module.exports = ${JSON.stringify(`${binary}-missing`)};\n`,
+  );
+  expect(sourceElectronBinary(tempDirCopy(desktop))).toBeNull();
+  expect(sourceElectronBinary(join(desktop, "nonexistent"))).toBeNull();
 });
+
+/** A fresh copy of a synthetic desktop dir (require caches a module per resolved path). */
+function tempDirCopy(dir: string): string {
+  const copy = tempDir("cashu-desktop-electron-copy-");
+  cpSync(dir, copy, { recursive: true });
+  return copy;
+}
 
 it("opens a verified Windows install's own cashU.exe and refuses anything else", () => {
   const root = realpathSync.native(tempDir("cashu-desktop-win-install-"));

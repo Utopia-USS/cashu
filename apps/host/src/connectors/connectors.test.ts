@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { connectorsUnsupported } from "../testing/platform.js";
 import { ConnectorCatalog, resolveInterpreter } from "./catalog.js";
 import { ConnectorFault, manifestSchema, scanConnector } from "./manifest.js";
 import { runConnector } from "./runner.js";
@@ -51,71 +52,84 @@ afterEach(() => {
 });
 
 describe("connector approval authority", () => {
-  it("binds exact installed digest and interpreter and invalidates on source change", () => {
-    const f = fixture();
-    const catalog = new ConnectorCatalog(f.data);
-    const pending = catalog.installPending(f.source);
-    const interpreter = resolveInterpreter(pending);
-    expect(catalog.list()).toEqual([
-      {
-        id: "sample-file",
-        name: "Sample",
-        kind: "file",
-        module: "budget",
-        contentSha256: pending.contentSha256,
-        interpreter,
-        approval: "pending",
-        approvedAt: null,
-      },
-    ]);
-    expect(() =>
-      catalog.approve("sample-file", "0".repeat(64), interpreter, {
-        ownerAction: true,
-        isCurrent: () => true,
-      }),
-    ).toThrow(ConnectorFault);
-    expect(() => catalog.approved("sample-file", interpreter)).toThrow(ConnectorFault);
-    expect(() =>
+  it.skipIf(connectorsUnsupported)(
+    "binds exact installed digest and interpreter and invalidates on source change",
+    () => {
+      const f = fixture();
+      const catalog = new ConnectorCatalog(f.data);
+      const pending = catalog.installPending(f.source);
+      const interpreter = resolveInterpreter(pending);
+      expect(catalog.list()).toEqual([
+        {
+          id: "sample-file",
+          name: "Sample",
+          kind: "file",
+          module: "budget",
+          contentSha256: pending.contentSha256,
+          interpreter,
+          approval: "pending",
+          approvedAt: null,
+        },
+      ]);
+      expect(() =>
+        catalog.approve("sample-file", "0".repeat(64), interpreter, {
+          ownerAction: true,
+          isCurrent: () => true,
+        }),
+      ).toThrow(ConnectorFault);
+      expect(() => catalog.approved("sample-file", interpreter)).toThrow(ConnectorFault);
+      expect(() =>
+        catalog.approve(
+          "sample-file",
+          catalog.installed("sample-file").contentSha256,
+          interpreter,
+          {
+            ownerAction: true,
+            isCurrent: () => false,
+          },
+        ),
+      ).toThrow();
       catalog.approve("sample-file", catalog.installed("sample-file").contentSha256, interpreter, {
         ownerAction: true,
-        isCurrent: () => false,
-      }),
-    ).toThrow();
-    catalog.approve("sample-file", catalog.installed("sample-file").contentSha256, interpreter, {
-      ownerAction: true,
-      isCurrent: () => true,
-    });
-    expect(catalog.list()[0]?.approval).toBe("approved");
-    expect(catalog.list()[0]?.approvedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-    expect(catalog.approved("sample-file", interpreter).contentSha256).toBe(pending.contentSha256);
-    writeFileSync(join(pending.root, "connector.py"), "print('changed')");
-    expect(catalog.list()[0]?.approval).toBe("changed");
-    expect(() => catalog.approved("sample-file", interpreter)).toThrow(ConnectorFault);
-  });
+        isCurrent: () => true,
+      });
+      expect(catalog.list()[0]?.approval).toBe("approved");
+      expect(catalog.list()[0]?.approvedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(catalog.approved("sample-file", interpreter).contentSha256).toBe(
+        pending.contentSha256,
+      );
+      writeFileSync(join(pending.root, "connector.py"), "print('changed')");
+      expect(catalog.list()[0]?.approval).toBe("changed");
+      expect(() => catalog.approved("sample-file", interpreter)).toThrow(ConnectorFault);
+    },
+  );
 
-  it("requires owner authority to disable and refuses execution after disable", () => {
-    const f = fixture();
-    const catalog = new ConnectorCatalog(f.data);
-    const loaded = catalog.installPending(f.source);
-    const interpreter = resolveInterpreter(loaded);
-    catalog.approve("sample-file", catalog.installed("sample-file").contentSha256, interpreter, {
-      ownerAction: true,
-      isCurrent: () => true,
-    });
-    expect(() =>
-      catalog.disable("sample-file", { ownerAction: true, isCurrent: () => false }),
-    ).toThrow();
-    catalog.disable("sample-file", { ownerAction: true, isCurrent: () => true });
-    expect(() => catalog.approved("sample-file", interpreter)).toThrow(ConnectorFault);
-    expect(catalog.list()[0]?.approval).toBe("disabled");
-    const reopened = new ConnectorCatalog(f.data);
-    expect(reopened.list()[0]?.approval).toBe("disabled");
-    reopened.approve("sample-file", loaded.contentSha256, interpreter, {
-      ownerAction: true,
-      isCurrent: () => true,
-    });
-    expect(reopened.list()[0]?.approval).toBe("approved");
-  });
+  it.skipIf(connectorsUnsupported)(
+    "requires owner authority to disable and refuses execution after disable",
+    () => {
+      const f = fixture();
+      const catalog = new ConnectorCatalog(f.data);
+      const loaded = catalog.installPending(f.source);
+      const interpreter = resolveInterpreter(loaded);
+      catalog.approve("sample-file", catalog.installed("sample-file").contentSha256, interpreter, {
+        ownerAction: true,
+        isCurrent: () => true,
+      });
+      expect(() =>
+        catalog.disable("sample-file", { ownerAction: true, isCurrent: () => false }),
+      ).toThrow();
+      catalog.disable("sample-file", { ownerAction: true, isCurrent: () => true });
+      expect(() => catalog.approved("sample-file", interpreter)).toThrow(ConnectorFault);
+      expect(catalog.list()[0]?.approval).toBe("disabled");
+      const reopened = new ConnectorCatalog(f.data);
+      expect(reopened.list()[0]?.approval).toBe("disabled");
+      reopened.approve("sample-file", loaded.contentSha256, interpreter, {
+        ownerAction: true,
+        isCurrent: () => true,
+      });
+      expect(reopened.list()[0]?.approval).toBe("approved");
+    },
+  );
 
   it("refuses traversal, links, special files and directory limits", () => {
     const f = fixture();

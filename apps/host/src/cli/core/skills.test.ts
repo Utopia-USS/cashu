@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix, sep } from "node:path";
 import { createTranslator } from "@cashu/i18n";
 import { linkDir } from "@cashu/node-host/testing/links";
 import { afterEach, expect, it } from "vitest";
@@ -129,10 +129,11 @@ it("uses caller cwd while preserving pathlib spelling in output", async () => {
   expect(readFileSync(join(f.cwd, "target", "skills", "alpha", "SKILL.md"), "utf8")).toBe(
     "synthetic original\n",
   );
-  expect(f.output.stdout).toContain("target/nested/../skills/alpha");
-  expect(pathSpelling("//a/./b//")).toBe("//a/b");
-  expect(expandHome("./~/a", "/caller/home/")).toBe("/caller/home/a");
-  expect(expandHome("~/a", "")).toBe("/a");
+  // The output spells the path with this platform's separator, `..` kept (pathlib).
+  expect(f.output.stdout).toContain(["target", "nested", "..", "skills", "alpha"].join(sep));
+  expect(pathSpelling("//a/./b//", posix)).toBe("//a/b");
+  expect(expandHome("./~/a", "/caller/home/", posix)).toBe("/caller/home/a");
+  expect(expandHome("~/a", "", posix)).toBe("/a");
 });
 it("treats __pycache__ and type clashes as the same tree but never hides a changed file", () => {
   const f = fixture();
@@ -199,7 +200,7 @@ it("answers usage errors and unsupported destinations natively before output or 
   writeFileSync(join(f.cwd, "file"), "not a folder");
   f.output.stderr = "";
   expect(await f.run(["install", "--dest", "file/skills"])).toBe(1);
-  expect(f.output.stderr).toBe("file/skills is not a folder.\n");
+  expect(f.output.stderr).toBe(`${join("file", "skills")} is not a folder.\n`);
   f.output.stderr = "";
   expect(await f.run(["install", "--dest", "explicit"], { paths: undefined })).toBe(0);
 });
@@ -209,7 +210,7 @@ it("prints markup-like destinations literally", async () => {
   expect(readFileSync(join(f.cwd, "[bold]path", "alpha", "SKILL.md"), "utf8")).toBe(
     "synthetic original\n",
   );
-  expect(f.output.stdout).toContain("[bold]path/alpha");
+  expect(f.output.stdout).toContain(join("[bold]path", "alpha"));
 });
 it("reports a build without shipped skills as a missing source", async () => {
   const f = fixture();

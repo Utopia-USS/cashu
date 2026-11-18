@@ -1,9 +1,10 @@
 // Synthetic encrypted vault with genuine creator authority for native host socket tests.
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeFolderFs } from "@cashu/node-host";
+import { NodeFolderFs, resolveReal } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import {
   builtinModules,
   createProfile,
@@ -59,7 +60,7 @@ export async function nativeVaultFixture(
   } = {},
 ): Promise<NativeVaultFixture> {
   const now = options.now ?? Date.now;
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-native-fixture-")));
+  const dataDir = resolveReal(mkdtempSync(join(tmpdir(), "cashu-native-fixture-")));
   const home = join(dataDir, "test-home");
   mkdirSync(home);
   const sodium = await crypto.loadNodeSodium();
@@ -236,7 +237,7 @@ export async function nativeVaultFixture(
       },
       cleanup() {
         peer?.wipe();
-        rmSync(dataDir, { recursive: true, force: true });
+        removeTempDir(dataDir);
       },
     };
   } catch (error) {
@@ -245,7 +246,7 @@ export async function nativeVaultFixture(
     candidate?.close();
     meta?.close();
     peer?.wipe();
-    rmSync(dataDir, { recursive: true, force: true });
+    removeTempDir(dataDir);
     throw error;
   } finally {
     identity.wipe();

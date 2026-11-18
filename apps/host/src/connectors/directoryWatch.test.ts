@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { connectorsUnsupported } from "../testing/platform.js";
 import { watchDirectory } from "./directoryWatch.js";
 
 const roots: string[] = [];
@@ -60,20 +61,23 @@ it("never fails the caller when even the parent is missing", () => {
   expect(changed).not.toHaveBeenCalled();
 });
 
-it("lets the catalog's live list follow a connector copied in by hand while someone listens", async () => {
-  const { ConnectorCatalog } = await import("./catalog.js");
-  const catalog = new ConnectorCatalog(temp());
-  const changed = vi.fn();
-  const unsubscribe = catalog.changes.subscribe(changed);
-  stops.push(() => catalog.close());
-  await settle();
-  mkdirSync(join(catalog.root, "synthetic"), { mode: 0o700 });
-  await vi.waitFor(() => expect(changed).toHaveBeenCalled(), { timeout: 3000 });
-  unsubscribe();
-  await settle();
-  const calls = changed.mock.calls.length;
-  mkdirSync(join(catalog.root, "other"), { mode: 0o700 });
-  await settle();
-  await settle();
-  expect(changed).toHaveBeenCalledTimes(calls);
-});
+it.skipIf(connectorsUnsupported)(
+  "lets the catalog's live list follow a connector copied in by hand while someone listens",
+  async () => {
+    const { ConnectorCatalog } = await import("./catalog.js");
+    const catalog = new ConnectorCatalog(temp());
+    const changed = vi.fn();
+    const unsubscribe = catalog.changes.subscribe(changed);
+    stops.push(() => catalog.close());
+    await settle();
+    mkdirSync(join(catalog.root, "synthetic"), { mode: 0o700 });
+    await vi.waitFor(() => expect(changed).toHaveBeenCalled(), { timeout: 3000 });
+    unsubscribe();
+    await settle();
+    const calls = changed.mock.calls.length;
+    mkdirSync(join(catalog.root, "other"), { mode: 0o700 });
+    await settle();
+    await settle();
+    expect(changed).toHaveBeenCalledTimes(calls);
+  },
+);

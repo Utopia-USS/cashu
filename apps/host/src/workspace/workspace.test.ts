@@ -229,7 +229,8 @@ test("MCP and settings merges keep user entries, drop old cashU servers and deny
   const oldSettings = {
     permissions: {
       allow: ["WebSearch", "user-rule", "mcp__cashu-other__x"],
-      deny: ["user-deny", `Read(/${context.path}/inbox/**)`],
+      // The inbox rule earlier versions wrote, in the form this platform's paths take (`rulePath`).
+      deny: ["user-deny", `Read(${rulePath(`${context.path}/inbox`)}/**)`],
     },
     enabledMcpjsonServers: ["user", "cashu-other"],
   };
@@ -251,11 +252,15 @@ test("MCP and settings merges keep user entries, drop old cashU servers and deny
           "mcp__cashu-synthetic__profile_overview",
           "WebSearch",
           "WebFetch",
-          `Edit(/${root}/workspace/research/**)`,
-          `Edit(/${root}/workspace/notes/**)`,
+          `Edit(${rulePath(`${context.path}/research`)}/**)`,
+          `Edit(${rulePath(`${context.path}/notes`)}/**)`,
           "user-rule",
         ],
-        deny: [`Read(/${root}/data/**)`, `Edit(/${root}/data/**)`, "user-deny"],
+        deny: [
+          `Read(${rulePath(join(root, "data"))}/**)`,
+          `Edit(${rulePath(join(root, "data"))}/**)`,
+          "user-deny",
+        ],
       },
     },
   });

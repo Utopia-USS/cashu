@@ -5,19 +5,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SHIM_SOURCE_FLAGS } from "./sourceFlags.js";
+
 const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
 const SHIM = join(REPO, "apps/cli/src/index.ts");
-const RESOLVE_TS = join(REPO, "tools/node-ts/resolveTs.ts");
-const HOST_INTERPOSER = join(REPO, "apps/cli/src/testing/hostInterposer.ts");
-const NODE_ARGS = [
-  "--no-warnings",
-  "--experimental-transform-types",
-  "--import",
-  RESOLVE_TS,
-  "--import",
-  HOST_INTERPOSER,
-  SHIM,
-];
+const NODE_ARGS = [...SHIM_SOURCE_FLAGS, SHIM];
 
 export interface ShimRun {
   readonly code: number | null;

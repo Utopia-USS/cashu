@@ -1,19 +1,20 @@
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
+import { acquireHostLock, hostRunPaths, resolveReal } from "@cashu/node-host";
 import type { ClassifierSecretStore } from "@cashu/node-host/classifier-secrets";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import { afterEach, expect, it, vi } from "vitest";
 import type { HostStores, OpenVault } from "../stores.js";
 import { createProductionClassifierBinding } from "./production.js";
 
 const roots: string[] = [];
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) removeTempDir(root);
 });
 
 function fixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-classifier-binding-"));
+  const root = mkdtempSync(join(resolveReal(tmpdir()), "cashu-classifier-binding-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });
@@ -218,7 +219,7 @@ it("pushes the checked settings and checks again after each owner change", async
 it.skipIf(process.platform === "win32")(
   "checks owner-only modes on POSIX and leaves them to the ACL on Windows",
   () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-classifier-modes-"));
+    const root = mkdtempSync(join(resolveReal(tmpdir()), "cashu-classifier-modes-"));
     roots.push(root);
     const dataDir = join(root, "data");
     mkdirSync(join(dataDir, "run"), { recursive: true, mode: 0o700 });

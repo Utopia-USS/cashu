@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
+import { connectorsUnsupported } from "../testing/platform.js";
 import { type BindingAccount, type ConnectorBinding, runBoundFetch } from "./binding.js";
 import { ConnectorCatalog, resolveInterpreter } from "./catalog.js";
 
@@ -52,23 +53,26 @@ function setup() {
   return { catalog, interpreter, binding, account, authority };
 }
 
-it("refuses cross-profile/account binding before reading secrets or running code", async () => {
-  const s = setup();
-  let gets = 0;
-  const secrets = {
-    get: async () => {
-      gets++;
-      return "synthetic-secret";
-    },
-  };
-  expect(
-    await runBoundFetch({ ...s, binding: { ...s.binding, profileId: "profile-b" }, secrets }),
-  ).toEqual({ outcome: "refused", errorKind: "bad_request" });
-  expect(
-    await runBoundFetch({ ...s, account: { ...s.account, id: "account-b" }, secrets }),
-  ).toEqual({ outcome: "refused", errorKind: "bad_request" });
-  expect(gets).toBe(0);
-});
+it.skipIf(connectorsUnsupported)(
+  "refuses cross-profile/account binding before reading secrets or running code",
+  async () => {
+    const s = setup();
+    let gets = 0;
+    const secrets = {
+      get: async () => {
+        gets++;
+        return "synthetic-secret";
+      },
+    };
+    expect(
+      await runBoundFetch({ ...s, binding: { ...s.binding, profileId: "profile-b" }, secrets }),
+    ).toEqual({ outcome: "refused", errorKind: "bad_request" });
+    expect(
+      await runBoundFetch({ ...s, account: { ...s.account, id: "account-b" }, secrets }),
+    ).toEqual({ outcome: "refused", errorKind: "bad_request" });
+    expect(gets).toBe(0);
+  },
+);
 
 it.skipIf(process.platform !== "darwin")(
   "returns exact document and cursor without advancing binding state",
