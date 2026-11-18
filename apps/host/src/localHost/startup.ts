@@ -2,6 +2,7 @@
 // bundle identity or refused paths, native inventory), the advertised features, then under the lock
 // the crash record, the writer lease, the creation service and the stores (`openHostState`), and
 // the stable launcher.
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -19,9 +20,14 @@ import {
   hostRunPaths,
   type RunningHost,
   refusePaths,
+  samePath,
   writeStartupFailureRecord,
 } from "@cashu/node-host";
-import { readBundleIdentity } from "@cashu/node-host/bundle-identity";
+import {
+  type PackagedLayout,
+  packagedLayout,
+  readBundleIdentity,
+} from "@cashu/node-host/bundle-identity";
 import { recentUncleanStarts, recordStart, type StartRecord } from "../crashLoop.js";
 import { writeLauncher } from "../launcher.js";
 import { takeWriterLease, type WriterLease } from "../lease.js";
@@ -80,19 +86,64 @@ export function admitStart(options: LocalHostOptions): Admission {
   return { vaultSource, startup };
 }
 
-/** A packaged host runs only from the verified bundle it was started from. */
+/**
+ * A running path in the form the bundle identity uses: resolved on macOS, the native realpath on
+ * Windows (whose canonical bundle path is native: long names, on-disk case).
+ */
+function runningPath(path: string, platform: NodeJS.Platform): string {
+  if (platform !== "win32") return resolve(path);
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return ""; // matches no bundle path: refused
+  }
+}
+
+/** Where a packaged host process runs from, as the process reports it. */
+export interface RunningBundleInput {
+  /** The bundle the host was started for (`--bundle` stamp's bundle). */
+  readonly bundlePath: string;
+  readonly execPath: string;
+  /** The directory of the running host entry (`currentRuntime().dir`). */
+  readonly runtimeDir: string;
+  readonly electronRunAsNode: string | undefined;
+  readonly platform: NodeJS.Platform;
+}
+
+/**
+ * The layout of the verified bundle this process runs from: the bundle verifies, this process is its
+ * executable in Node mode and its entry sits in the bundle's resources. Undefined otherwise.
+ */
+export function runningBundleLayout(input: RunningBundleInput): PackagedLayout | undefined {
+  const { platform } = input;
+  const identity = readBundleIdentity(input.bundlePath, platform);
+  if (identity.kind !== "present" || input.electronRunAsNode !== "1") return undefined;
+  const layout = packagedLayout(identity.canonicalPath, platform);
+  return samePath(runningPath(input.execPath, platform), layout.executable, platform) &&
+    samePath(runningPath(input.runtimeDir, platform), layout.resources, platform)
+    ? layout
+    : undefined;
+}
+
+/**
+ * A packaged host runs only from the verified bundle it was started from. On macOS the notification
+ * helper also confirms the bundle's code signature; a Windows install has no native helper (and no
+ * signature check yet), so its manifest and content digest are the whole check.
+ */
 function assertBundleIdentity(bundlePath: string, vaultSource: VaultSource): void {
-  const identity = readBundleIdentity(bundlePath);
-  if (
-    identity.kind !== "present" ||
-    vaultSource.kind === "synthetic-harness" ||
-    process.env.ELECTRON_RUN_AS_NODE !== "1" ||
-    resolve(process.execPath) !== join(identity.canonicalPath, "Contents", "MacOS", "cashU") ||
-    resolve(currentRuntime().dir) !== join(identity.canonicalPath, "Contents", "Resources")
-  )
+  const platform = process.platform;
+  const layout = runningBundleLayout({
+    bundlePath,
+    execPath: process.execPath,
+    runtimeDir: currentRuntime().dir,
+    electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE,
+    platform,
+  });
+  if (layout === undefined || vaultSource.kind === "synthetic-harness")
     throw new StartupFailureError("unknown", "bundle_identity_unavailable");
+  if (platform === "win32") return;
   const notification = requireNative(
-    join(identity.canonicalPath, "Contents", "Resources", "native", "CashUNotifications.node"),
+    join(layout.resources, "native", "CashUNotifications.node"),
   ) as { identity(): { verified: boolean } };
   if (notification.identity().verified !== true)
     throw new StartupFailureError("unknown", "bundle_identity_unavailable");
@@ -213,7 +264,7 @@ export async function openHostState(input: {
   }
 }
 
-/** Writes the stable launcher `<data dir>/bin/cashu`; a failure is logged, never fatal. */
+/** Writes the stable launcher (`launcherPath`); a failure is logged, never fatal. */
 export function writeHostLauncher(dataDir: string, runtime: HostRuntime, log: HostLog): void {
   try {
     if (writeLauncher(dataDir, shimProgram(runtime))) log.info("host.launcher-written");

@@ -31,7 +31,9 @@ it("uses the native private-file boundary and returns only sanitized owner outco
   const keyPath = join(dataDir, "synthetic-key.pem");
   writeFileSync(keyPath, key, { mode: 0o600 });
   const alias = join(dataDir, "synthetic-link.pem");
-  symlinkSync(keyPath, alias);
+  // Creating a symlink needs Developer Mode or elevation on Windows.
+  const links = process.platform !== "win32";
+  if (links) symlinkSync(keyPath, alias);
   const values = new Map<string, string>();
   let owner = true;
   const runtime = new BankingRuntime({
@@ -63,9 +65,10 @@ it("uses the native private-file boundary and returns only sanitized owner outco
       ok: false,
       error: "unknown_or_invalid_action",
     });
-    expect(await action({ type: "configure", appId: "synthetic-app", keyFilePath: alias })).toEqual(
-      { ok: false, error: "key_unreadable" },
-    );
+    if (links)
+      expect(
+        await action({ type: "configure", appId: "synthetic-app", keyFilePath: alias }),
+      ).toEqual({ ok: false, error: "key_unreadable" });
     const notKey = join(dataDir, "synthetic-not-a-key.pem");
     writeFileSync(notKey, "synthetic, not a key\n", { mode: 0o600 });
     expect(

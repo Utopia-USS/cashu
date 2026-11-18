@@ -13,7 +13,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { ensurePrivateDir } from "@cashu/node-host";
+import {
+  ensurePrivateDir,
+  isOwnerOnly,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  syncDirectory,
+} from "@cashu/node-host";
 import { z } from "zod";
 import type { OpenVault } from "../stores.js";
 import type { WorkerJob } from "./contracts.js";
@@ -52,18 +58,20 @@ const schema = z.strictObject({
 type Record = z.infer<typeof schema>;
 const MAX_BYTES = 16 * 1024;
 
-function privateFile(path: string): Buffer | null {
+// The record and its directory belong to this user with nothing for group and others on macOS and
+// Linux; on Windows the modes are synthetic and privacy rests on the data dir's per-user ACL
+// (@cashu/node-host privateFs). The type, dev / ino and nlink checks hold on every platform.
+function privateFile(path: string, platform: NodeJS.Platform): Buffer | null {
   const before = lstatSync(path, { throwIfNoEntry: false });
   if (before === undefined) return null;
   if (
     !before.isFile() ||
     before.nlink !== 1 ||
     before.size > MAX_BYTES ||
-    (before.mode & 0o077) !== 0 ||
-    (process.getuid !== undefined && before.uid !== process.getuid())
+    !isOwnerOnly(before, platform)
   )
     throw new Error("worker_ownership_unavailable");
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   try {
     const opened = fstatSync(fd);
     if (
@@ -72,8 +80,7 @@ function privateFile(path: string): Buffer | null {
       opened.ino !== before.ino ||
       opened.size > MAX_BYTES ||
       opened.nlink !== 1 ||
-      (opened.mode & 0o077) !== 0 ||
-      (process.getuid !== undefined && opened.uid !== process.getuid())
+      !isOwnerOnly(opened, platform)
     )
       throw new Error("worker_ownership_unavailable");
     const bytes = readFileSync(fd);
@@ -86,8 +93,8 @@ function privateFile(path: string): Buffer | null {
   }
 }
 
-function readRecord(path: string): Record | null {
-  const bytes = privateFile(path);
+function readRecord(path: string, platform: NodeJS.Platform): Record | null {
+  const bytes = privateFile(path, platform);
   if (bytes === null) return null;
   try {
     const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
@@ -97,14 +104,19 @@ function readRecord(path: string): Record | null {
   }
 }
 
-function writeRecord(path: string, value: Record, expected: Record | null): void {
+function writeRecord(
+  path: string,
+  value: Record,
+  expected: Record | null,
+  platform: NodeJS.Platform,
+): void {
   const root = dirname(path);
   const bytes = Buffer.from(JSON.stringify(schema.parse(value)));
   if (bytes.length > MAX_BYTES) throw new Error("worker_ownership_unavailable");
   const temp = join(root, `.ownership-${randomUUID()}.tmp`);
   const fd = openSync(
     temp,
-    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | O_NOFOLLOW,
     0o600,
   );
   try {
@@ -114,16 +126,11 @@ function writeRecord(path: string, value: Record, expected: Record | null): void
     closeSync(fd);
   }
   try {
-    const previous = readRecord(path);
+    const previous = readRecord(path, platform);
     if (JSON.stringify(previous) !== JSON.stringify(expected))
       throw new Error("worker_ownership_unavailable");
     renameSync(temp, path);
-    const dir = openSync(root, constants.O_RDONLY);
-    try {
-      fsyncSync(dir);
-    } finally {
-      closeSync(dir);
-    }
+    syncDirectory(root, platform);
   } finally {
     rmSync(temp, { force: true });
   }
@@ -141,19 +148,22 @@ export function admittedWorkerOwnership(input: {
   /** Mandatory host capability. Legacy source directories require explicit one-shot import into a
    * separate native target before this record can authorize worker jobs. */
   assertAdmission(): void;
+  /** Test seam only; production uses `process.platform` (the private file checks, privateFs). */
+  readonly platform?: NodeJS.Platform;
 }): AdmittedWorkerOwnership {
   input.assertAdmission();
+  const platform = input.platform ?? process.platform;
   const vaults = input.vaults;
   if (vaults.some((v) => v.mode !== "native" || !v.native.canRunSideEffects()))
     throw new Error("worker_ownership_unavailable");
   const root = join(input.dataDir, "worker");
-  ensurePrivateDir(root);
+  ensurePrivateDir(root, platform);
   const pin = lstatSync(root);
   const path = join(root, "ownership.json");
   const expected = [...new Set(vaults.map((v) => v.id))].sort();
   if (expected.length !== vaults.length || expected.some((v) => !id.safeParse(v).success))
     throw new Error("worker_ownership_unavailable");
-  const old = readRecord(path);
+  const old = readRecord(path, platform);
   const combined = [
     ...new Set([...(old?.jobs["investments.daily"].vaults ?? []), ...expected]),
   ].sort();
@@ -189,8 +199,9 @@ export function admittedWorkerOwnership(input: {
         },
       },
       old,
+      platform,
     );
-  const generation = readRecord(path)?.generation ?? 0;
+  const generation = readRecord(path, platform)?.generation ?? 0;
   const current = () => {
     try {
       input.assertAdmission();
@@ -199,10 +210,10 @@ export function admittedWorkerOwnership(input: {
         !now.isDirectory() ||
         now.dev !== pin.dev ||
         now.ino !== pin.ino ||
-        (now.mode & 0o077) !== 0
+        !isOwnerOnly(now, platform)
       )
         return false;
-      const record = readRecord(path);
+      const record = readRecord(path, platform);
       return (
         record !== null &&
         record.generation >= generation &&

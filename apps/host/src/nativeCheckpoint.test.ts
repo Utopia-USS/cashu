@@ -7,14 +7,14 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
 import { backupNodeSqlite, openNodeSqlite } from "@cashu/node-host/sqlite";
+import { linkFile } from "@cashu/node-host/testing/links";
 import { crypto } from "@cashu/sync";
 import { expect, it } from "vitest";
 import { createNativeCheckpoint, scrubIncompleteNativeCheckpoints } from "./nativeCheckpoint.js";
@@ -139,7 +139,8 @@ it("seals a live native archive and independently opens both SQLite backups", as
       [
         "--disable-warning=ExperimentalWarning",
         "--import",
-        join(repo, "tools", "node-ts", "resolveTs.ts"),
+        // A file URL: `--import` takes a module specifier, and a Windows path is not one.
+        pathToFileURL(join(repo, "tools", "node-ts", "resolveTs.ts")).href,
         "--input-type=module",
         "-e",
         FRESH_PROCESS_INSPECTION,
@@ -178,13 +179,14 @@ it("seals a live native archive and independently opens both SQLite backups", as
   }
 });
 
-it("refuses a symlinked strategy file before publication", async () => {
+// A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+it("refuses a symlinked strategy file before publication", async ({ skip }) => {
   const fixture = await nativeVaultFixture({ modules: ["investments"] });
   const root = join(fixture.dataDir, "vaults", fixture.vaultId);
   try {
     chmodSync(root, 0o700);
     chmodSync(join(root, "log"), 0o700);
-    symlinkSync(join(root, "view.db"), join(root, "strategy", "strategy.yaml"));
+    linkFile(join(root, "view.db"), join(root, "strategy", "strategy.yaml"), skip);
     const sodium = fixture.vaultSource.provider.sodium;
     const ring = await crypto.loadKeyring(
       fixture.vaultSource.provider.keyStore,

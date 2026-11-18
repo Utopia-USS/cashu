@@ -1,14 +1,7 @@
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkFile } from "@cashu/node-host/testing/links";
 import { crypto } from "@cashu/sync";
 import { afterEach, expect, it } from "vitest";
 import {
@@ -102,13 +95,16 @@ it("refuses pending state and malformed or swapped certificate records", () => {
   expect(() => readExistingNativeInventory(f.dataDir)).toThrow("native_inventory_invalid");
 });
 
-it("refuses symlinked and weak-permission locator artifacts", () => {
+// The link is a file symlink: on a Windows runner without the privilege to create it the test skips
+// itself. The chmod 0644 half is POSIX-only (Windows ignores mode bits; the data dir's ACL stands in).
+it("refuses symlinked and weak-permission locator artifacts", ({ skip }) => {
   const f = fixture();
   const saved = join(f.dataDir, "saved.json");
   writeFileSync(saved, "{}", { mode: 0o600 });
   rmSync(f.inventoryPath);
-  symlinkSync(saved, f.inventoryPath);
+  linkFile(saved, f.inventoryPath, skip);
   expect(() => readExistingNativeInventory(f.dataDir)).toThrow("native_inventory_invalid");
+  if (process.platform === "win32") return;
   rmSync(f.inventoryPath);
   f.writeInventory();
   chmodSync(f.inventoryPath, 0o644);

@@ -2,8 +2,9 @@
 // renders is an enum code, an integer, a boolean, the app version, the shortened build id or a
 // `~`-relative path (all checked by the report schema); the surrounding text comes from the PL / EN
 // catalog. It is the same text the diagnostics file holds.
+import { claudeMcpAddLine } from "@cashu/domain/core";
 import { STARTUP_FACT_KEYS } from "./codes.js";
-import { commandPrefix } from "./command.js";
+import { commandPlatform, commandPrefix } from "./command.js";
 import { PROMPT, type PromptLang } from "./prompt.strings.js";
 import { formatLogLine } from "./redaction.js";
 import type { StartupFailureReport } from "./schema.js";
@@ -19,7 +20,13 @@ type TextKey = {
  */
 function oldDataSteps(report: StartupFailureReport, lang: PromptLang): string[] {
   const t = (key: TextKey): string => PROMPT[key][lang];
-  const mcp = `claude mcp add ${report.mcpServerPrefix}-<slug> -- ${commandPrefix(report.command)} mcp --profile <slug>`;
+  // The same form as the app's setup card: on Windows Claude Code starts the `.cmd` launcher (or
+  // `pnpm.cmd`) only through `cmd /d /c`.
+  const mcp = claudeMcpAddLine(
+    `${report.mcpServerPrefix}-<slug>`,
+    `${commandPrefix(report.command)} mcp --profile <slug>`,
+    commandPlatform(report.command),
+  );
   return [
     "",
     t("oldDataTitle"),

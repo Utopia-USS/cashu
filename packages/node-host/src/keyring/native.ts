@@ -1,3 +1,17 @@
+// The OS keyring behind every cashU secret (vault KEKs, banking, classifier, connector and relay
+// secrets), through @napi-rs/keyring: the login Keychain on macOS, the Secret Service on Linux and the
+// Credential Manager on Windows (generic credentials, target `<account>.<service>`, the same service
+// and account names as elsewhere). Windows caveats, both set by the binding (2.1.2, keyring-core 1
+// with windows-native-keyring-store 1):
+// - one credential holds at most 2560 bytes (CRED_MAX_CREDENTIAL_BLOB_SIZE); a larger secret is
+//   refused here as `keystore_unavailable` before the native call (fail closed, never truncated).
+//   Kinds that can outgrow it (banking, connectors) keep only a 32-byte key here and their values
+//   sealed in the data dir (`sealed.ts`);
+// - credentials are written with CRED_PERSIST_ENTERPRISE, the store's default: in a domain with
+//   roaming profiles they travel with the profile, while the data dir (%LOCALAPPDATA%) does not. The
+//   binding exposes no `persistence` option (its EntryOptions carry only `linux`). Accepted: a vault,
+//   banking or connector key is useless without the data dir's sealed files; the classifier API key
+//   and the relay identity, stored as they are, do roam with such a profile.
 import { createHash } from "node:crypto";
 import { crypto } from "@cashu/sync";
 
@@ -34,9 +48,25 @@ export function addressedService(service: string): string {
   return mapped;
 }
 
-/** Exact binary N-API Keychain/Secret Service access. Native errors never leave this boundary. */
+/** The Windows Credential Manager's limit for one credential's secret (CRED_MAX_CREDENTIAL_BLOB_SIZE). */
+export const WINDOWS_CREDENTIAL_MAX_BYTES = 2560;
+
+/** Whether the OS keyring of `platform` takes a secret of `bytes` bytes (only Windows has a limit). */
+export const osKeyringFits = (
+  bytes: number,
+  platform: NodeJS.Platform = process.platform,
+): boolean => platform !== "win32" || bytes <= WINDOWS_CREDENTIAL_MAX_BYTES;
+
+/** Whether `platform` has an OS keyring this port drives. */
+export const hasNativeOsKeyring = (platform: NodeJS.Platform = process.platform): boolean =>
+  platform === "darwin" || platform === "linux" || platform === "win32";
+
+/**
+ * Exact binary N-API Keychain / Secret Service / Credential Manager access. Native errors never leave
+ * this boundary.
+ */
 export function nativeOsKeyring(): OsKeyringPort {
-  if (process.platform !== "darwin" && process.platform !== "linux") {
+  if (!hasNativeOsKeyring()) {
     throw new crypto.CryptoError("keystore_unavailable");
   }
   const entry = async (service: string, account: string) => {
@@ -62,6 +92,7 @@ export function nativeOsKeyring(): OsKeyringPort {
       }
     },
     async set(service, account, value) {
+      if (!osKeyringFits(value.length)) throw new crypto.CryptoError("keystore_unavailable");
       const item = await entry(service, account);
       try {
         await item.setSecret(value);

@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { StartupFailureError } from "@cashu/host-protocol/startup-failure";
+import { hasPrivateMode, O_NOFOLLOW, O_NONBLOCK } from "@cashu/node-host";
 import { crypto } from "@cashu/sync";
 import {
   type NativeVaultInventoryEntry,
@@ -54,8 +55,7 @@ function privateStat(path: string, kind: "file" | "directory"): Stats {
     if (
       stat.isSymbolicLink() ||
       (kind === "file" ? !stat.isFile() || stat.nlink !== 1 : !stat.isDirectory()) ||
-      stat.mode % 0o1000 !== (kind === "file" ? 0o600 : 0o700) ||
-      (typeof process.getuid === "function" && stat.uid !== process.getuid()) ||
+      !hasPrivateMode(stat, kind === "file" ? 0o600 : 0o700) ||
       realpathSync(path) !== path
     )
       refuse("native_inventory_invalid");
@@ -70,7 +70,7 @@ function readPrivate(path: string, max: number): Buffer {
   if (before.size > max) refuse("native_inventory_invalid");
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch {
     refuse("native_inventory_invalid");
   }
@@ -79,8 +79,7 @@ function readPrivate(path: string, max: number): Buffer {
     if (
       !opened.isFile() ||
       opened.nlink !== 1 ||
-      opened.mode % 0o1000 !== 0o600 ||
-      (typeof process.getuid === "function" && opened.uid !== process.getuid()) ||
+      !hasPrivateMode(opened, 0o600) ||
       opened.ino !== before.ino ||
       opened.dev !== before.dev ||
       opened.size > max

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { denoGraphProblem } from "./runner.js";
+import { confinedProcess, denoGraphProblem, killConfined } from "./runner.js";
 
 const root = "/synthetic/connector";
 const local = `file://${root}/connector.ts`;
@@ -62,5 +62,37 @@ describe("Deno module graph confinement", () => {
     ["a root outside the snapshot", graph({ roots: ["file:///synthetic/other.ts"] })],
   ])("refuses %s", (_label, value) => {
     expect(denoGraphProblem(value, root)).toBe("forbidden_import");
+  });
+});
+
+describe("confined process lifetime", () => {
+  it("kills the process group on POSIX and the process itself on Windows", () => {
+    const calls: [number, NodeJS.Signals][] = [];
+    const kill = (pid: number, signal: NodeJS.Signals) => {
+      calls.push([pid, signal]);
+    };
+    killConfined(4242, "darwin", kill);
+    killConfined(4242, "linux", kill);
+    killConfined(4242, "win32", kill);
+    expect(calls).toEqual([
+      [-4242, "SIGKILL"],
+      [-4242, "SIGKILL"],
+      [4242, "SIGKILL"],
+    ]);
+  });
+
+  it("treats a process that already exited as killed", () => {
+    expect(() =>
+      killConfined(4242, "darwin", () => {
+        throw Object.assign(new Error("gone"), { code: "ESRCH" });
+      }),
+    ).not.toThrow();
+  });
+
+  // The real Windows host: no sandbox there, so nothing is spawned at all.
+  it.runIf(process.platform === "win32")("spawns nothing on Windows", async () => {
+    const result = await confinedProcess(["x"], "(version 1)", ".", Buffer.alloc(0), 1000);
+    expect(result).toMatchObject({ code: null, overflow: false, timedOut: false });
+    expect(result.stdout.length).toBe(0);
   });
 });

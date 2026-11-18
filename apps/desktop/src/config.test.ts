@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkDataDir,
   defaultDataDir,
+  expandHome,
   realResolve,
   resolveDataDir,
   TEST_BUILD_TITLE,
@@ -47,10 +48,45 @@ describe("data dir", () => {
       "/Users/x/Library/Application Support/cashU",
     );
     expect(defaultDataDir("linux", "/home/x", {})).toBe("/home/x/.local/share/cashu");
-    expect(defaultDataDir("win32", "C:/Users/x", { APPDATA: "C:/Roaming" })).toBe(
-      "C:/Roaming/cashU",
-    );
     expect(resolveDataDir({}, "darwin", "/Users/x").explicit).toBe(false);
+  });
+
+  it("puts the Windows default under LOCALAPPDATA, never the roaming APPDATA", () => {
+    const env = {
+      APPDATA: "C:\\Users\\x\\AppData\\Roaming",
+      LOCALAPPDATA: "C:\\Users\\x\\AppData\\Local",
+    };
+    expect(defaultDataDir("win32", "C:\\Users\\x", env)).toBe(
+      "C:\\Users\\x\\AppData\\Local\\cashU",
+    );
+    expect(defaultDataDir("win32", "C:\\Users\\x", { LOCALAPPDATA: "D:/Local " })).toBe(
+      "D:\\Local\\cashU",
+    );
+    expect(defaultDataDir("win32", "C:\\Users\\x", { LOCALAPPDATA: "\\\\srv\\share\\x" })).toBe(
+      "\\\\srv\\share\\x\\cashU",
+    );
+    // Unset, blank or not fully qualified: the profile's own AppData\Local.
+    for (const local of [undefined, "", "  ", "AppData\\Local", "\\Local", "C:Local"])
+      expect(
+        defaultDataDir("win32", "C:\\Users\\x", local === undefined ? {} : { LOCALAPPDATA: local }),
+      ).toBe("C:\\Users\\x\\AppData\\Local\\cashU");
+    expect(defaultDataDir("win32", "C:\\Users\\x", env, FLAVORS.staging)).toBe(
+      "C:\\Users\\x\\AppData\\Local\\cashU Staging",
+    );
+    expect(resolveDataDir(env, "win32", "C:\\Users\\x")).toEqual({
+      dir: "C:\\Users\\x\\AppData\\Local\\cashU",
+      explicit: false,
+    });
+  });
+
+  it("expands `~` before either separator on Windows, only before `/` elsewhere", () => {
+    expect(expandHome("~\\lab", "C:\\Users\\x", "win32")).toBe("C:\\Users\\x\\lab");
+    expect(expandHome("~/lab", "C:\\Users\\x", "win32")).toBe("C:\\Users\\x\\lab");
+    expect(expandHome("~", "C:\\Users\\x", "win32")).toBe("C:\\Users\\x");
+    expect(expandHome("~x\\lab", "C:\\Users\\x", "win32")).toBe("~x\\lab");
+    expect(expandHome("D:\\data", "C:\\Users\\x", "win32")).toBe("D:\\data");
+    expect(expandHome("~\\lab", "/Users/x", "darwin")).toBe("~\\lab");
+    expect(expandHome("~/lab", "/Users/x", "darwin")).toBe("/Users/x/lab");
   });
 
   it("names the staging app's default data dir after its flavor", () => {

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import {
   appBundleName,
   bundleFlavor,
   dataDirName,
+  executableFlavor,
   FLAVOR_IDS,
   FLAVORS,
   type Flavor,
@@ -16,9 +17,13 @@ import {
   mcpServerName,
   packagedBundleOf,
   processFlavor,
+  readAppIdentity,
+  WINDOWS_APP_IDENTITY,
+  WINDOWS_EXECUTABLE,
   workspacesRoot,
 } from "./flavor.js";
 import table from "./flavor.json" with { type: "json" };
+import { linkFile } from "./testing/links.js";
 
 const temps: string[] = [];
 afterEach(() => {
@@ -50,7 +55,7 @@ const RULES: Record<keyof Omit<Flavor, "id">, Rule> = {
   bundleId: different((f) => f.bundleId),
   productName: different((f) => f.productName),
   dataDirName: (a, b) => {
-    for (const platform of ["darwin", "linux"] as const)
+    for (const platform of ["darwin", "linux", "win32"] as const)
       different((f) => dataDirName(f, platform))(a, b);
   },
   workspacesDirName: different((f) => f.workspacesDirName),
@@ -89,7 +94,7 @@ describe("build flavors", () => {
       id: "prod",
       bundleId: "io.utopiasoft.cashu",
       productName: "cashU",
-      dataDirName: { darwin: "cashU", linux: "cashu" },
+      dataDirName: { darwin: "cashU", linux: "cashu", win32: "cashU" },
       workspacesDirName: "cashU",
       hostAgentLabel: "io.utopiasoft.cashu.host",
       keychainPrefix: "cashu",
@@ -113,6 +118,7 @@ describe("build flavors", () => {
     expect(staging.bundleId).toBe("io.utopiasoft.cashu.staging");
     expect(appBundleName(staging)).toBe("cashU Staging.app");
     expect(dataDirName(staging, "darwin")).toBe("cashU Staging");
+    expect(dataDirName(staging, "win32")).toBe("cashU Staging");
     expect(workspacesRoot(staging, "/Users/x")).toBe("/Users/x/cashU Staging");
     expect(hostAgentPlist(staging)).toBe("io.utopiasoft.cashu.staging.host.plist");
     expect(keychainService(staging, "vault", HASH)).toBe(`cashu.staging.vault.v1.${HASH}`);
@@ -162,10 +168,133 @@ describe("build flavors", () => {
       writeFileSync(join(app, "Contents", "Info.plist"), plist("com.example.other"));
       expect(() => bundleFlavor(app)).toThrow("unknown_bundle_flavor");
     }
-    expect(packagedBundleOf(join(app, "Contents", "MacOS", "cashU"))?.endsWith(".app")).toBe(true);
-    expect(packagedBundleOf(join(app, "Contents", "MacOS", "Electron"))).toBeUndefined();
-    expect(packagedBundleOf(process.execPath)).toBeUndefined();
+    const cashU = join(app, "Contents", "MacOS", "cashU");
+    expect(packagedBundleOf(cashU, "darwin")?.endsWith(".app")).toBe(true);
+    expect(packagedBundleOf(join(app, "Contents", "MacOS", "Electron"), "darwin")).toBeUndefined();
+    expect(packagedBundleOf(process.execPath, "darwin")).toBeUndefined();
+    // The Windows layout never matches a macOS bundle.
+    expect(packagedBundleOf(cashU, "win32")).toBeUndefined();
     // A source run (node, vitest) is always prod.
     expect(processFlavor()).toBe(prod);
+  });
+
+  it("names the Windows data dir per flavor and refuses an unknown platform", () => {
+    expect(dataDirName(prod, "win32")).toBe("cashU");
+    expect(dataDirName(staging, "win32")).toBe("cashU Staging");
+    expect(dataDirName(prod, "linux")).toBe("cashu");
+    expect(() => dataDirName(prod, "freebsd")).toThrow("unsupported_platform");
+  });
+});
+
+describe("Windows packaged identity", () => {
+  const identity = (value: unknown) => `${JSON.stringify(value)}\n`;
+  /** A synthetic install dir: `cashU.exe` and `resources/app-identity.json`. */
+  function bare() {
+    const dir = mkdtempSync(join(tmpdir(), "cashu-flavor-win-"));
+    temps.push(dir);
+    mkdirSync(join(dir, "resources"));
+    writeFileSync(join(dir, WINDOWS_EXECUTABLE), "binary");
+    writeFileSync(join(dir, "electron.exe"), "binary");
+    return dir;
+  }
+  function install(record: unknown = { schema: 1, bundleId: prod.bundleId, version: "1.2.3" }) {
+    const dir = bare();
+    writeFileSync(
+      join(dir, ...WINDOWS_APP_IDENTITY.split("/")),
+      typeof record === "string" ? record : identity(record),
+    );
+    return dir;
+  }
+
+  it("reads only the exact identity record", () => {
+    expect(readAppIdentity(install())).toEqual({
+      schema: 1,
+      bundleId: "io.utopiasoft.cashu",
+      version: "1.2.3",
+    });
+    expect(
+      readAppIdentity(install({ schema: 1, bundleId: staging.bundleId, version: "2.0.0-beta.1" }))
+        .version,
+    ).toBe("2.0.0-beta.1");
+    const good = { schema: 1, bundleId: prod.bundleId, version: "1.2.3" };
+    for (const bad of [
+      { ...good, extra: true },
+      { ...good, schema: 2 },
+      { schema: 1, bundleId: prod.bundleId },
+      { ...good, bundleId: "" },
+      { ...good, bundleId: "cashu" },
+      { ...good, bundleId: 7 },
+      { ...good, version: "1.2" },
+      { ...good, version: "v1.2.3" },
+      [good],
+      null,
+      "not json",
+      `${" ".repeat(4096)}${JSON.stringify(good)}`,
+    ])
+      expect(() => readAppIdentity(install(bad))).toThrow("app_identity_invalid");
+    expect(() => readAppIdentity(bare())).toThrow("app_identity_invalid");
+  });
+
+  it("reads the flavor from app-identity.json and refuses an unknown bundle ID", () => {
+    expect(bundleFlavor(install(), "win32")).toBe(prod);
+    expect(
+      bundleFlavor(install({ schema: 1, bundleId: staging.bundleId, version: "1.0.0" }), "win32"),
+    ).toBe(staging);
+    expect(() =>
+      bundleFlavor(
+        install({ schema: 1, bundleId: "com.example.other", version: "1.0.0" }),
+        "win32",
+      ),
+    ).toThrow("unknown_bundle_flavor");
+    expect(() => bundleFlavor(bare(), "win32")).toThrow("app_identity_invalid");
+  });
+
+  it("finds the install dir of cashU.exe beside its identity record only", () => {
+    const dir = install();
+    expect(packagedBundleOf(join(dir, WINDOWS_EXECUTABLE), "win32")).toBe(realpathSync.native(dir));
+    expect(packagedBundleOf(join(dir, "electron.exe"), "win32")).toBeUndefined();
+    expect(packagedBundleOf(join(dir, "missing.exe"), "win32")).toBeUndefined();
+    expect(packagedBundleOf(join(bare(), WINDOWS_EXECUTABLE), "win32")).toBeUndefined();
+    // The identity record must be a regular file, not a directory.
+    const folder = bare();
+    mkdirSync(join(folder, ...WINDOWS_APP_IDENTITY.split("/")));
+    expect(packagedBundleOf(join(folder, WINDOWS_EXECUTABLE), "win32")).toBeUndefined();
+    // The macOS layout never matches a Windows install.
+    expect(packagedBundleOf(join(dir, WINDOWS_EXECUTABLE), "darwin")).toBeUndefined();
+  });
+
+  // File symlinks; on a Windows runner without the privilege to create them the test skips itself.
+  it("refuses a linked identity record and follows a linked executable to its install dir", ({
+    skip,
+  }) => {
+    const dir = install();
+    const linked = bare();
+    linkFile(
+      join(dir, ...WINDOWS_APP_IDENTITY.split("/")),
+      join(linked, ...WINDOWS_APP_IDENTITY.split("/")),
+      skip,
+    );
+    expect(packagedBundleOf(join(linked, WINDOWS_EXECUTABLE), "win32")).toBeUndefined();
+    expect(() => readAppIdentity(linked)).toThrow("app_identity_invalid");
+    const elsewhere = mkdtempSync(join(tmpdir(), "cashu-flavor-link-"));
+    temps.push(elsewhere);
+    linkFile(join(dir, WINDOWS_EXECUTABLE), join(elsewhere, WINDOWS_EXECUTABLE), skip);
+    expect(packagedBundleOf(join(elsewhere, WINDOWS_EXECUTABLE), "win32")).toBe(
+      realpathSync.native(dir),
+    );
+  });
+
+  it("derives a process flavor per platform: Windows install, else prod", () => {
+    const stagingInstall = install({ schema: 1, bundleId: staging.bundleId, version: "1.0.0" });
+    expect(executableFlavor(join(stagingInstall, WINDOWS_EXECUTABLE), "win32")).toBe(staging);
+    expect(executableFlavor(join(install(), WINDOWS_EXECUTABLE), "win32")).toBe(prod);
+    expect(executableFlavor(join(stagingInstall, "electron.exe"), "win32")).toBe(prod);
+    expect(executableFlavor(process.execPath, "win32")).toBe(prod);
+    // Linux has no packaged flavor detection, whatever the executable.
+    expect(executableFlavor(join(stagingInstall, WINDOWS_EXECUTABLE), "linux")).toBe(prod);
+    const unknown = install({ schema: 1, bundleId: "com.example.other", version: "1.0.0" });
+    expect(() => executableFlavor(join(unknown, WINDOWS_EXECUTABLE), "win32")).toThrow(
+      "unknown_bundle_flavor",
+    );
   });
 });

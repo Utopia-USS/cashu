@@ -11,6 +11,7 @@
 //   shim -> host  cancel {id: exec}                     (Ctrl-C: the command is asked to stop)
 //   host -> shim  res  cli.exec {kind: "exit", code}
 import { z } from "zod";
+import { isAbsoluteCwd, type PathFlavor } from "./paths.js";
 
 /** Environment variables the shim forwards to a command run in the host (never the whole env). */
 export const CLI_ENV_KEYS =
@@ -19,31 +20,40 @@ export const CLI_ENV_KEYS =
 const text = (max: number) => z.string().max(max);
 const argSchema = text(64 * 1024);
 
-export const cliExecParamsSchema = z.object({
-  /** The arguments after the program name, as typed. */
-  argv: z.array(argSchema).max(4_096),
-  /** The shim's working directory (absolute): relative file arguments resolve against it. */
-  cwd: text(4_096).refine((p) => p.startsWith("/"), "cwd must be absolute"),
-  /** Caller path expansion context, never installed into the host's environment. */
-  paths: z.object({
-    // `~` expands to HOME verbatim, including empty/relative values.
-    home: text(4_096).refine((p) => !p.includes("\u0000"), "home contains NUL"),
-  }),
-  /** Only `CLI_ENV_KEYS`. */
-  env: z
-    .record(z.string(), text(64 * 1024))
-    .refine((env) => Object.keys(env).every((k) => CLI_ENV_KEYS.test(k)), "env key not forwarded"),
-  tty: z.object({
-    stdin: z.boolean(),
-    stdout: z.boolean(),
-    stderr: z.boolean(),
-    columns: z.number().int().positive().max(10_000).optional(),
-    rows: z.number().int().positive().max(10_000).optional(),
-    /** Rich's explicit terminal override, independent of the fd's TTY bit. */
-    compatible: z.boolean().optional(),
-  }),
-});
-export type CliExecParams = z.infer<typeof cliExecParamsSchema>;
+/** A working directory a client sends: fully qualified under the host's path rules. */
+export const cwdSchema = (flavor: PathFlavor) =>
+  text(4_096).refine((p) => isAbsoluteCwd(p, flavor), "cwd must be absolute");
+
+/** `cli.exec` params as a host on a machine with `flavor` path rules accepts them. */
+export const cliExecParamsSchemaFor = (flavor: PathFlavor) =>
+  z.object({
+    /** The arguments after the program name, as typed. */
+    argv: z.array(argSchema).max(4_096),
+    /** The shim's working directory (absolute): relative file arguments resolve against it. */
+    cwd: cwdSchema(flavor),
+    /** Caller path expansion context, never installed into the host's environment. */
+    paths: z.object({
+      // `~` expands to HOME verbatim, including empty/relative values.
+      home: text(4_096).refine((p) => !p.includes("\u0000"), "home contains NUL"),
+    }),
+    /** Only `CLI_ENV_KEYS`. */
+    env: z
+      .record(z.string(), text(64 * 1024))
+      .refine(
+        (env) => Object.keys(env).every((k) => CLI_ENV_KEYS.test(k)),
+        "env key not forwarded",
+      ),
+    tty: z.object({
+      stdin: z.boolean(),
+      stdout: z.boolean(),
+      stderr: z.boolean(),
+      columns: z.number().int().positive().max(10_000).optional(),
+      rows: z.number().int().positive().max(10_000).optional(),
+      /** Rich's explicit terminal override, independent of the fd's TTY bit. */
+      compatible: z.boolean().optional(),
+    }),
+  });
+export type CliExecParams = z.infer<ReturnType<typeof cliExecParamsSchemaFor>>;
 
 export const cliExecResultSchema = z.object({
   kind: z.literal("exit"),

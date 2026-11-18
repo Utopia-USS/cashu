@@ -33,7 +33,7 @@ export {
   type CliExecParams,
   type CliExecResult,
   cliAnswerParamsSchema,
-  cliExecParamsSchema,
+  cliExecParamsSchemaFor,
   cliExecResultSchema,
   cliOutNoteSchema,
   cliPromptNoteSchema,
@@ -111,7 +111,7 @@ export {
 export {
   type McpOpenParams,
   mcpExitNoteSchema,
-  mcpOpenParamsSchema,
+  mcpOpenParamsSchemaFor,
   mcpStderrNoteSchema,
 } from "./mcp.js";
 export {
@@ -205,6 +205,7 @@ export {
   pairingInviteResultSchema,
   uiPairingAllowed,
 } from "./pairing/messages.js";
+export { isAbsoluteCwd, type PathFlavor, pathFlavor } from "./paths.js";
 export {
   NATIVE_RELAY_FEATURE,
   NATIVE_RELAY_METHODS,

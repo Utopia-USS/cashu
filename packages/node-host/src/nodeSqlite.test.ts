@@ -121,7 +121,8 @@ describe("live exclusive online backup", () => {
       source.prepare("INSERT INTO t(v) VALUES (?)").run("synthetic");
       const destination = join(dir, "copy.db");
       await backupNodeSqlite(source, destination);
-      expect(lstatSync(destination).mode & 0o777).toBe(0o600);
+      // POSIX modes only: Windows reports a synthetic 0666 for any writable file.
+      if (process.platform !== "win32") expect(lstatSync(destination).mode & 0o777).toBe(0o600);
       const copy = openNodeSqlite(destination, { readOnly: true });
       try {
         expect(copy.prepare("SELECT v FROM t").get()).toEqual({ v: "synthetic" });

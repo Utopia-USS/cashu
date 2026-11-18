@@ -38,7 +38,10 @@ const USAGE_EXIT = 64;
 const NOT_RUNNING_EXIT = 3;
 const FAILURE_EXIT = 70;
 
-/** How the shim ends: an exit code, or the signal its foreground host died of (re-raised). */
+/**
+ * How the shim ends: an exit code, or the signal its foreground host died of (re-raised on POSIX,
+ * its shell exit code on Windows: signals.ts).
+ */
 export type MainOutcome = { readonly code: number } | { readonly signal: NodeJS.Signals };
 
 export interface ShimProcess {
@@ -161,6 +164,7 @@ async function runCli(ctx: Context, argv: readonly string[]): Promise<MainOutcom
     result = await runExec(conn, {
       argv,
       cwd: ctx.proc.cwd,
+      platform: ctx.proc.platform,
       env: ctx.env,
       terminal: ctx.proc.terminal,
       onInterrupt: ctx.proc.onInterrupt,
@@ -227,7 +231,13 @@ async function runHostAdmin(ctx: Context, action: "status" | "stop" | "run"): Pr
       ctx.proc.execArgv,
       ctx.proc.cwd,
     );
-    const outcome = await runForeground({ command, args, env: ctx.target.env, cwd: ctx.proc.cwd });
+    const outcome = await runForeground({
+      command,
+      args,
+      env: ctx.target.env,
+      cwd: ctx.proc.cwd,
+      platform: ctx.proc.platform,
+    });
     if (outcome.kind === "failed") return { code: FAILURE_EXIT };
     return outcome.kind === "signal" ? { signal: outcome.signal } : { code: outcome.code };
   }

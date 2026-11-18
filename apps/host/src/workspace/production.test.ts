@@ -81,8 +81,11 @@ test("refuses symlinks, hardlinks, oversized reads and replaced workspace root",
   expect(() => f.io.writeText(target, "changed")).toThrowError(
     new WorkspacePathError("path_replaced"),
   );
-  symlinkSync(target, join(f.workspace, "link"));
-  expect(() => f.io.readText(join(f.workspace, "link"), 100)).toThrow();
+  // Creating a symlink needs Developer Mode or elevation on Windows.
+  if (process.platform !== "win32") {
+    symlinkSync(target, join(f.workspace, "link"));
+    expect(() => f.io.readText(join(f.workspace, "link"), 100)).toThrow();
+  }
   expect(() => f.io.readText(target, 1024 * 1024 + 1)).toThrowError(
     new WorkspacePathError("unsafe_read"),
   );
@@ -101,6 +104,8 @@ test("skill copy refuses source links and publishes checked content", () => {
   const dest = join(f.workspace, ".claude", "skills", "workspace-setup");
   f.io.copySkill("workspace-setup", dest);
   expect(readFileSync(join(dest, "SKILL.md"), "utf8")).toContain("synthetic skill\n");
+  // Creating a symlink needs Developer Mode or elevation on Windows.
+  if (process.platform === "win32") return;
   symlinkSync(join(f.root, "outside"), join(f.skillSource, "workspace-setup", "linked"));
   expect(() => f.io.copySkill("workspace-setup", dest)).toThrowError(
     new WorkspacePathError("path_replaced"),
@@ -268,4 +273,63 @@ test("production provider publishes and inspects a workspace at a chosen folder"
     exists: true,
   });
   expect(readFileSync(join(chosen, "CLAUDE.md"), "utf8")).toContain("cashU agent workspace");
+});
+
+test("production provider on Windows writes PowerShell commands and an .mcp.json Claude Code can start", async () => {
+  const f = fixture();
+  const vault = "a".repeat(32);
+  const home = join(f.root, "home");
+  const dataRoot = join(f.root, "data");
+  const native = {
+    id: vault,
+    workspaceAuthority: () => ({ vault, generation: "session-one", isCurrent: () => true }),
+    store: {
+      read: (sql: string) =>
+        sql.includes("FROM profiles")
+          ? [{ slug: "synthetic", baseCurrency: "PLN", privacy: "strict" }]
+          : [],
+    },
+  } as unknown as NativeVaultSession;
+  const entry = {
+    vaultId: vault,
+    deviceId: "b".repeat(32),
+    vaultRoot: join(dataRoot, "native", vault),
+    state: "ready",
+    enrollment: "creator",
+  } as const satisfies NativeVaultInventoryEntry;
+  // The packaged program on Windows (runtime.ts shimProgram): the app's own .exe in Node mode.
+  const exe = "C:\\Users\\synthetic\\AppData\\Local\\Programs\\cashU\\cashU.exe";
+  const shim = "C:\\Users\\synthetic\\AppData\\Local\\Programs\\cashU\\resources\\shim.mjs";
+  const provider = createProductionWorkspaceProvider({
+    dataRoot,
+    home,
+    workspacesRoot: join(home, "cashU"),
+    skillSource: f.skillSource,
+    version: "synthetic",
+    program: { command: exe, args: [shim], env: { ELECTRON_RUN_AS_NODE: "1" } },
+    sessions: (id) => (id === vault ? native : null),
+    inventory: () => [entry],
+    now: () => new Date("2026-11-04T00:00:00Z"),
+    platform: "win32",
+  });
+  const input = { slug: "synthetic", privacy: "strict" as const, baseCurrency: "PLN", modules: [] };
+  const applied = await provider.bind(vault)?.apply(input);
+  expect(applied).toMatchObject({ kind: "completed" });
+  const status = await provider.bind(vault)?.inspect(input);
+  expect(status).toMatchObject({ availability: "ready", exists: true });
+  if (status?.availability !== "ready") throw new Error("unreachable");
+  expect(status.claudeCommand).toMatch(/^Set-Location -LiteralPath .+ -ErrorAction Stop; claude$/);
+  expect(readFileSync(join(f.workspace, "CLAUDE.md"), "utf8")).toContain(
+    `\`& "${exe}" "${shim}" --profile synthetic ...\``,
+  );
+  // Claude Code starts a stdio server without a shell: the command is the .exe, never a .cmd.
+  expect(JSON.parse(readFileSync(join(f.workspace, ".mcp.json"), "utf8"))).toEqual({
+    mcpServers: {
+      "cashu-synthetic": {
+        command: exe,
+        args: [shim, "mcp", "--profile", "synthetic"],
+        env: { ELECTRON_RUN_AS_NODE: "1" },
+      },
+    },
+  });
 });

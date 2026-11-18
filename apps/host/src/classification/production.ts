@@ -17,7 +17,15 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { budget } from "@cashu/domain";
-import type { HostLock } from "@cashu/node-host";
+import {
+  type HostLock,
+  isOwnerOnly,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  openedWithoutLink,
+  samePath,
+  syncDirectory,
+} from "@cashu/node-host";
 import {
   type ClassifierSecretAuthority,
   type ClassifierSecretStore,
@@ -78,18 +86,23 @@ export interface ProductionClassifierOptions {
   /** Test seam only; production uses the dedicated classifier OS service. */
   readonly makeSecrets?: (authority: ClassifierSecretAuthority) => ClassifierSecretStore;
   readonly fetch?: typeof globalThis.fetch;
+  /** Test seam only; production uses `process.platform` (the private file checks, privateFs). */
+  readonly platform?: NodeJS.Platform;
 }
 
-function privateDirectory(path: string): string {
+// Private files and directories per platform (@cashu/node-host privateFs): on macOS and Linux owned by
+// this user with nothing for group and others; on Windows the mode and owner are synthetic and privacy
+// rests on the per-user ACL of the data dir, and a realpath matches its path without letter case
+// (`samePath`). Type, link and dev / ino / nlink checks hold everywhere.
+function privateDirectory(path: string, platform: NodeJS.Platform): string {
   const resolved = resolve(path);
   const stat = lstatSync(resolved);
   if (
     path !== resolved ||
-    realpathSync.native(resolved) !== resolved ||
+    !samePath(realpathSync.native(resolved), resolved, platform) ||
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
-    (stat.mode & 0o077) !== 0 ||
-    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+    !isOwnerOnly(stat, platform)
   )
     throw new Error("classifier_config_unavailable");
   return resolved;
@@ -100,19 +113,21 @@ class ConfigFiles {
   private readonly root: string;
   private readonly directory: string;
   private readonly identity: { dev: number; ino: number };
-  constructor(dataDir: string) {
-    const root = privateDirectory(dataDir);
+  private readonly platform: NodeJS.Platform;
+  constructor(dataDir: string, platform: NodeJS.Platform) {
+    this.platform = platform;
+    const root = privateDirectory(dataDir, platform);
     this.root = root;
     this.directory = join(root, "classification");
     if (!existsSync(this.directory)) mkdirSync(this.directory, { mode: 0o700 });
-    privateDirectory(this.directory);
+    privateDirectory(this.directory, platform);
     const stat = lstatSync(this.directory);
     this.identity = { dev: stat.dev, ino: stat.ino };
   }
   private path(vault: string): string {
     if (!/^[a-f0-9]{32}$/.test(vault)) throw new Error("classifier_config_unavailable");
-    privateDirectory(this.root);
-    privateDirectory(this.directory);
+    privateDirectory(this.root, this.platform);
+    privateDirectory(this.directory, this.platform);
     const stat = lstatSync(this.directory);
     if (stat.dev !== this.identity.dev || stat.ino !== this.identity.ino)
       throw new Error("classifier_config_unavailable");
@@ -121,15 +136,15 @@ class ConfigFiles {
   read(vault: string): RecordState {
     const path = this.path(vault);
     if (!existsSync(path)) return DEFAULT;
-    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     try {
       const stat = fstatSync(fd);
       if (
         !stat.isFile() ||
         stat.nlink !== 1 ||
         stat.size > 4096 ||
-        (stat.mode & 0o077) !== 0 ||
-        (typeof process.getuid === "function" && stat.uid !== process.getuid())
+        !isOwnerOnly(stat, this.platform) ||
+        !openedWithoutLink(path, stat)
       )
         throw new Error("classifier_config_unavailable");
       const bytes = Buffer.allocUnsafe(stat.size);
@@ -148,18 +163,13 @@ class ConfigFiles {
     // Refuse an existing link before replacement, including a hard-linked target.
     if (existsSync(path)) {
       const stat = lstatSync(path);
-      if (
-        !stat.isFile() ||
-        stat.nlink !== 1 ||
-        (stat.mode & 0o077) !== 0 ||
-        (typeof process.getuid === "function" && stat.uid !== process.getuid())
-      )
+      if (!stat.isFile() || stat.nlink !== 1 || !isOwnerOnly(stat, this.platform))
         throw new Error("classifier_config_unavailable");
     }
     const temp = join(this.directory, `.${randomUUID()}.tmp`);
     const fd = openSync(
       temp,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     try {
@@ -167,12 +177,7 @@ class ConfigFiles {
       fsyncSync(fd);
       closeSync(fd);
       renameSync(temp, path);
-      const dir = openSync(this.directory, "r");
-      try {
-        fsyncSync(dir);
-      } finally {
-        closeSync(dir);
-      }
+      syncDirectory(this.directory, this.platform);
     } catch (error) {
       try {
         closeSync(fd);
@@ -199,7 +204,7 @@ export function createProductionClassifierBinding(options: ProductionClassifierO
   /** One authenticated check of the file and the key; a stable answer reconciles an interrupted change. */
   inspect(id: string): Promise<UiActionResult<unknown>>;
 } {
-  const files = new ConfigFiles(options.dataDir);
+  const files = new ConfigFiles(options.dataDir, options.platform ?? process.platform);
   const ownerScope = new AsyncLocalStorage<{ vault: string; current: () => boolean }>();
   const generations = new Map<string, number>();
   const unresolved = new Set<string>();

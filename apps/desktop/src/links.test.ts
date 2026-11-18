@@ -45,6 +45,21 @@ describe("cashu:// links (notify.link_to_hash)", () => {
     expect(linkFromArgv(["--open-link=cashu://open"])).toBe("cashu://open");
     expect(linkFromArgv(["electron", "--flag", "https://example.com"])).toBeNull();
   });
+
+  it("finds the link Windows passes as the last argument after Chromium's own switches", () => {
+    // A second launch from the registered `"cashU.exe" "%1"` command, as `second-instance` reports it.
+    expect(
+      linkFromArgv([
+        "C:\\Users\\x\\AppData\\Local\\Programs\\cashu\\cashU.exe",
+        "--allow-file-access-from-files",
+        "--original-process-start-time=13370000000000000",
+        "cashu://review/demo-anna/",
+      ]),
+    ).toBe("cashu://review/demo-anna/");
+    // A first start: the packaged app's argv after the executable.
+    expect(linkFromArgv(["cashu://open"])).toBe("cashu://open");
+    expect(linkFromArgv(["C:\\cashU.exe", "--flag", "cashu://other/x"])).toBeNull();
+  });
 });
 
 class FakeWindow implements LinkWindow {

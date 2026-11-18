@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { parseTestBuildMarker, readTestBuildMarker, TEST_BUILD_MARKER } from "./testBuild.js";
+import {
+  parseTestBuildMarker,
+  readTestBuildMarker as readMarker,
+  TEST_BUILD_MARKER,
+  WINDOWS_TEST_BUILD_MARKER,
+} from "./testBuild.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -18,6 +23,8 @@ const marker = {
   dataDir: "/tmp/cashu-lab/data",
   workspacesDir: "/tmp/cashu-lab/workspaces",
 };
+/** The macOS layout on every test runner (a Windows runner would otherwise pick its own layout). */
+const readTestBuildMarker = (app: string) => readMarker(app, "darwin");
 const text = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 /** A synthetic bundle whose manifest lists every resource (as package-macos.mjs writes it). */
@@ -147,5 +154,19 @@ describe("test-build marker", () => {
     expect(() =>
       readTestBuildMarker(bundle({ [TEST_BUILD_MARKER]: text({ ...marker, schema: 2 }) })),
     ).toThrow("test_build_marker_invalid");
+  });
+
+  it("is never honoured on Windows: absent is a release, present refuses to start", () => {
+    const install = mkdtempSync(join(tmpdir(), "cashu-test-build-win-"));
+    roots.push(install);
+    mkdirSync(join(install, "resources"));
+    writeFileSync(join(install, "cashU.exe"), "binary");
+    expect(readMarker(install, "win32")).toBeNull();
+    // A macOS-path marker means nothing in a Windows install.
+    mkdirSync(join(install, "Contents", "Resources"), { recursive: true });
+    writeFileSync(join(install, TEST_BUILD_MARKER), text(marker));
+    expect(readMarker(install, "win32")).toBeNull();
+    writeFileSync(join(install, ...WINDOWS_TEST_BUILD_MARKER.split("/")), text(marker));
+    expect(() => readMarker(install, "win32")).toThrow("test_build_marker_unsupported");
   });
 });

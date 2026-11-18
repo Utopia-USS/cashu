@@ -24,7 +24,9 @@ it("uses the second caller's home through an already-running host", {
     CASHU_DATA_DIR: data,
     CASHU_TESTING: "1",
     CASHU_LANG: "en",
+    // The caller's home: HOME on macOS and Linux, USERPROFILE on Windows.
     HOME: firstHome,
+    USERPROFILE: firstHome,
   };
   const path = await runShim(["skills", "path"], env, { cwd });
   expect(path).toMatchObject({
@@ -34,7 +36,11 @@ it("uses the second caller's home through an already-running host", {
   });
   const pid = hostPid(data);
   expect(pid).toBeDefined();
-  const install = await runShim(["skills", "install"], { ...env, HOME: secondHome }, { cwd });
+  const install = await runShim(
+    ["skills", "install"],
+    { ...env, HOME: secondHome, USERPROFILE: secondHome },
+    { cwd },
+  );
   expect(install.code).toBe(0);
   expect(install.stderr).toBe("");
   expect(install.stdout).toContain("installed /assets-setup -> ");

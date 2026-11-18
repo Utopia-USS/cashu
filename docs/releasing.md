@@ -1,4 +1,4 @@
-# Releasing cashU.app (owner only)
+# Releasing cashU.app and cashU for Windows (owner only)
 
 A release goes to every installed native cashU.app: the app reads its update feed from the latest GitHub
 release of `Utopia-USS/cashu` and installs a newer version in place when the user clicks "Aktualizuj" /
@@ -8,12 +8,13 @@ and download nothing before "Aktualizuj". The same release also tells the retire
 is the owner's procedure; the contract inside the app (Team ID, feed, install sequence) is
 [agents/s47-update-operator.md](agents/s47-update-operator.md).
 
-Two ways to release, both producing the same 7 assets:
+Every release also ships the Windows installer (x64 beta, see [Windows](#windows-x64-beta)), built on a
+GitHub Windows runner. Two ways to release:
 
-| Path | When | Who signs |
-|---|---|---|
-| **Default: CI** - merge `staging` -> `main`, approve the `release` environment | every release once the one-time CI setup below is done | `.github/workflows/release-macos.yml` on a GitHub macOS runner, from the `release` environment's secrets |
-| **Fallback: local** - `node apps/desktop/scripts/release-macos.mjs` | CI not set up yet, or a CI run failed | the owner's Mac, from the login keychain |
+| Path | When | Who signs | Assets |
+|---|---|---|---|
+| **Default: CI** - merge `staging` -> `main`, approve the `release` environment | every release once the one-time CI setup below is done | `.github/workflows/release-macos.yml`: macOS on a GitHub macOS runner, Windows on a GitHub Windows runner, from the `release` environment's secrets | 8 (7 macOS + the Windows installer) |
+| **Fallback: local** - `node apps/desktop/scripts/release-macos.mjs` | CI not set up yet, or a CI run failed | the owner's Mac, from the login keychain | 7 macOS; 8 only with `--windows-assets <dir>` (a Mac cannot build the Windows installer) |
 
 ## Default path: merge, bump, approve
 
@@ -38,14 +39,21 @@ Two ways to release, both producing the same 7 assets:
    release commit: the bump commit right after the merged commit (or the merged commit itself when the
    bump was skipped, as on the first merge), never `main`'s tip, which may already hold a later merge.
    A version whose tag exists ends the run with a notice.
-4. **Approve.** The release job waits for the `release` environment: GitHub > Actions > the "Release
-   macOS" run > "Review deployments" > tick `release` > "Approve and deploy". Only the environment holds
-   the signing secrets, so nothing is signed before the approval.
-5. The job builds arm64 and x64 on one runner, signs with the Developer ID from a temporary keychain,
+4. **Approve, twice.** Both build jobs wait for the `release` environment: GitHub > Actions > the "Release
+   macOS" run > "Review deployments" > tick `release` > "Approve and deploy". The `windows` job asks
+   first; the macOS release job needs its installer, so it asks again when the Windows job has finished
+   (GitHub asks for every job that enters the environment). Only the
+   environment holds the signing secrets, so nothing is signed before an approval.
+5. The `windows` job builds the x64 NSIS installer (`package-windows.mjs x64 --sign azure` when all seven
+   Azure secrets are set, unsigned with a warning when none is), checks its Authenticode state on Windows
+   (signed: valid, timestamped, by `AZURE_SIGNING_PUBLISHER`; unsigned: no signature at all) and hands it to
+   the release job as a workflow artifact. **A Windows failure blocks the release**: nothing is drafted.
+6. The release job builds arm64 and x64 on one runner, signs with the Developer ID from a temporary keychain,
    notarizes with the App Store Connect API key, staples, verifies every artifact (codesign, Gatekeeper,
-   stapler, arch, version, no test-build marker), writes `latest-mac.yml` and the two appcasts, creates a
-   **draft**, checks that it carries exactly the 7 assets, then publishes it as the latest release (which
-   creates the tag `vX.Y.Z`). The temporary keychain and the key file are removed in an `always()` step.
+   stapler, arch, version, no test-build marker), writes `latest-mac.yml` and the two appcasts, adds the
+   Windows installer unchanged (`--windows-assets`), creates a **draft**, checks that it carries exactly the
+   8 assets, then publishes it as the latest release (which creates the tag `vX.Y.Z`). The temporary
+   keychain and the key file are removed in an `always()` step.
 
 Watching from a terminal (read-only):
 
@@ -133,12 +141,15 @@ the repo: every `gh secret set` below reads stdin (a pipe, or a hidden prompt).
      `gh release edit v<X.Y.Z> --repo Utopia-USS/cashu --draft=false --latest`.
 
    The workflow uses `GITHUB_TOKEN` today; a) or b) is a few-line change in `release-macos.yml`.
-6. **Actions policy.** The repository allows GitHub-owned actions only. Every workflow uses only pinned
-   `actions/checkout` and `actions/setup-node` and installs pnpm through Corepack, so nothing else is
-   needed.
+6. **Actions policy.** The repository allows GitHub-owned actions only. The workflows use only pinned
+   `actions/checkout`, `actions/setup-node`, `actions/setup-java`, `actions/cache`,
+   `actions/upload-artifact` and `actions/download-artifact` and install pnpm through Corepack, so nothing
+   else is needed.
 7. **First proof of the signed CI path.** Once the workflow is on `main`: Actions > Release macOS > Run
-   workflow (branch `main`) with "dry_run" ticked > approve in the `release` environment. Expected: both
-   arches signed from the temporary keychain, notarized with the API key, verified, 7 assets, nothing
+   workflow (branch `main`) with "dry_run" ticked > approve the `windows` job, then the release job, in the
+   `release` environment. Expected: an installer (unsigned until the Azure setup in
+   [Windows signing](#one-time-setup-windows-signing-azure-artifact-signing) is done, with a warning), both
+   macOS arches signed from the temporary keychain, notarized with the API key, verified, 8 assets, nothing
    published. A possible first-run failure: the runner does not trust the Developer ID G2 intermediate for
    the imported p12 (the keychain step fails with a clear message).
 
@@ -154,7 +165,7 @@ alone. Artifacts land in `build/release/v<X.Y.Z>/` of the checkout.
 |---|---|
 | `--check` | preflight only: tools, `gh` logged in as an admin of the repository, the Developer ID identity in the keychain and usable by codesign without a dialog, the notarytool profile `cashu-notary`, the version (above the newest release, the newest `v*` tag and 0.4.6, no release or tag of it yet) and the commits since the previous tag |
 | `--dry-run` | + export, `pnpm install`, build both arches, sign, notarize, staple, verify every artifact independently, write the feeds and the release text; nothing is uploaded (`--ref <rev>` builds another commit) |
-| `--yes` | + draft, check the 7 assets, publish as latest (creates the tag; the owner's admin role passes the ruleset). Always `origin/main`; stops when `origin/main` moved during the build; above 50 commits it needs `--notes docs/releases/v<X.Y.Z>.md` |
+| `--yes` | + draft, check the 7 assets (8 with `--windows-assets`), publish as latest (creates the tag; the owner's admin role passes the ruleset). Always `origin/main`; stops when `origin/main` moved during the build; above 50 commits it needs `--notes docs/releases/v<X.Y.Z>.md` |
 
 ```bash
 node apps/desktop/scripts/release-macos.mjs --check
@@ -171,9 +182,24 @@ line tools. The script reads no secret itself: codesign and notarytool read the 
 If a CI run already left a draft of the same version, `--yes` refuses (the release exists): publish or
 delete that draft first.
 
+**Windows in a local release.** A Mac cannot build the Windows installer, so a local release carries the 7
+macOS assets and **no Windows installer** unless one is handed in: `--windows-assets <dir>` (every mode)
+takes a directory holding exactly `cashU-<X.Y.Z>-win-x64.exe` (a non-empty regular file, nothing else),
+checks it in preflight, copies it next to the macOS artifacts, lists its sha256 and uploads it as the 8th
+asset. The only source is the `windows-installer` artifact of a CI run of **the same commit** (a dry run is
+enough; artifacts are kept 3 days); the script cannot tell which commit an installer was built from, so
+check the run page before using it:
+
+```bash
+gh run download <run id> --repo Utopia-USS/cashu --name windows-installer --dir ~/Desktop/cashu-windows
+node apps/desktop/scripts/release-macos.mjs --yes --windows-assets ~/Desktop/cashu-windows --notes docs/releases/v<X.Y.Z>.md
+```
+
+The script does not check the installer's Authenticode signature (the CI `windows` job does, on Windows).
+
 ## What a release contains
 
-Seven assets, all of the same version:
+Eight assets from CI (seven from a local release without `--windows-assets`), all of the same version:
 
 | Asset | Read by |
 |---|---|
@@ -181,6 +207,7 @@ Seven assets, all of the same version:
 | `cashU-<v>-mac-arm64.dmg`, `cashU-<v>-mac-x64.dmg` | people downloading the app by hand |
 | `latest-mac.yml` | the native app's updater (electron-updater): both zips with size and sha512 |
 | `appcast-macos-arm64.xml`, `appcast-macos-x86_64.xml` | the retired Python app's Sparkle (it builds the name from `uname -m`, hence `x86_64`) |
+| `cashU-<v>-win-x64.exe` | people on Windows, downloading and installing by hand (no Windows updater feed yet) |
 
 Separate arches, not universal: half the download, and the native modules are built per arch. One
 `latest-mac.yml` lists both zips; electron-updater picks the file with `arm64` in its name on Apple
@@ -197,6 +224,128 @@ Continuity rules (break one and installed apps stop updating; everyone reinstall
   fine; another team is not.
 - **One bundle ID**: `io.utopiasoft.cashu` (the same as the Python app, so its macOS settings carry over).
 - **Releases are immutable**: a bad release is fixed by a newer one, never by deleting or re-tagging.
+
+## Windows (x64 beta)
+
+**What ships.** `cashU-<v>-win-x64.exe`, an NSIS installer built by `apps/desktop/scripts/package-windows.mjs`
+on a Windows runner (it refuses any other OS). It installs per user with one click (no administrator prompt)
+under `%LOCALAPPDATA%\Programs`; the data dir is `%LOCALAPPDATA%\cashU` (local, never the roaming
+`%APPDATA%`), the vault keys live in the Windows Credential Manager, and the `cashu` command is
+`%LOCALAPPDATA%\cashU\bin\cashu.cmd`. Beta limits: no connectors, no OS notifications, no background start
+at login, no automatic updates. Only the production flavor exists on Windows.
+
+**Unsigned until Azure signing is set up.** Without the Azure secrets the release ships the installer
+unsigned and the workflow says so with a warning. Then Microsoft Defender SmartScreen shows "Windows
+protected your PC" when the installer starts; the user must choose "More info" > "Run anyway", and the
+browser may also flag the download as rarely downloaded. A signed installer names the publisher instead of
+"Unknown publisher"; SmartScreen can still warn for a new publisher until the signed files build
+reputation (check Microsoft's current SmartScreen guidance; it is not a switch the release controls).
+
+**No automatic updates on Windows yet.** The app reports updates unavailable on Windows with its own reason
+(`windows_manual_update`: new versions are installed by hand from the releases page). A newer installer run
+over an installed one replaces the install folder in place (electron-builder's one-click installer); the
+data dir and the Credential Manager items live elsewhere and stay. Not proven until the first Windows
+update.
+Why not electron-updater now: on macOS the updater installs only a build signed by the pinned Team ID; the
+Windows equivalent pins the publisher of a signed installer, which does not exist until the Azure setup
+below is done, and an updater that installs unsigned downloads would trust whatever the release feed
+names. So the release carries no Windows feed (`latest.yml`) and installed Windows apps never download
+anything by themselves.
+
+**Later: verified auto-updates on Windows** (once signed releases work; one change set, owner's go):
+pin the publisher (the certificate's CN, the value of `AZURE_SIGNING_PUBLISHER`) as electron-updater's
+`publisherName` and in `apps/desktop/src/update/releasePolicy.ts`, seal a Windows `app-update.yml` into the
+package like the macOS one, publish electron-builder's `latest.yml` (installer name, size, sha512) as a 9th
+asset, have the release script expect it, drop the `windows_manual_update` gate, and prove an in-place
+update between two signed test builds before the first such release. Releases before that stay manual
+installs.
+
+Continuity rules for Windows (break one and installed apps no longer upgrade cleanly):
+
+- **One publisher once signed.** The certificate profile always uses the validated identity of Utopia
+  Ultimate Software Solutions Sp. z o.o.; Artifact Signing renews its short-lived certificates under the
+  same subject by itself. A new identity validation (a changed legal name or address) changes the subject:
+  once auto-updates verify the publisher, that needs a bridge release that accepts both names.
+- **One application identity.** The app id `io.utopiasoft.cashu` (also the NSIS install key electron-builder
+  derives from it), the product name and the per-user install mode stay, or a new install lands next to the
+  old one instead of replacing it.
+- **One data dir and one key namespace.** `%LOCALAPPDATA%\cashU` and the Credential Manager item names
+  (`cashu.vault.v1.<hash>` ...) stay; changing either strands every Windows user's vaults.
+- **The installer name** `cashU-<v>-win-x64.exe` stays (the docs and a later `latest.yml` refer to it).
+
+### One-time setup: Windows signing (Azure Artifact Signing)
+
+Microsoft renamed Trusted Signing to **Artifact Signing** (Azure portal: "Artifact Signing Accounts"; the
+roles are now "Artifact Signing ..."; older pages and electron-builder's options still say Trusted
+Signing). Public Trust certificates are available to organizations in the EU, so the Polish company
+qualifies. Owner only; never paste a secret value on screen, into the chat or into a file in the repo.
+
+1. **An Azure subscription** in the company's Microsoft Entra tenant (portal.azure.com > Subscriptions >
+   Add; pay-as-you-go is enough). Note the Directory (tenant) ID (Microsoft Entra ID > Overview).
+2. **Register the resource provider.** Subscriptions > the subscription > Settings > Resource providers >
+   `Microsoft.CodeSigning` > Register (or `az provider register --namespace Microsoft.CodeSigning`).
+3. **An Artifact Signing account.** Search "Artifact Signing Accounts" > Create: a new resource group (for
+   example `cashu-signing`), an account name (3-24 letters and digits, globally unique, for example
+   `utopiacashusigning`), region **Poland Central** (endpoint `https://plc.codesigning.azure.net`; West
+   Europe `https://weu.codesigning.azure.net` also works), pricing tier Basic (check the current price and
+   monthly signature quota in the portal). Creating the account and the profile needs at least Contributor.
+4. **Identity validation (1 to 30 business days).** On the account: Access control (IAM) > Add role
+   assignment > "Artifact Signing Identity Verifier" for yourself (you also need Reader on the
+   subscription). Then Objects > Identity validations > Organization > New identity > **Public**. Fill in:
+   Organization Name exactly as registered (`Utopia Ultimate Software Solutions Sp. z o.o.`), the company
+   website, a monitored primary email on the company's own domain (links expire after 7 days; the mailbox
+   must accept external mail with links), a different secondary email on the same domain, the business
+   identifier (check in the portal which Polish register number it expects: KRS, NIP or REGON), the
+   registered address, and the first and last name of the person who will verify their own ID (exactly as
+   on the ID document). Check the "Certificate subject preview", Create. When the status turns "Action
+   Required", that person completes the individual verification from the link (Microsoft Authenticator,
+   Verified ID). More documents may be requested by email (issued within the last 12 months). Wait for
+   **Completed**.
+5. **A certificate profile.** Objects > Certificate profiles > Create > **Public Trust**: a name (5-100
+   letters and digits, for example `cashuPublicTrust`), "Verified CN and O" = the completed validation
+   (leave street address and postal code off). Note the subject preview's CN: that exact string is
+   `AZURE_SIGNING_PUBLISHER`.
+6. **A service principal for CI.** Microsoft Entra ID > App registrations > New registration, name
+   `cashU CI signing`, single tenant, no redirect URI. Note the Application (client) ID. Certificates &
+   secrets > New client secret (choose an expiry, for example 12 months, and put a renewal reminder in the
+   calendar); copy the secret **value** once into the password manager.
+7. **Let it sign, nothing else.** On the certificate profile (narrowest scope; check in the portal that
+   IAM is offered there, else use the account): Access control (IAM) > Add role assignment >
+   **Artifact Signing Certificate Profile Signer** > Members: the `cashU CI signing` app. Or with the CLI:
+
+   ```bash
+   az role assignment create --assignee <application (client) id> \
+     --role "Artifact Signing Certificate Profile Signer" \
+     --scope "/subscriptions/<subscription id>/resourceGroups/cashu-signing/providers/Microsoft.CodeSigning/codeSigningAccounts/<account>/certificateProfiles/<profile>"
+   ```
+
+8. **The seven `release` environment secrets.** All seven, in one sitting: the workflow fails a run that
+   has only some of them (and builds unsigned with a warning when none is set). Each command reads the
+   value from stdin (a hidden prompt):
+
+   ```bash
+   gh secret set AZURE_TENANT_ID --repo Utopia-USS/cashu --env release            # the Directory (tenant) ID
+   gh secret set AZURE_CLIENT_ID --repo Utopia-USS/cashu --env release            # the app's Application (client) ID
+   gh secret set AZURE_CLIENT_SECRET --repo Utopia-USS/cashu --env release        # the client secret value
+   gh secret set AZURE_SIGNING_ENDPOINT --repo Utopia-USS/cashu --env release     # e.g. https://plc.codesigning.azure.net
+   gh secret set AZURE_SIGNING_ACCOUNT --repo Utopia-USS/cashu --env release      # the Artifact Signing account name
+   gh secret set AZURE_SIGNING_CERT_PROFILE --repo Utopia-USS/cashu --env release # the certificate profile name
+   gh secret set AZURE_SIGNING_PUBLISHER --repo Utopia-USS/cashu --env release    # the certificate's CN, exactly
+   gh secret list --repo Utopia-USS/cashu --env release                           # names only: the 5 macOS + these 7
+   ```
+
+   The workflow checks their shapes before building (GUIDs, an `https://<region>.codesigning.azure.net`
+   endpoint) and passes them to `package-windows.mjs --sign azure` as `CASHU_AZURE_ENDPOINT`,
+   `CASHU_AZURE_ACCOUNT`, `CASHU_AZURE_CERT_PROFILE`, `CASHU_AZURE_PUBLISHER` plus the three `AZURE_*`
+   credentials (read by the TrustedSigning PowerShell module electron-builder uses).
+9. **First signed dry run.** Actions > Release macOS > Run workflow (branch `main`), "dry_run" ticked >
+   approve the `windows` job. Expected in its log: "All 7 Azure Artifact Signing secrets are set", then
+   "signed by '<publisher>', timestamped, status Valid"; then approve the release job (8 assets, nothing
+   published). Typical first-run failures: 403 from the signing endpoint (the role is missing on the
+   profile, or the account / profile name is misspelled), or the publisher check (the secret is not the
+   certificate's exact CN).
+10. **Afterwards:** renew the client secret before it expires (a run with an expired secret fails the
+    Windows job and so blocks the release), and plan the verified auto-update step above.
 
 ## Python users
 
@@ -264,6 +413,10 @@ Proven before the first release (2026-11-07):
   `launchctl bootout` of a throwaway label.
 
 Not proven until it happens:
+
+- Anything on Windows: the installer, the packaged smoke test and the `windows` release job have not run
+  yet (no Windows machine here); the first proof is the `windows` job of `ts.yml`, then a release dry run.
+  Signed installers: until the Azure setup and its first signed dry run.
 
 - The signed CI path (temporary keychain, API-key notarization, publishing with the workflow's token):
   until the first CI dry run or release (setup step 7).

@@ -9,12 +9,17 @@ function SyntheticSettings({
   unavailable = false,
   approval = false,
   connectors = false,
+  windows = false,
   onConnectorAction = async () => {},
+  onReleasesOpened = () => {},
 }: {
   unavailable?: boolean;
   approval?: boolean;
   connectors?: boolean;
+  /** A Windows install: no in-app updater, new versions from the releases page. */
+  windows?: boolean;
   onConnectorAction?: (input: ConnectorSettingsInput) => Promise<void>;
+  onReleasesOpened?: () => void;
 }) {
   const profileForm = useForm({
     defaultValues: { name: "Synthetic Household", baseCurrency: "PLN" },
@@ -203,6 +208,10 @@ function SyntheticSettings({
     updaterBusy: false,
     onCheckUpdates: async () => {},
     onUpdatesAutoPicked: async () => {},
+    manualUpdates: windows
+      ? { version: "1.0.0", releasesUrl: "https://example.test/synthetic/releases/latest" }
+      : null,
+    onReleasesOpened,
     onThemePicked: async () => {},
     onLanguagePicked: async () => {},
     notice: null,
@@ -220,6 +229,10 @@ export const Ready = { render: () => <SyntheticSettings /> };
 export const UnboundProviders = { render: () => <SyntheticSettings unavailable /> };
 export const ApprovalRequired = { render: () => <SyntheticSettings approval /> };
 export const ConnectorsReady = { render: () => <SyntheticSettings connectors /> };
+export const WindowsManualUpdates = { render: () => <SyntheticSettings windows /> };
+export function WindowsReleasesFixture({ onOpened }: { onOpened: () => void }) {
+  return <SyntheticSettings windows onReleasesOpened={onOpened} />;
+}
 export function ConnectorRemovalFixture({
   onAction,
 }: {

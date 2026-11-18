@@ -1,14 +1,15 @@
 // Run the native host in the foreground for `cashu host run`, inheriting this terminal.
 import { spawn } from "node:child_process";
+import { sharedSignals } from "./signals.js";
 
 export interface ForegroundOptions {
   readonly command: string;
   readonly args: readonly string[];
   readonly env: NodeJS.ProcessEnv;
   readonly cwd: string;
+  /** Which terminal signals reach the child too (signals.ts). */
+  readonly platform: NodeJS.Platform;
 }
-
-const GROUP_SIGNALS: readonly NodeJS.Signals[] = ["SIGINT", "SIGQUIT", "SIGHUP"];
 
 export type ForegroundOutcome =
   | { readonly kind: "exit"; readonly code: number }
@@ -23,11 +24,13 @@ export function runForeground(options: ForegroundOptions): Promise<ForegroundOut
       cwd: options.cwd,
     });
     const ignore = () => {};
+    // SIGTERM is never delivered on Windows (the listener stays idle there).
     const forward = () => child.kill("SIGTERM");
-    for (const signal of GROUP_SIGNALS) process.on(signal, ignore);
+    const shared = sharedSignals(options.platform);
+    for (const signal of shared) process.on(signal, ignore);
     process.on("SIGTERM", forward);
     const cleanup = () => {
-      for (const signal of GROUP_SIGNALS) process.off(signal, ignore);
+      for (const signal of shared) process.off(signal, ignore);
       process.off("SIGTERM", forward);
     };
     child.once("error", () => {

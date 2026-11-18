@@ -57,7 +57,7 @@ export function settingsInfoQuery(deps: {
         availability: "ready",
         version: deps.version,
         dataDir,
-        launcher: launcherPath(dataDir),
+        launcher: launcherPath(dataDir, process.platform),
         mcpServerPrefix: processFlavor().mcpServerPrefix,
         ...(status === null
           ? {}

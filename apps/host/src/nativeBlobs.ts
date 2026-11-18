@@ -12,7 +12,14 @@ import {
   writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { type HostLock, hostRunPaths } from "@cashu/node-host";
+import {
+  type HostLock,
+  hasPrivateMode,
+  hostRunPaths,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  syncDirectory,
+} from "@cashu/node-host";
 import type {
   ImportArchive,
   ImportPublication,
@@ -35,26 +42,16 @@ function privateDirectory(path: string, create: boolean): void {
   if (
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
-    (stat.mode & 0o777) !== 0o700 ||
-    realpathSync(path) !== path ||
-    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+    !hasPrivateMode(stat, 0o700) ||
+    realpathSync(path) !== path
   )
     throw new Error("native blob directory is unavailable");
-}
-
-function syncDirectory(path: string): void {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 
 function readPrivateFile(path: string, max: number): Uint8Array | null {
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
@@ -65,8 +62,7 @@ function readPrivateFile(path: string, max: number): Uint8Array | null {
     if (
       !stat.isFile() ||
       stat.nlink !== 1 ||
-      (stat.mode & 0o777) !== 0o600 ||
-      (typeof process.getuid === "function" && stat.uid !== process.getuid()) ||
+      !hasPrivateMode(stat, 0o600) ||
       stat.dev !== named.dev ||
       stat.ino !== named.ino ||
       stat.size !== named.size ||
@@ -183,7 +179,7 @@ export class NativeBlobPublication implements ImportPublication, ImportArchive {
     const sealed = crypto.sealBlob(this.#sodium, this.#ring, this.vault, expected, content);
     const fd = openSync(
       path,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     try {

@@ -22,6 +22,7 @@ import { NodeFolderFs } from "./folderFs.js";
 const tempRoot = (name: string) =>
   mkdtemp(join(realpathSync(tmpdir()), `cashu-node-host-${name}-`));
 const mode = async (path: string) => (await stat(path)).mode & 0o777;
+const ON_WINDOWS = process.platform === "win32";
 const bytes = (...xs: number[]) => Uint8Array.from(xs);
 
 async function errorCode(p: Promise<unknown>): Promise<string | undefined> {
@@ -39,9 +40,6 @@ describe("NodeFolderFs", () => {
     const fs = new NodeFolderFs(root);
     await fs.write("v/d/.000001.seg.a.tmp", bytes(1, 2, 3));
     await fs.rename("v/d/.000001.seg.a.tmp", "v/d/000001.seg");
-    expect(await mode(join(root, "v"))).toBe(0o700);
-    expect(await mode(join(root, "v", "d"))).toBe(0o700);
-    expect(await mode(join(root, "v", "d", "000001.seg"))).toBe(0o600);
     await fs.write("v/d/.000001.seg.b.tmp", bytes(1, 2, 3, 4));
     await fs.rename("v/d/.000001.seg.b.tmp", "v/d/000001.seg");
     expect(await fs.list("v/d")).toEqual([{ name: "000001.seg", kind: "file", size: 4 }]);
@@ -53,6 +51,20 @@ describe("NodeFolderFs", () => {
     await fs.remove("v/d/000001.seg");
     await fs.remove("v/d/000001.seg");
     expect(await fs.list("v/d")).toEqual([]);
+  });
+
+  // Windows modes are synthetic (a writable file reads as 0666); the folder's ACL governs there.
+  it.skipIf(ON_WINDOWS)("creates 0700 directories (also for a watch) and 0600 files", async () => {
+    const root = await tempRoot("modes");
+    const fs = new NodeFolderFs(root);
+    await fs.write("v/d/.000001.seg.a.tmp", bytes(1, 2, 3));
+    await fs.rename("v/d/.000001.seg.a.tmp", "v/d/000001.seg");
+    expect(await mode(join(root, "v"))).toBe(0o700);
+    expect(await mode(join(root, "v", "d"))).toBe(0o700);
+    expect(await mode(join(root, "v", "d", "000001.seg"))).toBe(0o600);
+    const stop = fs.watch("w", () => {});
+    expect(await mode(join(root, "w"))).toBe(0o700);
+    stop();
   });
 
   it("keeps every path under the root", async () => {
@@ -79,7 +91,8 @@ describe("NodeFolderFs", () => {
     expect(await errorCode(fs.list(""))).toBe("unavailable");
   });
 
-  it("is unavailable when permission on the folder is lost", async () => {
+  // A 0000 POSIX mode has no Windows counterpart (chmod there only toggles the read-only attribute).
+  it.skipIf(ON_WINDOWS)("is unavailable when permission on the folder is lost", async () => {
     const root = await tempRoot("perm");
     const fs = new NodeFolderFs(root);
     await fs.write("v/.x.tmp", bytes(1));
@@ -99,7 +112,7 @@ describe("NodeFolderFs", () => {
         resolve();
       });
     });
-    expect(await mode(join(root, "v"))).toBe(0o700);
+    expect((await stat(join(root, "v"))).isDirectory()).toBe(true);
     // A recursive watch starts asynchronously (FSEvents on macOS): a change made before the stream
     // is live is never reported. Repeat the change (a new file every 50 ms) until one is reported, so
     // the test ends on the report itself however long the watcher takes to start.

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { NativeCreationPrepareParams } from "@cashu/host-protocol";
-import { type HostLock, NodeFolderFs } from "@cashu/node-host";
+import { type HostLock, hasPrivateMode, NodeFolderFs } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, metaClockStore, metaGateStateStore, Store, vaultSalt } from "@cashu/store";
 import { assertReplayedDeviceAuthority, SqlProvenanceStore } from "@cashu/store/sync";
@@ -51,8 +51,7 @@ function existingFile(path: string): void {
     stat.isSymbolicLink() ||
     stat.nlink !== 1 ||
     realpathSync(path) !== path ||
-    (stat.mode & 0o777) !== 0o600 ||
-    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+    !hasPrivateMode(stat, 0o600)
   )
     throw new Error("native_creation_proof_unavailable");
 }

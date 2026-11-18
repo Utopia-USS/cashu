@@ -102,3 +102,63 @@ jobs:
 
       - name: Emulator tests
         run: pnpm test:emulator
+
+  # Windows (x64 beta): the suites the Windows port made platform-aware (node-host: named pipes, private files,
+  # Credential Manager; cli: data dir, launcher, signals; host), an unsigned installer from
+  # apps/desktop/scripts/package-windows.mjs, and a packaged smoke test of that installer
+  # (apps/desktop/scripts/smoke-windows.mjs: silent per-user install into a temp folder, the installed shim
+  # against a fresh temp data dir, host start, launcher, a synthetic vault with its key in the Credential
+  # Manager, a restart reading it back, a stable build id, uninstall). The steps after Install run even when an
+  # earlier suite failed, so one run reports every failing part; the smoke needs the installer.
+  windows:
+    name: Windows (tests, installer, smoke)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Byte-identical files: the skills and the connector catalog ship in the package and are hashed into its
+      # manifest, so git must not turn LF into CRLF on checkout (the runner image's default).
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install
+        id: install
+        run: |
+          corepack enable pnpm
+          pnpm --version
+          pnpm install --frozen-lockfile
+
+      - name: Test node-host
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm --filter @cashu/node-host test
+
+      - name: Test cli
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm --filter @cashu/cli test
+
+      - name: Test host
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm --filter @cashu/host test
+
+      # Unsigned (no secrets in this workflow): the same build the release's `windows` job signs.
+      - name: Build the installer (unsigned)
+        id: package
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node apps/desktop/scripts/package-windows.mjs x64 --out "$RUNNER_TEMP/cashu-windows"
+
+      - name: Packaged smoke test
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        run: |
+          version="$(node -p 'require("./apps/desktop/package.json").version')"
+          node --experimental-strip-types --import ./tools/node-ts/resolveTs.ts \
+            apps/desktop/scripts/smoke-windows.mjs "$RUNNER_TEMP/cashu-windows/cashU-$version-win-x64.exe" \
+            --unpacked build/t46/electron-builder/win-unpacked

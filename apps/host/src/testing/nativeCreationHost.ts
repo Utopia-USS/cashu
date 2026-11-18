@@ -2,20 +2,23 @@
 // the real OS KeyStore port. The same constrained factory opens and creates vaults across restarts.
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { createTestKeyStore, type OsKeyringPort } from "@cashu/node-host/testing";
 import { startLocalHost } from "../host.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 
 const [dataDir, service] = process.argv.slice(2);
 const tempRoot = realpathSync(tmpdir());
+/** `t44-test-<name>/data` under the temp root, with the platform separator (Windows too). */
+const relative = dataDir?.slice(tempRoot.length + 1) ?? "";
 if (
   !dataDir ||
   !service ||
   resolve(dataDir) !== dataDir ||
   realpathSync(dataDir) !== dataDir ||
-  !dataDir.startsWith(`${tempRoot}/`) ||
-  !/^t44-test-[^/]+\/data$/.test(dataDir.slice(tempRoot.length + 1)) ||
+  !dataDir.startsWith(`${tempRoot}${sep}`) ||
+  basename(relative) !== "data" ||
+  !/^t44-test-[^/\\]+$/.test(dirname(relative)) ||
   !/^cashu-next-test\.[0-9a-f]{32}$/.test(service)
 )
   throw new Error("synthetic_creation_root_required");

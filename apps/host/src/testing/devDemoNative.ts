@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import { isOwnerOnly } from "@cashu/node-host";
 import type { ProductionKeyStoreInput } from "@cashu/node-host/keyring";
 import type { RelayRecoveryRecord, RelayRecoverySecrets } from "@cashu/node-host/relay-auth";
 import type { AuthRecord, AuthStore, crypto } from "@cashu/sync";
@@ -41,7 +42,8 @@ function keyDir(dataDir: string): string {
   const dir = join(dataDir, DIR);
   if (!existsSync(dir)) mkdirSync(dir, { mode: 0o700 });
   const stat = lstatSync(dir);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0)
+  // Owner-only by mode on macOS and Linux; on Windows the data dir's per-user ACL (see isOwnerOnly).
+  if (!stat.isDirectory() || stat.isSymbolicLink() || !isOwnerOnly(stat))
     throw new Error("the demo key dir is not private");
   return dir;
 }

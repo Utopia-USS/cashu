@@ -1,5 +1,7 @@
 // A per-data-dir update barrier. The updater publishes it before asking the current host to stop.
 // Every successor checks it while holding HostLock, before creating a socket or opening a vault.
+// The barrier files are private files of the run dir: mode 0600 of this user on macOS / Linux, a
+// regular file reached without a link on every platform (Windows: `privateFs.ts`).
 import { randomBytes } from "node:crypto";
 import {
   closeSync,
@@ -22,6 +24,14 @@ import {
 } from "@cashu/host-protocol/update-bridge";
 import { acquireHostLock, type HostLock } from "./lock.js";
 import { ensurePrivateDir, type HostPathEnv, hostRunPaths } from "./paths.js";
+import {
+  hasPrivateMode,
+  nothingAt,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  openedWithoutLink,
+  syncDirectory,
+} from "./privateFs.js";
 
 const FILE = "update-admission.json";
 const COMPLETE_FILE = "update-handover-complete.json";
@@ -79,13 +89,23 @@ function assertLock(lock: HostLock, dataDir: string, pathEnv?: HostPathEnv): voi
     throw new UpdateAdmissionError("update_lock_required");
 }
 
+/** `nothingAt`, with any lstat failure read as "something is there" (the caller then refuses). */
+function missing(path: string): boolean {
+  try {
+    return nothingAt(path);
+  } catch {
+    return false;
+  }
+}
+
 function read(dataDir: string, pathEnv?: HostPathEnv): UpdateAdmission | undefined {
   const { marker } = paths(dataDir, pathEnv);
   let fd: number;
   try {
-    fd = openSync(marker, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    fd = openSync(marker, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    // No barrier only when nothing is there: a dangling link (Windows opens through it) is refused.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT" && missing(marker)) return undefined;
     throw new UpdateAdmissionError("update_barrier_invalid");
   }
   try {
@@ -94,8 +114,8 @@ function read(dataDir: string, pathEnv?: HostPathEnv): UpdateAdmission | undefin
       !stat.isFile() ||
       stat.size > MAX_BYTES ||
       stat.size === 0 ||
-      (stat.mode & 0o777) !== 0o600 ||
-      (typeof process.getuid === "function" && stat.uid !== process.getuid())
+      !hasPrivateMode(stat, 0o600) ||
+      !openedWithoutLink(marker, stat)
     )
       throw new Error("invalid_file");
     const parsed = updateAdmissionRecord.safeParse(JSON.parse(readFileSync(fd, "utf8")));
@@ -114,15 +134,6 @@ export function readUpdateAdmission(
   pathEnv?: HostPathEnv,
 ): UpdateAdmission | undefined {
   return read(dataDir, pathEnv);
-}
-
-function syncDir(dir: string): void {
-  const fd = openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
 }
 
 /** Publish before requesting admin.handover. An existing or malformed barrier is never replaced. */
@@ -158,7 +169,7 @@ export function publishUpdateAdmission(
   try {
     fd = openSync(
       temp,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     try {
@@ -169,7 +180,7 @@ export function publishUpdateAdmission(
     }
     // link creates the final name atomically without replacing a concurrent barrier.
     linkSync(temp, marker);
-    syncDir(run.runDir);
+    syncDirectory(run.runDir);
     return admission;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST")
@@ -253,7 +264,7 @@ export function recordUpdateHandoverComplete(
   try {
     const fd = openSync(
       temp,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     try {
@@ -266,7 +277,7 @@ export function recordUpdateHandoverComplete(
     if (current?.id !== barrier.id) throw new UpdateAdmissionError("update_barrier_changed");
     // Only the HostLock holder writes this proof. A stale proof has a different admission id.
     renameSync(temp, complete);
-    syncDir(run.runDir);
+    syncDirectory(run.runDir);
   } finally {
     rmSync(temp, { force: true });
   }
@@ -285,7 +296,7 @@ export function assertUpdateHandoverComplete(
     throw new UpdateAdmissionError("update_barrier_changed");
   const { run, complete } = paths(dataDir, pathEnv);
   try {
-    const fd = openSync(complete, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const fd = openSync(complete, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     let value: unknown;
     try {
       const stat = fstatSync(fd);
@@ -293,8 +304,8 @@ export function assertUpdateHandoverComplete(
         !stat.isFile() ||
         stat.size === 0 ||
         stat.size > MAX_BYTES ||
-        (stat.mode & 0o777) !== 0o600 ||
-        (typeof process.getuid === "function" && stat.uid !== process.getuid())
+        !hasPrivateMode(stat, 0o600) ||
+        !openedWithoutLink(complete, stat)
       )
         throw new Error("invalid_file");
       value = JSON.parse(readFileSync(fd, "utf8"));
@@ -344,7 +355,7 @@ export function clearUpdateAdmissionAfterReplacement(
   if (!stat.isFile() || stat.isSymbolicLink())
     throw new UpdateAdmissionError("update_barrier_invalid");
   unlinkSync(marker);
-  syncDir(run.runDir);
+  syncDirectory(run.runDir);
 }
 
 /**
@@ -363,7 +374,7 @@ export function cancelUpdateAdmission(
   if (barrier.phase !== "prepared") throw new UpdateAdmissionError("update_dispatch_unverified");
   const { run, marker } = paths(dataDir, pathEnv);
   unlinkSync(marker);
-  syncDir(run.runDir);
+  syncDirectory(run.runDir);
 }
 
 /** Commit the no-return installer boundary durably while main still owns HostLock. */
@@ -382,7 +393,7 @@ export function commitUpdateDispatch(
   try {
     const fd = openSync(
       temp,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     try {
@@ -394,7 +405,7 @@ export function commitUpdateDispatch(
     if (read(dataDir, pathEnv)?.id !== admissionId)
       throw new UpdateAdmissionError("update_barrier_changed");
     renameSync(temp, marker);
-    syncDir(run.runDir);
+    syncDirectory(run.runDir);
   } finally {
     rmSync(temp, { force: true });
   }

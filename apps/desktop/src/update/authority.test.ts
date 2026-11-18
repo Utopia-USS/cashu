@@ -2,6 +2,7 @@ import { FLAVORS } from "@cashu/node-host/flavor";
 import { expect, it } from "vitest";
 import {
   developerIdRequirement,
+  installsUpdatesByHand,
   parseReleaseFeed,
   parseTestBuildFeed,
   releaseAuthority,
@@ -77,6 +78,7 @@ it("accepts a test build's local feed only through the test parser", () => {
 it("never offers updates in a flavor without an update feed (the staging app)", async () => {
   const authority = releaseAuthority(
     {
+      platform: "darwin",
       isPackaged: true,
       execPath: "/synthetic/cashU Staging.app/Contents/MacOS/cashU",
       resourcesPath: "/synthetic/cashU Staging.app/Contents/Resources",
@@ -89,4 +91,48 @@ it("never offers updates in a flavor without an update feed (the staging app)", 
     },
   );
   expect(await authority.check()).toEqual({ ok: false, reason: "flavor_without_updates" });
+});
+
+const noHandover = async (): Promise<never> => {
+  throw new Error("no handover");
+};
+const windowsInstall = {
+  platform: "win32",
+  isPackaged: true,
+  execPath: "C:\\synthetic\\Programs\\cashu\\cashU.exe",
+  resourcesPath: "C:\\synthetic\\Programs\\cashu\\resources",
+  dataDir: "C:\\synthetic\\Local\\cashU",
+  expectedDataDir: "C:\\synthetic\\Local\\cashU",
+  flavor: FLAVORS.prod,
+} as const;
+
+it("leaves a packaged Windows install to manual updates, before any macOS signing check", async () => {
+  expect(installsUpdatesByHand(windowsInstall)).toBe(true);
+  // No codesign, PlistBuddy or feed file is consulted: the reason is decided by the platform alone.
+  expect(await releaseAuthority(windowsInstall, noHandover).check()).toEqual({
+    ok: false,
+    reason: "windows_manual_update",
+  });
+});
+
+it("keeps the other refusals for builds that are not a packaged Windows release", async () => {
+  const dev = { ...windowsInstall, isPackaged: false };
+  expect(installsUpdatesByHand(dev)).toBe(false);
+  expect(await releaseAuthority(dev, noHandover).check()).toEqual({
+    ok: false,
+    reason: "not_packaged_macos",
+  });
+  const staging = { ...windowsInstall, flavor: FLAVORS.staging };
+  expect(installsUpdatesByHand(staging)).toBe(false);
+  expect(await releaseAuthority(staging, noHandover).check()).toEqual({
+    ok: false,
+    reason: "flavor_without_updates",
+  });
+  const linux = { ...windowsInstall, platform: "linux" as const };
+  expect(installsUpdatesByHand(linux)).toBe(false);
+  expect(await releaseAuthority(linux, noHandover).check()).toEqual({
+    ok: false,
+    reason: "not_packaged_macos",
+  });
+  expect(installsUpdatesByHand({ ...windowsInstall, platform: "darwin" })).toBe(false);
 });

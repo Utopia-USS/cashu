@@ -1,8 +1,9 @@
 /// <reference types="node" />
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { dataDirName, FLAVORS, type Flavor, processFlavor } from "@cashu/node-host/flavor";
+import { winIsAbsolute } from "@cashu/node-host/windows-path";
 
 /** Mirrors desktop/shell.py: the investments workspace is laid out for 1440 px. */
 export const DEFAULT_SIZE = { width: 1480, height: 940 } as const;
@@ -35,7 +36,10 @@ export function repoRoot(moduleDir: string): string {
 
 /**
  * core/paths.py `default_data_dir()`: the per-user data dir when CASHU_DATA_DIR is not set, named
- * after the app flavor (`cashU`, `cashU Staging`; Linux `cashu`, `cashu-staging`).
+ * after the app flavor (`cashU`, `cashU Staging`; Linux `cashu`, `cashu-staging`). Windows (where the
+ * Python app never ran) follows the `cashu` shim (apps/cli/src/dataDir.ts): `%LOCALAPPDATA%\<name>`,
+ * never the roaming APPDATA (a finance vault must not travel with a roaming profile), and
+ * `<home>\AppData\Local\<name>` when LOCALAPPDATA is not an absolute path.
  */
 export function defaultDataDir(
   platform: NodeJS.Platform,
@@ -45,8 +49,13 @@ export function defaultDataDir(
 ): string {
   if (platform === "darwin")
     return join(home, "Library", "Application Support", dataDirName(flavor, "darwin"));
-  if (platform === "win32")
-    return join(env.APPDATA || join(home, "AppData", "Roaming"), flavor.dataDirName.darwin);
+  if (platform === "win32") {
+    const local = env.LOCALAPPDATA?.trim() ?? "";
+    return win32.join(
+      winIsAbsolute(local) ? local : win32.join(home, "AppData", "Local"),
+      dataDirName(flavor, "win32"),
+    );
+  }
   return join(env.XDG_DATA_HOME || join(home, ".local", "share"), dataDirName(flavor, "linux"));
 }
 
@@ -75,6 +84,15 @@ export interface DataDirChoice {
   explicit: boolean;
 }
 
+/** `~` alone or before a separator is `home` (Windows: either separator); any other value unchanged. */
+export function expandHome(raw: string, home: string, platform: NodeJS.Platform): string {
+  if (platform === "win32")
+    return raw === "~" || raw.startsWith("~/") || raw.startsWith("~\\")
+      ? win32.join(home, raw.slice(1))
+      : raw;
+  return raw === "~" || raw.startsWith("~/") ? join(home, raw.slice(1)) : raw;
+}
+
 export function resolveDataDir(
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
@@ -83,8 +101,7 @@ export function resolveDataDir(
 ): DataDirChoice {
   const raw = (env[ENV.dataDir] ?? "").trim();
   if (raw) {
-    const expanded = raw === "~" || raw.startsWith("~/") ? join(home, raw.slice(1)) : raw;
-    return { dir: realResolve(expanded), explicit: true };
+    return { dir: realResolve(expandHome(raw, home, platform)), explicit: true };
   }
   return { dir: defaultDataDir(platform, home, env, flavor), explicit: false };
 }

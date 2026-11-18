@@ -8,11 +8,11 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkFile } from "@cashu/node-host/testing/links";
 import {
   STRATEGY_MD,
   STRATEGY_YAML,
@@ -78,7 +78,9 @@ describe("injected private strategy publication files", () => {
     expect(await f.files.read()).toEqual({ yaml: null, md: null });
     const yamlToken = await f.files.stage(STRATEGY_YAML, "synthetic yaml");
     const mdToken = await f.files.stage(STRATEGY_MD, "synthetic note");
-    expect(lstatSync(join(f.directory, ".strategy.yaml.approving")).mode & 0o077).toBe(0);
+    // Windows has no POSIX permission bits (Node reports a synthetic mode).
+    if (process.platform !== "win32")
+      expect(lstatSync(join(f.directory, ".strategy.yaml.approving")).mode & 0o077).toBe(0);
     await f.files.install(STRATEGY_YAML, yamlToken);
     await f.files.install(STRATEGY_MD, mdToken);
     expect(await f.files.read()).toEqual({ yaml: "synthetic yaml", md: "synthetic note" });
@@ -96,7 +98,8 @@ describe("injected private strategy publication files", () => {
     const value = journal(f.files.vault);
     await f.journal.write(value);
     const path = join(f.directory, ".proposal-publication.json");
-    expect(lstatSync(path).mode & 0o077).toBe(0);
+    // Windows has no POSIX permission bits (Node reports a synthetic mode).
+    if (process.platform !== "win32") expect(lstatSync(path).mode & 0o077).toBe(0);
     expect(await f.journal.read()).toEqual(value);
     const restarted = strategyPublicationPorts({
       vault: f.files.vault,
@@ -114,20 +117,31 @@ describe("injected private strategy publication files", () => {
     expect(existsSync(join(f.directory, ".proposal-publication.json.approving"))).toBe(false);
   });
 
-  it("refuses symlinks, hardlinks, unprivate files and a revoked capability", async () => {
+  // A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+  it("refuses a symlinked target", async ({ skip }) => {
     const f = fixture();
     const outside = join(f.root, "outside");
     privateFile(outside, "outside");
-    symlinkSync(outside, join(f.directory, STRATEGY_YAML));
+    linkFile(outside, join(f.directory, STRATEGY_YAML), skip);
     await expect(f.files.read()).rejects.toThrow();
-    rmSync(join(f.directory, STRATEGY_YAML));
+  });
+
+  // POSIX permission bits: Windows ignores chmod and reports a synthetic mode.
+  it.skipIf(process.platform === "win32")("refuses an unprivate target", async () => {
+    const f = fixture();
+    privateFile(join(f.directory, STRATEGY_YAML), "private");
+    chmodSync(join(f.directory, STRATEGY_YAML), 0o644);
+    await expect(f.files.read()).rejects.toThrow();
+  });
+
+  it("refuses hardlinks and a revoked capability", async () => {
+    const f = fixture();
+    const outside = join(f.root, "outside");
+    privateFile(outside, "outside");
     linkSync(outside, join(f.directory, STRATEGY_YAML));
     await expect(f.files.read()).rejects.toThrow();
     rmSync(join(f.directory, STRATEGY_YAML));
     privateFile(join(f.directory, STRATEGY_YAML), "private");
-    chmodSync(join(f.directory, STRATEGY_YAML), 0o644);
-    await expect(f.files.read()).rejects.toThrow();
-    chmodSync(join(f.directory, STRATEGY_YAML), 0o600);
     f.revoke();
     await expect(f.files.read()).rejects.toThrow();
     await expect(f.files.stage(STRATEGY_MD, "blocked")).rejects.toThrow();

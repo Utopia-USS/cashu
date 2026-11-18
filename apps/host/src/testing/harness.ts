@@ -11,9 +11,8 @@ import { connectHost, type HostConnection, resolveReal } from "@cashu/node-host"
 import { mintUlid } from "@cashu/store";
 import { memoryLog } from "../log.js";
 
-const RESOLVE_TS = fileURLToPath(
-  new URL("../../../../tools/node-ts/resolveTs.ts", import.meta.url),
-);
+/** A file URL: `--import` takes a module specifier, and a Windows path (`C:\...`) is not one. */
+const RESOLVE_TS = new URL("../../../../tools/node-ts/resolveTs.ts", import.meta.url).href;
 const FAULT_HOST = fileURLToPath(new URL("./faultHost.ts", import.meta.url));
 
 const dirs = new Set<string>();

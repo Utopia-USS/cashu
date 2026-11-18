@@ -14,6 +14,7 @@ import {
   writeSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { hasPrivateMode, O_NOFOLLOW, O_NONBLOCK, syncDirectory } from "@cashu/node-host";
 import { crypto } from "@cashu/sync";
 import {
   CHUNK_BYTES as CHUNK,
@@ -32,21 +33,15 @@ export function unavailable(): never {
 function sha(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
-export function syncDirectory(path: string): void {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
+
+// A directory fsync where the OS has one (a no-op on Windows; @cashu/node-host privateFs).
+export { syncDirectory };
 export function privateDir(path: string): void {
   const s = lstatSync(path);
   if (
     !s.isDirectory() ||
     s.isSymbolicLink() ||
-    (s.mode & 0o777) !== 0o700 ||
-    (typeof process.getuid === "function" && s.uid !== process.getuid()) ||
+    !hasPrivateMode(s, 0o700) ||
     resolve(path) !== path ||
     realpathSync(path) !== path
   )
@@ -77,7 +72,7 @@ export function createPrivateDir(path: string): void {
 export function writePrivate(path: string, bytes: Uint8Array): void {
   const fd = openSync(
     path,
-    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | O_NOFOLLOW,
     0o600,
   );
   try {
@@ -93,7 +88,7 @@ export function writePrivate(path: string, bytes: Uint8Array): void {
   }
 }
 export function readPrivate(path: string, max: number): Uint8Array {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   try {
     const s = fstatSync(fd);
     const named = lstatSync(path);
@@ -105,8 +100,7 @@ export function readPrivate(path: string, max: number): Uint8Array {
       s.size !== named.size ||
       s.size < 0 ||
       s.size > max ||
-      (s.mode & 0o777) !== 0o600 ||
-      (typeof process.getuid === "function" && s.uid !== process.getuid())
+      !hasPrivateMode(s, 0o600)
     )
       unavailable();
     const out = new Uint8Array(s.size);
@@ -170,12 +164,7 @@ export function listPrivateFiles(
     const stat = lstatSync(path);
     if (stat.isDirectory()) result.push(...listPrivateFiles(root, relativePath, budget, depth + 1));
     else if (stat.isFile()) {
-      if (
-        stat.nlink !== 1 ||
-        (stat.mode & 0o777) !== 0o600 ||
-        (typeof process.getuid === "function" && stat.uid !== process.getuid())
-      )
-        unavailable();
+      if (stat.nlink !== 1 || !hasPrivateMode(stat, 0o600)) unavailable();
       budget.files++;
       budget.bytes += stat.size;
       budget.manifestBytes += estimatedManifestBytes(relativePath, stat.size);
@@ -259,7 +248,7 @@ export async function captureFile(
   stillCurrent: (sourcePath: string) => boolean,
 ): Promise<FileEntry> {
   checkedRelative(relativePath);
-  const fd = openSync(source, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const fd = openSync(source, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   try {
     const before = fstatSync(fd);
     const named = lstatSync(source);
@@ -271,8 +260,7 @@ export async function captureFile(
       before.size !== named.size ||
       !Number.isSafeInteger(before.size) ||
       before.size > MAX_TOTAL_BYTES ||
-      (before.mode & 0o777) !== 0o600 ||
-      (typeof process.getuid === "function" && before.uid !== process.getuid())
+      !hasPrivateMode(before, 0o600)
     )
       unavailable();
     const hash = createHash("sha256");

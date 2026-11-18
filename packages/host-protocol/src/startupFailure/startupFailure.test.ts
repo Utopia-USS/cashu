@@ -3,6 +3,9 @@ import {
   buildRecoveryPrompt,
   classifyStartupError,
   commandPrefix,
+  homeRelativePath,
+  launcherPath,
+  OUTSIDE_HOME,
   parseStartupFailureRecord,
   parseStartupFailureReport,
   type RecoveryCommand,
@@ -392,5 +395,134 @@ describe("shipped command", () => {
         mcpServerPrefix: "cashu staging; rm",
       }),
     ).toThrow("startup_failure_report_invalid");
+  });
+});
+
+describe("shipped command on Windows", () => {
+  const WIN_HOME = "C:\\Users\\zofia";
+  const LOCAL = `${WIN_HOME}\\AppData\\Local`;
+  const windows = (launcher: string | null, isPackaged = true) =>
+    recoveryCommand({
+      home: WIN_HOME,
+      launcher,
+      platform: "win32",
+      isPackaged,
+      binary: `${LOCAL}\\Programs\\cashU\\cashU.exe`,
+      shim: `${LOCAL}\\Programs\\cashU\\resources\\shim.mjs`,
+    });
+
+  it("places the launcher as bin\\cashu.cmd on Windows and bin/cashu elsewhere", () => {
+    expect(launcherPath(`${LOCAL}\\cashU`, "win32")).toBe(`${LOCAL}\\cashU\\bin\\cashu.cmd`);
+    expect(launcherPath("C:\\", "win32")).toBe("C:\\bin\\cashu.cmd");
+    expect(launcherPath(`${HOME}/cashU/`, "darwin")).toBe(`${HOME}/cashU/bin/cashu`);
+    expect(launcherPath("/", "linux")).toBe("/bin/cashu");
+  });
+
+  it("shows Windows paths under the profile `~`-relative, case-insensitively, else as outside", () => {
+    expect(homeRelativePath(`${LOCAL}\\cashU`, WIN_HOME)).toBe("~/AppData/Local/cashU");
+    expect(homeRelativePath("c:/users/ZOFIA/AppData/Local/cashU", `${WIN_HOME}\\`)).toBe(
+      "~/AppData/Local/cashU",
+    );
+    expect(homeRelativePath(WIN_HOME, WIN_HOME)).toBe("~");
+    expect(homeRelativePath(`${WIN_HOME}\\Dane osobowe\\Michał`, WIN_HOME)).toBe(
+      "~/Dane osobowe/<...>",
+    );
+    expect(homeRelativePath("D:\\cashU", WIN_HOME)).toBe(OUTSIDE_HOME);
+    expect(homeRelativePath("C:\\Users\\zofia2\\x", WIN_HOME)).toBe(OUTSIDE_HOME);
+    expect(homeRelativePath(`${WIN_HOME}\\..\\other`, WIN_HOME)).toBe(OUTSIDE_HOME);
+    expect(homeRelativePath("/Users/zofia/x", WIN_HOME)).toBe(OUTSIDE_HOME);
+    expect(homeRelativePath(`${LOCAL}\\cashU`, HOME)).toBe(OUTSIDE_HOME);
+    expect(homeRelativePath("\\\\server\\share\\zofia\\x", "\\\\server\\share\\zofia")).toBe(
+      OUTSIDE_HOME,
+    );
+  });
+
+  it("offers the launcher for PowerShell, or the checkout; never an inline packaged form", () => {
+    const launcher = windows(`${LOCAL}\\cashU\\bin\\cashu.cmd`);
+    expect(launcher).toEqual({
+      kind: "launcher",
+      path: "~/AppData/Local/cashU/bin/cashu.cmd",
+      shell: "powershell",
+    });
+    expect(commandPrefix(launcher)).toBe(
+      '"$env:USERPROFILE\\AppData\\Local\\cashU\\bin\\cashu.cmd"',
+    );
+    expect(commandPrefix({ kind: "launcher", path: "~", shell: "powershell" })).toBe(
+      '"$env:USERPROFILE"',
+    );
+    expect(windows("D:\\cashU\\bin\\cashu.cmd")).toBeNull();
+    expect(windows(null)).toBeNull();
+    expect(windows(null, false)).toEqual({ kind: "checkout", shell: "powershell" });
+  });
+
+  it("offers no launcher whose real path cmd.exe would misread under `cmd /c`", () => {
+    // The home part is hidden behind $env:USERPROFILE in the shown form, so the real path decides.
+    for (const home of ["C:\\Users\\Tom & Jerry", "C:\\Users\\zofia (praca)", "C:\\Users\\50%"]) {
+      const command = (isPackaged: boolean) =>
+        recoveryCommand({
+          home,
+          launcher: `${home}\\AppData\\Local\\cashU\\bin\\cashu.cmd`,
+          platform: "win32",
+          isPackaged,
+          binary: "",
+          shim: "",
+        });
+      expect(command(true)).toBeNull();
+      expect(command(false)).toEqual({ kind: "checkout", shell: "powershell" });
+    }
+    // macOS and Linux run the launcher without cmd.exe: the same characters are fine there.
+    expect(
+      recoveryCommand({
+        home: "/Users/tom & jerry",
+        launcher: "/Users/tom & jerry/Library/Application Support/cashU/bin/cashu",
+        isPackaged: true,
+        binary: "",
+        shim: "",
+      }),
+    ).toEqual({ kind: "launcher", path: "~/Library/Application Support/cashU/bin/cashu" });
+  });
+
+  it("carries the PowerShell form through the report into the agent prompt", () => {
+    const report = startupFailureReport({
+      failure: startupFailure("python_data_present"),
+      at: new Date("2026-11-04T09:30:00.000Z"),
+      appVersion: "0.6.0",
+      build: "desktop-dev",
+      dataDir: `${LOCAL}\\cashU`,
+      home: WIN_HOME,
+      reportFile: `${LOCAL}\\cashU\\diagnostics\\report.txt`,
+      logText: "",
+      command: windows(`${LOCAL}\\cashU\\bin\\cashu.cmd`),
+    });
+    expect(report.dataDir).toBe("~/AppData/Local/cashU");
+    expect(report.reportFile).toBe("~/AppData/Local/cashU/diagnostics/report.txt");
+    expect(parseStartupFailureReport(JSON.parse(JSON.stringify(report)))).toEqual(report);
+    // The setup card's form: Claude Code starts the .cmd launcher only through cmd.exe.
+    expect(buildRecoveryPrompt(report, "en")).toContain(
+      'claude mcp add cashu-<slug> "--" cmd /d /c "$env:USERPROFILE\\AppData\\Local\\cashU\\bin\\cashu.cmd" mcp --profile <slug>',
+    );
+    const checkout = { ...report, command: windows(null, false) };
+    expect(parseStartupFailureReport(JSON.parse(JSON.stringify(checkout)))).toEqual(checkout);
+    expect(buildRecoveryPrompt(checkout, "pl")).toContain(
+      '`claude mcp add cashu-<slug> "--" cmd /d /c pnpm cashu-next mcp --profile <slug>`',
+    );
+    // A report written before Windows (no `shell`) still parses and renders for sh.
+    const { shell: _, ...posix } = report.command as { shell?: string };
+    expect(parseStartupFailureReport({ ...report, command: posix })?.command).toEqual({
+      kind: "launcher",
+      path: "~/AppData/Local/cashU/bin/cashu.cmd",
+    });
+    expect(
+      parseStartupFailureReport({ ...report, command: { ...posix, shell: "cmd" } }),
+    ).toBeNull();
+    expect(
+      parseStartupFailureReport({ ...report, command: { kind: "checkout" } })?.command,
+    ).toEqual({ kind: "checkout" });
+    expect(buildRecoveryPrompt({ ...report, command: { kind: "checkout" } }, "en")).toContain(
+      "`claude mcp add cashu-<slug> -- pnpm cashu-next mcp --profile <slug>`",
+    );
+    expect(
+      parseStartupFailureReport({ ...report, command: { kind: "checkout", shell: "cmd" } }),
+    ).toBeNull();
   });
 });

@@ -14,7 +14,14 @@ import {
   writeSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { type HostLock, hostRunPaths } from "@cashu/node-host";
+import {
+  type HostLock,
+  hasPrivateMode,
+  hostRunPaths,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  syncPrivateDirectory,
+} from "@cashu/node-host";
 import { readExistingNativeInventory } from "./nativeInventory.js";
 
 const ID = /^[0-9a-f]{32}$/;
@@ -157,8 +164,7 @@ function privateDir(path: string): void {
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
     realpathSync(path) !== path ||
-    (stat.mode & 0o777) !== 0o700 ||
-    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+    !hasPrivateMode(stat, 0o700)
   )
     throw new Error("native_creation_path_invalid");
 }
@@ -180,12 +186,11 @@ function readJournal(path: string): Journal {
     !before.isFile() ||
     before.isSymbolicLink() ||
     before.nlink !== 1 ||
-    (before.mode & 0o777) !== 0o600 ||
-    (typeof process.getuid === "function" && before.uid !== process.getuid())
+    !hasPrivateMode(before, 0o600)
   )
     throw new Error("native_creation_path_invalid");
   if (before.size > MAX_BYTES) throw new Error("native_creation_journal_invalid");
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   try {
     const opened = fstatSync(fd);
     if (
@@ -206,22 +211,7 @@ function readJournal(path: string): Journal {
 
 function fsyncDirectory(path: string): void {
   privateDir(path);
-  const fd = openSync(
-    path,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY | constants.O_NONBLOCK,
-  );
-  try {
-    const stat = fstatSync(fd);
-    if (
-      !stat.isDirectory() ||
-      (stat.mode & 0o777) !== 0o700 ||
-      (typeof process.getuid === "function" && stat.uid !== process.getuid())
-    )
-      throw new Error("native_creation_path_invalid");
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+  if (!syncPrivateDirectory(path)) throw new Error("native_creation_path_invalid");
 }
 
 function writeJournal(path: string, state: Journal): void {
@@ -231,7 +221,7 @@ function writeJournal(path: string, state: Journal): void {
   const temp = join(dir, `.creation-${randomBytes(16).toString("hex")}.tmp`);
   const fd = openSync(
     temp,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
     0o600,
   );
   try {

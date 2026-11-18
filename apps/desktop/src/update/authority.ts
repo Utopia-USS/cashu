@@ -16,6 +16,8 @@ export function developerIdRequirement(teamId: string): string {
 }
 
 export interface InstalledApp {
+  /** The OS the app runs on (`process.platform`). */
+  readonly platform: NodeJS.Platform;
   readonly isPackaged: boolean;
   readonly execPath: string;
   readonly resourcesPath: string;
@@ -108,12 +110,25 @@ function inside(parent: string, child: string): boolean {
   return part === "" || (part !== ".." && !part.startsWith(`..${sep}`) && !isAbsolute(part));
 }
 
+/**
+ * Whether the owner installs new versions of this app by hand from the releases page: a packaged
+ * Windows install of a flavor with releases. It has no in-app updater until NSIS updates can be
+ * verified against a pinned code signing publisher (Azure Trusted Signing), so the update gate refuses
+ * with `windows_manual_update` and Settings points to the releases page instead.
+ */
+export function installsUpdatesByHand(
+  app: Pick<InstalledApp, "platform" | "isPackaged" | "flavor">,
+): boolean {
+  return app.platform === "win32" && app.isPackaged && app.flavor.updateFeed;
+}
+
 /** Validates the installed app's sealed release config, macOS signing identity and location. */
 function installedUpdateGate(
   app: InstalledApp,
 ): { readonly ok: true } | { readonly ok: false; readonly reason: string } {
   if (!app.flavor.updateFeed) return { ok: false, reason: "flavor_without_updates" };
-  if (process.platform !== "darwin" || !app.isPackaged)
+  if (installsUpdatesByHand(app)) return { ok: false, reason: "windows_manual_update" };
+  if (app.platform !== "darwin" || !app.isPackaged)
     return { ok: false, reason: "not_packaged_macos" };
   if (!RELEASE_TEAM_ID || !/^[A-Z0-9]{10}$/.test(RELEASE_TEAM_ID) || !RELEASE_FEED_URL)
     return { ok: false, reason: "release_policy_unset" };

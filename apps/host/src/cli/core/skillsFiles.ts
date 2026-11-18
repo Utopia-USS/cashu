@@ -1,4 +1,7 @@
 // Filesystem behavior of desktop.cli._same_tree/_skill_dirs. Source skills are always read-only.
+// Path arithmetic takes the platform's path module (`hostPath`; tests inject `win32` / `posix`):
+// POSIX keeps pathlib's spelling and lets `symlink/..` follow the filesystem, Windows spells with
+// `\` and resolves `..` lexically, as the Win32 API itself does before the filesystem sees a path.
 import {
   accessSync,
   closeSync,
@@ -11,8 +14,16 @@ import {
   statSync,
   utimesSync,
 } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { join, type PlatformPath, posix, win32 } from "node:path";
 import { budget } from "@cashu/domain";
+
+/** The path module of the machine the host (and so its clients) runs on. */
+export const hostPath: PlatformPath = process.platform === "win32" ? win32 : posix;
+const windows = (p: PlatformPath) => p.sep === "\\";
+/** Separators of one path: Windows takes both, POSIX only `/` (a `\` is part of a name there). */
+const separators = (p: PlatformPath) => (windows(p) ? /[\\/]/ : "/");
+/** `D:skills`: relative to that drive's own current folder, which only the caller's shell knows. */
+const DRIVE_RELATIVE = /^[A-Za-z]:(?![\\/])/;
 
 const IGNORED = new Set(["RCS", "CVS", "tags", ".git", ".hg", ".bzr", "_darcs", "__pycache__"]);
 export function stat(path: string) {
@@ -106,7 +117,17 @@ export function isSymlink(path: string): boolean {
   }
 }
 /** pathlib's lexical spelling: removes empty/dot pieces but keeps .. (also in printed targets). */
-export function pathSpelling(path: string): string {
+export function pathSpelling(path: string, p: PlatformPath = hostPath): string {
+  if (windows(p)) {
+    // PureWindowsPath: the drive / UNC root with backslashes, then the pieces joined by `\`.
+    const root = p.parse(path).root;
+    const rest = path
+      .slice(root.length)
+      .split(/[\\/]/)
+      .filter((part) => part !== "" && part !== ".")
+      .join("\\");
+    return root.replaceAll("/", "\\") + rest || ".";
+  }
   const prefix =
     path.startsWith("//") && !path.startsWith("///") ? "//" : path.startsWith("/") ? "/" : "";
   return (
@@ -117,29 +138,60 @@ export function pathSpelling(path: string): string {
         .join("/") || "."
   );
 }
-export function expandHome(path: string, home: string): string {
-  const plain = pathSpelling(path);
-  if (plain !== "~" && !plain.startsWith("~/")) return plain;
-  return pathSpelling(home.replace(/\/+$/, "") + plain.slice(1) || "/");
+/** `~` or `~/...` (`~\...` on Windows) after spelling: the caller's home folder. */
+export function homeRelative(spelling: string, p: PlatformPath = hostPath): boolean {
+  return spelling === "~" || spelling.startsWith(`~${p.sep}`);
 }
-/** Keep .. for mkdir: pathlib does not remove it, and symlink/.. follows the filesystem. */
-export function filesystemPath(cwd: string, path: string): string {
-  return isAbsolute(path) ? path : `${cwd}/${path}`;
+export function expandHome(path: string, home: string, p: PlatformPath = hostPath): string {
+  const plain = pathSpelling(path, p);
+  if (!homeRelative(plain, p)) return plain;
+  const trimmed = windows(p) ? home.replace(/[\\/]+$/, "") : home.replace(/\/+$/, "");
+  return pathSpelling(trimmed + plain.slice(1) || p.sep, p);
+}
+/**
+ * The destination against the caller's cwd. POSIX keeps .. for mkdir: pathlib does not remove it,
+ * and symlink/.. follows the filesystem. Windows resolves it lexically (the OS does the same). A
+ * drive-relative path on another drive than the cwd is undefined: its base is not known here.
+ */
+export function filesystemPath(
+  cwd: string,
+  path: string,
+  p: PlatformPath = hostPath,
+): string | undefined {
+  if (!windows(p)) return p.isAbsolute(path) ? path : `${cwd}/${path}`;
+  if (DRIVE_RELATIVE.test(path) && path[0]?.toLowerCase() !== driveOf(cwd)) return undefined;
+  return p.resolve(cwd, path);
+}
+/** The lower-case drive letter of `C:\...`, undefined for a UNC path. */
+function driveOf(path: string): string | undefined {
+  return /^[A-Za-z]:/.test(path) ? path[0]?.toLowerCase() : undefined;
+}
+/** `candidate` lies below `root` (never `root` itself), compared by `p`'s rules. */
+export function strictlyInside(
+  root: string,
+  candidate: string,
+  p: PlatformPath = hostPath,
+): boolean {
+  const rel = p.relative(root, candidate);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${p.sep}`) && !p.isAbsolute(rel);
 }
 /** Resolve existing links without creating missing components before preflight completes. */
-export function directoryTarget(absolute: string): string | undefined {
-  let current = "/";
-  for (const part of absolute.split("/")) {
+export function directoryTarget(absolute: string, p: PlatformPath = hostPath): string | undefined {
+  const root = p.parse(absolute).root;
+  // A missing drive or share: nothing to create a folder on.
+  if (!stat(root)?.isDirectory()) return undefined;
+  let current = root;
+  for (const part of absolute.slice(root.length).split(separators(p))) {
     if (!part || part === ".") continue;
     if (part === "..") {
-      current = dirname(current);
+      current = p.dirname(current);
       continue;
     }
-    const next = join(current, part);
+    const next = p.join(current, part);
     const entry = stat(next);
     if (entry === undefined) {
       if (isSymlink(next)) return undefined;
-      writableAncestor(current);
+      writableAncestor(current, p);
       current = next;
     } else if (!entry.isDirectory()) return undefined;
     else current = realpathSync(next);
@@ -161,9 +213,11 @@ export function copyableTree(path: string, ancestors = new Set<string>()): boole
   return readdirSync(path).every((name) => copyableTree(join(path, name), next));
 }
 /** Access checks are only preflight. A later filesystem race never triggers a retry. */
-export function writableAncestor(path: string): void {
+export function writableAncestor(path: string, p: PlatformPath = hostPath): void {
   let current = path;
-  while (stat(current) === undefined) current = dirname(current);
+  // Stops at the root: a missing root then fails the access check below instead of looping.
+  while (stat(current) === undefined && p.dirname(current) !== current)
+    current = p.dirname(current);
   accessSync(current, constants.W_OK | constants.X_OK);
 }
 export function removableTree(path: string): void {

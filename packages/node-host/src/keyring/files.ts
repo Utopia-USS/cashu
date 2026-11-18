@@ -1,5 +1,12 @@
 import { randomBytes } from "node:crypto";
 import type { Stats } from "node:fs";
+// Sealed key blobs (`<data dir>/<root>/v1/<name>.bin`, sealed with a KEK from the OS keyring): the vault
+// keys (`vault-secrets`), and on Windows the banking and connector secrets (`sealed.ts`).
+// Every directory on the way must be a real directory and every blob a regular file with one link,
+// reached without a symlink (a link in place of a blob, dangling or not, is refused, never read as
+// "no blob"); on macOS / Linux also mode 0700 / 0600 of this user. Windows reports
+// synthetic modes and owners, so there those two checks are skipped and the data dir's per-user ACL
+// (%LOCALAPPDATA%) carries them; directory fsyncs are no-ops there (`../host/privateFs.ts`).
 import {
   closeSync,
   constants,
@@ -17,10 +24,22 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { crypto } from "@cashu/sync";
+import {
+  hasPrivateMode,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  openedWithoutLink,
+  syncDirectory as syncDirectoryEntries,
+} from "../host/privateFs.js";
 
 const MAX_BLOB = 1024 * 1024;
-const ROOT_CHILD = "vault-secrets";
 const VERSION_CHILD = "v1";
+
+/**
+ * The directory under the data dir that holds one kind of sealed blob: the vault keys everywhere, and
+ * on Windows the banking and connector secrets too (`sealed.ts`).
+ */
+export type PrivateBlobRoot = "vault-secrets" | "banking-secrets" | "connector-secrets";
 
 function failure(): never {
   throw new crypto.CryptoError("keystore_unavailable");
@@ -47,13 +66,7 @@ function privateDirectory(path: string): void {
   } catch {
     failure();
   }
-  if (
-    !st.isDirectory() ||
-    st.isSymbolicLink() ||
-    (typeof process.getuid === "function" && st.uid !== process.getuid()) ||
-    (st.mode & 0o777) !== 0o700
-  )
-    failure();
+  if (!st.isDirectory() || st.isSymbolicLink() || !hasPrivateMode(st, 0o700)) failure();
 }
 function privateFile(path: string): void {
   let st: Stats;
@@ -66,21 +79,14 @@ function privateFile(path: string): void {
     !st.isFile() ||
     st.isSymbolicLink() ||
     st.nlink !== 1 ||
-    (typeof process.getuid === "function" && st.uid !== process.getuid()) ||
-    (st.mode & 0o777) !== 0o600 ||
+    !hasPrivateMode(st, 0o600) ||
     st.size > MAX_BLOB
   )
     corrupt();
 }
 function syncDirectory(path: string): void {
-  let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-    try {
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
+    syncDirectoryEntries(path);
   } catch {
     failure();
   }
@@ -92,7 +98,7 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
   readonly #parent: string;
   readonly #root: string;
   readonly #create: boolean;
-  constructor(dataDir: string, create: boolean) {
+  constructor(dataDir: string, create: boolean, root: PrivateBlobRoot = "vault-secrets") {
     let canonical: string;
     try {
       canonical = realpathSync(dataDir);
@@ -102,7 +108,7 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
     if (resolve(dataDir) !== dataDir || canonical !== dataDir) failure();
     privateDirectory(dataDir);
     this.#dataDir = dataDir;
-    this.#parent = join(dataDir, ROOT_CHILD);
+    this.#parent = join(dataDir, root);
     this.#root = join(this.#parent, VERSION_CHILD);
     this.#create = create;
   }
@@ -156,9 +162,11 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
     if (!this.#checkRoot()) return null;
     let fd: number;
     try {
-      fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     } catch (error) {
-      if (absent(error)) return null;
+      // ENOENT is "no blob" only when nothing is there: Windows has no O_NOFOLLOW, so its open
+      // follows a dangling link (or junction) to ENOENT where macOS / Linux refuse it (ELOOP).
+      if (absent(error) && !present(path)) return null;
       failure();
     }
     try {
@@ -168,8 +176,8 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
         !st.isFile() ||
         st.nlink !== 1 ||
         st.size > MAX_BLOB ||
-        (st.mode & 0o777) !== 0o600 ||
-        (typeof process.getuid === "function" && st.uid !== process.getuid())
+        !hasPrivateMode(st, 0o600) ||
+        !openedWithoutLink(path, st)
       )
         corrupt();
       const bytes = readFileSync(fd);
@@ -201,7 +209,7 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
     try {
       fd = openSync(
         temp,
-        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | O_NOFOLLOW,
         0o600,
       );
     } catch {
@@ -237,15 +245,7 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
       // Recheck the destination immediately before replacement.
       if (present(path)) privateFile(path);
       renameSync(temp, path);
-      const dir = openSync(
-        this.#root,
-        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-      );
-      try {
-        fsyncSync(dir);
-      } finally {
-        closeSync(dir);
-      }
+      syncDirectoryEntries(this.#root);
       privateFile(path);
       const written = await this.read(name);
       if (!written || !Buffer.from(written).equals(Buffer.from(value))) corrupt();
@@ -272,18 +272,6 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
       if (error instanceof crypto.CryptoError) throw error;
       failure();
     }
-    try {
-      const dir = openSync(
-        this.#root,
-        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-      );
-      try {
-        fsyncSync(dir);
-      } finally {
-        closeSync(dir);
-      }
-    } catch {
-      failure();
-    }
+    syncDirectory(this.#root);
   }
 }

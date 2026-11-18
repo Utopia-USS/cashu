@@ -226,6 +226,10 @@ export const C = {
     pl: "Katalog docelowy leży w katalogu skilli tej instalacji.",
     en: "The destination is inside this installation's skills.",
   },
+  skillsDriveRelative: {
+    pl: "--dest z literą innego dysku bez ukośnika (np. D:skills) zależy od bieżącego katalogu tego dysku. Podaj pełną ścieżkę, np. D:\\skills.",
+    en: "A --dest on another drive without a slash after the letter (like D:skills) depends on that drive's current folder. Give the full path, like D:\\skills.",
+  },
   skillsNotDirectory: {
     pl: (dest: string) => `${dest} nie jest katalogiem.`,
     en: (dest: string) => `${dest} is not a folder.`,

@@ -5,10 +5,14 @@
 // (`CASHU_TESTING`). Only `CASHU_*` keys count, and they fill only variables the environment does not
 // set already (the shell always wins). Parsing: Python `str.splitlines`, `str.strip`, `KEY=VALUE`,
 // `#` comments, an `export ` prefix, one pair of matching quotes, `~` expanded at the start.
+// On Windows paths follow winpath.ts (`~` is the profile folder; git writes a worktree's gitdir with
+// a drive letter and forward slashes, or relative).
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { pyStrip } from "@cashu/domain/text";
+import { winIsAbsolute } from "@cashu/node-host/windows-path";
 import { expandUser, purePath, pyRealpath } from "./pypath.js";
+import { winExpandUser, winResolve } from "./winpath.js";
 
 const FILENAME = ".env.dev";
 const PREFIX = "CASHU_";
@@ -51,8 +55,21 @@ export function checkoutRoot(root: string): string | undefined {
 const parentOf = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";
 const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
+/** `<gitdir>/../..` when `gitdir` is `<main>/.git/worktrees/<name>` on Windows (case-insensitive). */
+function windowsMainOf(gitdir: string): string | undefined {
+  const parent = win32.dirname(gitdir);
+  const dotGit = win32.dirname(parent);
+  if (win32.basename(parent).toLowerCase() !== "worktrees") return undefined;
+  if (win32.basename(dotGit).toLowerCase() !== ".git") return undefined;
+  return win32.dirname(dotGit);
+}
+
 /** `_main_checkout`: the main checkout of a linked worktree, undefined for anything else. */
-export function mainCheckout(root: string, cwd: string): string | undefined {
+export function mainCheckout(
+  root: string,
+  cwd: string,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
   const git = join(root, ".git");
   if (!isFile(git)) return undefined;
   let first: string | undefined;
@@ -63,6 +80,11 @@ export function mainCheckout(root: string, cwd: string): string | undefined {
   }
   if (first === undefined || first === "" || !first.startsWith("gitdir:")) return undefined;
   const raw = pyStrip(first.slice("gitdir:".length));
+  if (platform === "win32") {
+    return windowsMainOf(
+      winIsAbsolute(raw) ? win32.normalize(raw) : winResolve(win32.join(root, raw), cwd),
+    );
+  }
   // Path(raw); a relative one is resolved against the checkout (symlinks too).
   const gitdir = raw.startsWith("/") ? purePath(raw) : pyRealpath(`${root}/${raw}`, cwd);
   const parent = parentOf(gitdir);
@@ -71,7 +93,12 @@ export function mainCheckout(root: string, cwd: string): string | undefined {
 }
 
 /** `_parse`: the `CASHU_*` pairs of one file's text, a later line winning. */
-export function parseDevEnv(text: string, home: string): Map<string, string> {
+export function parseDevEnv(
+  text: string,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): Map<string, string> {
+  const expand = platform === "win32" ? winExpandUser : expandUser;
   const values = new Map<string, string>();
   for (const raw of splitLines(text)) {
     const line = pyStrip(raw);
@@ -84,14 +111,14 @@ export function parseDevEnv(text: string, home: string): Map<string, string> {
     if (value.length >= 2 && value[0] === value.at(-1) && (value[0] === '"' || value[0] === "'")) {
       value = value.slice(1, -1);
     }
-    values.set(key, expandUser(value, home));
+    values.set(key, expand(value, home));
   }
   return values;
 }
 
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
-function readDevEnv(path: string, home: string): Map<string, string> {
+function readDevEnv(path: string, home: string, platform: NodeJS.Platform): Map<string, string> {
   let bytes: Uint8Array;
   try {
     bytes = readFileSync(path);
@@ -99,7 +126,7 @@ function readDevEnv(path: string, home: string): Map<string, string> {
     return new Map();
   }
   // Python's read_text raises on invalid UTF-8 (the Python CLI stops there); so does the shim.
-  return parseDevEnv(decoder.decode(bytes), home);
+  return parseDevEnv(decoder.decode(bytes), home, platform);
 }
 
 export interface DevEnv {
@@ -110,15 +137,21 @@ export interface DevEnv {
 }
 
 /** `load`: what `.env.dev` adds to `env` for the checkout `root` (undefined: no checkout). */
-export function loadDevEnv(root: string | undefined, env: Env, home: string, cwd: string): DevEnv {
+export function loadDevEnv(
+  root: string | undefined,
+  env: Env,
+  home: string,
+  cwd: string,
+  platform: NodeJS.Platform = process.platform,
+): DevEnv {
   if (root === undefined || env.CASHU_TESTING) return { files: [], added: {} };
   const found = [join(root, FILENAME)];
-  const main = mainCheckout(root, cwd);
+  const main = mainCheckout(root, cwd, platform);
   if (main !== undefined) found.push(join(main, FILENAME));
   const files = found.filter(isFile);
   const added: Record<string, string> = {};
   for (const file of files) {
-    for (const [key, value] of readDevEnv(file, home)) {
+    for (const [key, value] of readDevEnv(file, home, platform)) {
       if (env[key] === undefined && added[key] === undefined) added[key] = value;
     }
   }

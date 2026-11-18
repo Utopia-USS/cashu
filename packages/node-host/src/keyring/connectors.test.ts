@@ -7,13 +7,14 @@ import { acquireHostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { type ConnectorSecretAuthority, createTestConnectorSecretVault } from "./connectors.js";
 import type { OsKeyringPort } from "./native.js";
+import { largeSecretKeyring } from "./sealed.js";
 
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-connector-keys-test-"));
+  const root = mkdtempSync(join(realpathSync.native(tmpdir()), "cashu-connector-keys-test-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });
@@ -48,6 +49,13 @@ function fixture() {
   };
   const service = `cashu-next-connectors-test.${randomBytes(16).toString("hex")}`;
   const make = (id = identity) => createTestConnectorSecretVault(authority, id, service, keyring);
+  const makeWindows = (id = identity) =>
+    createTestConnectorSecretVault(
+      authority,
+      id,
+      service,
+      largeSecretKeyring(dataDir, "connector-secrets", { platform: "win32", keyring }),
+    );
   return {
     map,
     calls,
@@ -55,6 +63,7 @@ function fixture() {
     dataDir,
     identity,
     make,
+    makeWindows,
     setOwner: (value: boolean) => {
       owner = value;
     },
@@ -101,11 +110,28 @@ it("refuses revoked binding/lock and invalid secret ids before OS access", async
   expect(f.calls).toEqual([]);
 });
 
-it("maps a missing or replaced data directory to a value-free failure", async () => {
+// Windows cannot rename a directory while the host lock's SQLite file inside it is open.
+it.skipIf(process.platform === "win32")(
+  "maps a missing or replaced data directory to a value-free failure",
+  async () => {
+    const f = fixture();
+    const vault = f.make();
+    renameSync(f.dataDir, `${f.dataDir}-moved`);
+    await expect(vault.get("token")).rejects.toThrow("connector_secrets_unavailable");
+    expect(f.calls).toEqual([]);
+    f.lock.release();
+  },
+);
+
+it("seals a 16 KiB connector secret into a private file on Windows, the keyring holding the key", async () => {
   const f = fixture();
-  const vault = f.make();
-  renameSync(f.dataDir, `${f.dataDir}-moved`);
-  await expect(vault.get("token")).rejects.toThrow("connector_secrets_unavailable");
-  expect(f.calls).toEqual([]);
+  f.setOwner(true);
+  const vault = f.makeWindows();
+  const value = "s".repeat(16 * 1024);
+  await vault.set("token", value);
+  expect(await vault.get("token")).toBe(value);
+  expect([...f.map.values()].map((v) => v.length)).toEqual([32]);
+  await vault.clear("token");
+  expect(await vault.get("token")).toBeNull();
   f.lock.release();
 });

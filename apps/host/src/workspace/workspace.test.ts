@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  claudeCommand,
   mergeClaudeMd,
   mergeMcp,
   mergeSettings,
@@ -24,6 +25,7 @@ import {
   type WorkspaceContentContext,
   wantedSkills,
 } from "@cashu/domain/core/workspace";
+import { linkDir, linkFile } from "@cashu/node-host/testing/links";
 import { afterEach, expect, test } from "vitest";
 import { createInjectedWorkspaceProvider, type WorkspaceVaultAuthority } from "./adapter.js";
 import {
@@ -304,14 +306,56 @@ test("managed CLAUDE.md sections follow privacy and routine opt-in and keep the 
   expect(merged).not.toContain("finanse:begin");
 });
 
-test("checked path refuses overlap, hidden folders, symlink escapes and foreign claims", () => {
+test("CLAUDE.md command lines are sh on macOS and Linux and PowerShell on Windows", () => {
+  const base = ctx(fresh());
+  const render = (cli: readonly string[], path: string, platform?: string) =>
+    renderSections({
+      ...base,
+      invocation: { ...base.invocation, command: cli[0] ?? "" },
+      path,
+      privacy: "strict",
+      baseCurrency: "PLN",
+      skills: [],
+      researchAvailable: true,
+      cli,
+      ...(platform === undefined ? {} : { platform }),
+    });
+  const posix = render(["/Users/x/My Apps/cashu"], "/Users/x/cashU/synthetic");
+  expect(posix.profile).toContain("`'/Users/x/My Apps/cashu' --profile synthetic ...`");
+  expect(posix.profile).toContain(
+    "`'/Users/x/My Apps/cashu' workspace update --profile synthetic`",
+  );
+  expect(posix.research).toContain(
+    "`cd /Users/x/cashU/synthetic && claude -p '/market-research rutyna'`",
+  );
+  for (const platform of ["darwin", "linux"])
+    expect(render(["/Users/x/My Apps/cashu"], "/Users/x/cashU/synthetic", platform)).toEqual(posix);
+  const windows = render(
+    ["C:\\Program Files\\cashU\\cashU.exe", "C:\\Program Files\\cashU\\resources\\shim.mjs"],
+    "C:\\Users\\x\\cashU\\synthetic",
+    "win32",
+  );
+  const program =
+    '& "C:\\Program Files\\cashU\\cashU.exe" "C:\\Program Files\\cashU\\resources\\shim.mjs"';
+  expect(windows.profile).toContain(`\`${program} --profile synthetic ...\``);
+  expect(windows.profile).toContain(`\`${program} workspace update --profile synthetic\``);
+  expect(windows.research).toContain(
+    '`Set-Location -LiteralPath "C:\\Users\\x\\cashU\\synthetic" -ErrorAction Stop; claude -p "/market-research rutyna"`',
+  );
+  expect(claudeCommand("C:\\Users\\x\\Mój $dir", undefined, "win32")).toBe(
+    'Set-Location -LiteralPath "C:\\Users\\x\\Mój `$dir" -ErrorAction Stop; claude',
+  );
+  expect(claudeCommand("/Users/x/it's", undefined, "linux")).toBe(
+    `cd '/Users/x/it'"'"'s' && claude`,
+  );
+});
+
+test("checked path refuses overlap, hidden folders and foreign claims", () => {
   const root = fresh();
   const home = join(root, "home");
   const data = join(root, "data");
-  const outside = join(root, "outside");
   mkdirSync(home);
   mkdirSync(data);
-  mkdirSync(outside);
   const policy = {
     home,
     protectedRoots: [data],
@@ -333,23 +377,46 @@ test("checked path refuses overlap, hidden folders, symlink escapes and foreign 
       protectedRoots: [join(root, "ws", "data-parent", "data")],
     }),
   ).toThrowError(new WorkspacePathError("path_data_dir"));
-  symlinkSync(outside, join(root, "alias"));
+});
+
+// The alias is a junction on Windows (no privilege needed there).
+test("checked path refuses symlink escapes", () => {
+  const root = fresh();
+  const outside = join(root, "outside");
+  mkdirSync(join(root, "home"));
+  mkdirSync(outside);
+  const policy = {
+    home: join(root, "home"),
+    protectedRoots: [join(root, "data")],
+    checkout: join(root, "checkout"),
+    claims: new Map<string, string>(),
+  };
+  linkDir(outside, join(root, "alias"));
   expect(() => checkWorkspacePath(join(root, "alias", "ws"), "vault", policy)).toThrowError(
     new WorkspacePathError("path_symlink"),
   );
 });
 
-test("managed publication refuses a hardlink and changed folder identity", () => {
+// A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+test("managed publication refuses a link", ({ skip }) => {
+  const root = fresh();
+  const workspace = join(root, "workspace");
+  mkdirSync(workspace);
+  const identity = directoryIdentity(workspace);
+  publishManagedText(workspace, "CLAUDE.md", "managed\n", identity);
+  linkFile(join(workspace, "CLAUDE.md"), join(workspace, "link"), skip);
+  expect(() => publishManagedText(workspace, "link", "x", identity)).toThrowError(
+    new WorkspacePathError("path_replaced"),
+  );
+});
+
+test("managed publication refuses a changed folder identity", () => {
   const root = fresh();
   const workspace = join(root, "workspace");
   mkdirSync(workspace);
   const identity = directoryIdentity(workspace);
   publishManagedText(workspace, "CLAUDE.md", "managed\n", identity);
   expect(readFileSync(join(workspace, "CLAUDE.md"), "utf8")).toBe("managed\n");
-  symlinkSync(join(workspace, "CLAUDE.md"), join(workspace, "link"));
-  expect(() => publishManagedText(workspace, "link", "x", identity)).toThrowError(
-    new WorkspacePathError("path_replaced"),
-  );
   // Moved away first, so the new folder cannot reuse the old inode (Linux reuses a freed one at once).
   renameSync(workspace, `${workspace}.replaced`);
   mkdirSync(workspace);
@@ -634,18 +701,24 @@ test("empty manifest and user-owned .agents file are distinct from a foreign wor
   });
 });
 
-test("an equivalent absolute AGENTS link stays current", async () => {
-  const root = fresh(),
-    authority = syntheticAuthority(root);
-  const binding = createInjectedWorkspaceProvider({ bind: () => authority }).bind(authority.vault);
-  expect((await binding?.apply(workspaceInput))?.kind).toBe("completed");
-  rmSync(join(authority.defaultPath, "AGENTS.md"));
-  symlinkSync(join(authority.defaultPath, "CLAUDE.md"), join(authority.defaultPath, "AGENTS.md"));
-  expect(await binding?.inspect(workspaceInput)).toMatchObject({
-    availability: "ready",
-    upToDate: true,
-  });
-});
+// Creates a symlink (needs Developer Mode or elevation on Windows).
+test.skipIf(process.platform === "win32")(
+  "an equivalent absolute AGENTS link stays current",
+  async () => {
+    const root = fresh(),
+      authority = syntheticAuthority(root);
+    const binding = createInjectedWorkspaceProvider({ bind: () => authority }).bind(
+      authority.vault,
+    );
+    expect((await binding?.apply(workspaceInput))?.kind).toBe("completed");
+    rmSync(join(authority.defaultPath, "AGENTS.md"));
+    symlinkSync(join(authority.defaultPath, "CLAUDE.md"), join(authority.defaultPath, "AGENTS.md"));
+    expect(await binding?.inspect(workspaceInput)).toMatchObject({
+      availability: "ready",
+      upToDate: true,
+    });
+  },
+);
 
 test("invalid managed JSON is backed up and a valid replacement is published", async () => {
   const root = fresh(),

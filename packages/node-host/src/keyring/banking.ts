@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
-import { nativeOsKeyring, type OsKeyringPort } from "./native.js";
+import { isOwnerOnly } from "../host/privateFs.js";
+import type { OsKeyringPort } from "./native.js";
+import { largeSecretKeyring } from "./sealed.js";
 
 const PROFILE = /^[A-Za-z0-9_-]{1,64}$/;
 const TEST_SERVICE = /^cashu-next-banking-test\.[a-f0-9]{32}$/;
@@ -18,13 +20,7 @@ function privateDir(path: string): string {
   try {
     const canonical = realpathSync.native(path);
     const stat = lstatSync(canonical);
-    if (
-      canonical !== resolve(path) ||
-      !stat.isDirectory() ||
-      (stat.mode & 0o077) !== 0 ||
-      (typeof process.getuid === "function" && stat.uid !== process.getuid())
-    )
-      unavailable();
+    if (canonical !== resolve(path) || !stat.isDirectory() || !isOwnerOnly(stat)) unavailable();
     return canonical;
   } catch {
     return unavailable();
@@ -115,12 +111,21 @@ function make(
   };
 }
 
-/** Native OS Keyring service separate from sync identities and connector secrets. */
+/**
+ * Native OS Keyring service separate from sync identities and connector secrets. On Windows the
+ * values are sealed into `<data dir>/banking-secrets/` under a key in that service (`sealed.ts`): an
+ * RSA-3072 / 4096 credential or a long session list outgrows one Credential Manager entry.
+ */
 export function createProductionBankingSecrets(
   authority: BankingSecretAuthority,
 ): BankingSecretStore {
-  const hash = createHash("sha256").update(privateDir(authority.dataDir)).digest("hex");
-  return make(authority, keychainService(processFlavor(), "banking", hash), nativeOsKeyring());
+  const dir = privateDir(authority.dataDir);
+  const hash = createHash("sha256").update(dir).digest("hex");
+  return make(
+    authority,
+    keychainService(processFlavor(), "banking", hash),
+    largeSecretKeyring(dir, "banking-secrets"),
+  );
 }
 
 /** Synthetic keyring, refused outside a private subtree of the OS temp dir. */
@@ -131,7 +136,7 @@ export function createTestBankingSecrets(
 ): BankingSecretStore {
   if (
     !TEST_SERVICE.test(service) ||
-    !privateDir(authority.dataDir).startsWith(`${realpathSync.native(tmpdir())}/`)
+    !privateDir(authority.dataDir).startsWith(`${realpathSync.native(tmpdir())}${sep}`)
   )
     unavailable();
   return make(authority, service, keyring);

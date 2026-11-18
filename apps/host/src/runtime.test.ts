@@ -1,7 +1,8 @@
 /// <reference types="node" />
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkDir } from "@cashu/node-host/testing/links";
 import { afterEach, expect, it } from "vitest";
 import {
   type HostRuntime,
@@ -47,14 +48,43 @@ it("uses independent packaged skills and connectors beside host.mjs", () => {
   });
 });
 
+// POSIX spelling of the source paths; the Windows form (a file: URL) is @cashu/node-host sourceRun.test.
+it.skipIf(process.platform === "win32")(
+  "runs the source shim with this run's source flags and an absolute --import",
+  () => {
+    const rt: HostRuntime = {
+      checkout: "/Synthetic/cashu",
+      dir: "/Synthetic/cashu/apps/host/src",
+      execPath: "/usr/bin/node",
+      execArgv: [
+        "--experimental-strip-types",
+        "--import=./tools/node-ts/resolveTs.ts",
+        "--inspect",
+      ],
+      cwd: "/Synthetic/cashu",
+      env: {},
+    };
+    expect(shimProgram(rt)).toEqual({
+      command: "/usr/bin/node",
+      args: [
+        "--experimental-transform-types",
+        "--import=/Synthetic/cashu/tools/node-ts/resolveTs.ts",
+        "/Synthetic/cashu/apps/cli/src/index.ts",
+      ],
+    });
+  },
+);
+
+// Directory links: junctions on Windows (no privilege needed there).
 it("refuses packaged resource symlinks escaping the bundle", () => {
   const b = packaged();
   const outside = join(b.root, "other");
-  writeFileSync(outside, "synthetic");
+  mkdirSync(outside);
+  writeFileSync(join(outside, "README.md"), "synthetic");
   rmSync(b.skills, { recursive: true });
-  symlinkSync(outside, b.skills);
+  linkDir(outside, b.skills);
   expect(shippedSkillsSource(b.rt)).toBeUndefined();
   rmSync(b.connectors, { recursive: true });
-  symlinkSync(outside, b.connectors);
+  linkDir(outside, b.connectors);
   expect(shippedConnectorsSource(b.rt)).toBeUndefined();
 });

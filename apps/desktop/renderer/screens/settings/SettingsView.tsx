@@ -984,6 +984,8 @@ function AppSection({ state }: { state: SettingsScreenState }) {
   const updater = state.updater;
   const ready = updater.availability === "ready";
   const auto = ready && updater.autoCheck;
+  // A Windows install has no in-app updater: its version and the releases page come from main.
+  const manual = state.manualUpdates;
   return (
     <KeyValues
       rows={[
@@ -1025,7 +1027,31 @@ function AppSection({ state }: { state: SettingsScreenState }) {
             </>
           ),
         },
-        { key: "version", label: S.version, value: ready ? updater.current : "-" },
+        {
+          key: "version",
+          label: S.version,
+          value: ready ? updater.current : (manual?.version ?? "-"),
+        },
+        ...(!ready && manual
+          ? [
+              {
+                key: "updates",
+                label: S.updates,
+                value: (
+                  <>
+                    <span className={hint}>{T.updatesManualHint}</span>
+                    <Button
+                      className="ml-2.5"
+                      title={T.releasesPageTitle}
+                      onPress={state.onReleasesOpened}
+                    >
+                      {T.releasesPage}
+                    </Button>
+                  </>
+                ),
+              },
+            ]
+          : []),
         ...(ready
           ? [
               {

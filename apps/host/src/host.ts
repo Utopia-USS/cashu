@@ -7,7 +7,7 @@
 //   4. serves sessions by role: `ui` gets the store channel and the host RPCs (localHost/uiSession.ts),
 //      `admin` gets status / stop / handover, `cli` the hosted command tree (cli/runner.ts,
 //      localHost/commands.ts), `mcp` an MCP server for its profile (localHost/mcp.ts); writes the
-//      stable launcher `<data dir>/bin/cashu` (launcher.ts),
+//      stable launcher `<data dir>/bin/cashu` (Windows `bin\cashu.cmd`, launcher.ts),
 //   5. lingers while idle (no session, no queued write) and then exits 0; exits 75 when its bundle
 //      was replaced (handover); a signal or `admin.stop` exits 0 (localHost/lifecycle.ts).
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.

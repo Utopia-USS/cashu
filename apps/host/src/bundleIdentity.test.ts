@@ -11,7 +11,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { packagedBuildId } from "@cashu/node-host/bundle-identity";
 import { afterEach, expect, it, vi } from "vitest";
-import { readBundleIdentity, watchBundleIdentity } from "./bundleIdentity.js";
+import {
+  readBundleIdentity as readIdentity,
+  watchBundleIdentity as watchIdentity,
+} from "./bundleIdentity.js";
+
+/** The macOS layout on every runner (a Windows runner would otherwise check its own layout). */
+const readBundleIdentity = (bundle: string) => readIdentity(bundle, "darwin");
+const watchBundleIdentity = (bundle: string, intervalMs: number, onChanged: () => void) =>
+  watchIdentity(bundle, intervalMs, onChanged, "darwin");
+/**
+ * The link cases check links inside a macOS bundle's Contents, a layout that never exists on Windows;
+ * the links of a Windows install are refused in @cashu/node-host bundleIdentity.test.ts, which runs
+ * there. So they stay on macOS and Linux runners.
+ */
+const linksUnavailable = process.platform === "win32";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -107,7 +121,7 @@ it("rejects modified shipped skills and connector catalog", () => {
   expect(readBundleIdentity(connectorsBundle).kind).toBe("invalid");
 });
 
-it("detects path moves and symlink target changes", async () => {
+it.skipIf(linksUnavailable)("detects path moves and symlink target changes", async () => {
   vi.useFakeTimers();
   const root = mkdtempSync(join(tmpdir(), "cashu-bundle-"));
   roots.push(root);
@@ -153,44 +167,50 @@ it("bounds the verified content build to the handshake field", () => {
   );
 });
 
-it("changes content identity for framework bytes and internal link targets", () => {
-  const root = mkdtempSync(join(tmpdir(), "cashu-bundle-"));
-  roots.push(root);
-  const bundle = app(root, "cashU", "one");
-  const frameworks = join(bundle, "Contents", "Frameworks");
-  mkdirSync(frameworks);
-  writeFileSync(join(frameworks, "one.dylib"), "one");
-  writeFileSync(join(frameworks, "two.dylib"), "two");
-  const link = join(frameworks, "Current");
-  symlinkSync("one.dylib", link);
-  const first = readBundleIdentity(bundle);
-  expect(first.kind).toBe("present");
-  writeFileSync(join(frameworks, "one.dylib"), "changed");
-  const changed = readBundleIdentity(bundle);
-  expect(changed.kind).toBe("present");
-  if (first.kind === "present" && changed.kind === "present")
-    expect(changed.contentDigest).not.toBe(first.contentDigest);
-  unlinkSync(link);
-  symlinkSync("two.dylib", link);
-  const retargeted = readBundleIdentity(bundle);
-  expect(retargeted.kind).toBe("present");
-  if (changed.kind === "present" && retargeted.kind === "present")
-    expect(retargeted.contentDigest).not.toBe(changed.contentDigest);
-});
-
-it("refuses escaping, absolute and dangling links anywhere in Contents", () => {
-  const root = mkdtempSync(join(tmpdir(), "cashu-bundle-"));
-  roots.push(root);
-  const bundle = app(root, "cashU", "one");
-  const frameworks = join(bundle, "Contents", "Frameworks");
-  mkdirSync(frameworks);
-  const link = join(frameworks, "Current");
-  for (const target of ["../../..", root, "/tmp", "missing.dylib"]) {
-    symlinkSync(target, link);
-    expect(readBundleIdentity(bundle).kind).toBe("invalid");
+it.skipIf(linksUnavailable)(
+  "changes content identity for framework bytes and internal link targets",
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "cashu-bundle-"));
+    roots.push(root);
+    const bundle = app(root, "cashU", "one");
+    const frameworks = join(bundle, "Contents", "Frameworks");
+    mkdirSync(frameworks);
+    writeFileSync(join(frameworks, "one.dylib"), "one");
+    writeFileSync(join(frameworks, "two.dylib"), "two");
+    const link = join(frameworks, "Current");
+    symlinkSync("one.dylib", link);
+    const first = readBundleIdentity(bundle);
+    expect(first.kind).toBe("present");
+    writeFileSync(join(frameworks, "one.dylib"), "changed");
+    const changed = readBundleIdentity(bundle);
+    expect(changed.kind).toBe("present");
+    if (first.kind === "present" && changed.kind === "present")
+      expect(changed.contentDigest).not.toBe(first.contentDigest);
     unlinkSync(link);
-  }
-});
+    symlinkSync("two.dylib", link);
+    const retargeted = readBundleIdentity(bundle);
+    expect(retargeted.kind).toBe("present");
+    if (changed.kind === "present" && retargeted.kind === "present")
+      expect(retargeted.contentDigest).not.toBe(changed.contentDigest);
+  },
+);
+
+it.skipIf(linksUnavailable)(
+  "refuses escaping, absolute and dangling links anywhere in Contents",
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "cashu-bundle-"));
+    roots.push(root);
+    const bundle = app(root, "cashU", "one");
+    const frameworks = join(bundle, "Contents", "Frameworks");
+    mkdirSync(frameworks);
+    const link = join(frameworks, "Current");
+    for (const target of ["../../..", root, "/tmp", "missing.dylib"]) {
+      symlinkSync(target, link);
+      expect(readBundleIdentity(bundle).kind).toBe("invalid");
+      unlinkSync(link);
+    }
+  },
+);
 
 it("watches framework changes outside Resources", async () => {
   vi.useFakeTimers();

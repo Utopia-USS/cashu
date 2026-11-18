@@ -144,7 +144,7 @@ export interface LocalHostOptions {
   readonly runtime?: HostRuntime;
   /** The commands run in the host (default: `portedCommands()`). */
   readonly ported?: readonly PortedCommand[];
-  /** Write `<data dir>/bin/cashu` at start (default true). */
+  /** Write the stable launcher (`<data dir>/bin/cashu`, Windows `bin\cashu.cmd`) at start (default true). */
   readonly launcher?: boolean;
   /** Device cache dependency, also used by synthetic oracle fixtures. */
   readonly mcpPrices?: market.PriceCache;

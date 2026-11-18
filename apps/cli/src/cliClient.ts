@@ -48,9 +48,21 @@ export function forwardedEnv(
   return out;
 }
 
+/**
+ * The caller's home folder the host expands `~` against: HOME on macOS and Linux, USERPROFILE on
+ * Windows (what Windows itself and Node's `os.homedir()` use there), else the account's own.
+ */
+export function callerHome(
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): string {
+  return (platform === "win32" ? env.USERPROFILE : env.HOME) ?? userInfo().homedir;
+}
+
 export interface ExecOptions {
   readonly argv: readonly string[];
   readonly cwd: string;
+  readonly platform: NodeJS.Platform;
   /** Already merged with what `.env.dev` adds. */
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly terminal: Terminal;
@@ -62,7 +74,7 @@ function execParams(options: ExecOptions): CliExecParams {
   // A terminal that reports no size (0, e.g. a fresh pty) sends none.
   const columns = options.terminal.columns() || undefined;
   const rows = options.terminal.rows() || undefined;
-  const home = options.env.HOME ?? userInfo().homedir;
+  const home = callerHome(options.env, options.platform);
   const compatible = options.env.TTY_COMPATIBLE;
   return {
     argv: [...options.argv],

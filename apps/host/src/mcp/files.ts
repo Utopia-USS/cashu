@@ -8,10 +8,11 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { basename, extname, isAbsolute, join, sep } from "node:path";
+import { basename, extname, join, posix, sep, win32 } from "node:path";
 import { pyCasefold } from "@cashu/domain";
 import { ToolError } from "@cashu/mcp";
 import { resolveReal } from "@cashu/node-host";
+import { isLocalDrivePath } from "@cashu/node-host/windows-path";
 import { mcpNamedHome } from "./homes.js";
 
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -24,6 +25,8 @@ interface FileScope {
   /** Checked native workspace root for profile-only mapping files. */
   readonly profileOnlyRoot?: string;
   readonly profileOnlySlug?: string;
+  /** `process.platform` unless a test injects one. */
+  readonly platform?: NodeJS.Platform;
 }
 const pathKey = (path: string) => pyCasefold(path.normalize("NFC"));
 function inside(path: string, root: string): boolean {
@@ -45,13 +48,25 @@ function checkedFileReader(scope: FileScope, policy: FilePolicy) {
       { system: policy.systemLimit ?? false },
     );
   };
+  // Windows: the path is checked as text before anything touches it. Resolving a UNC path
+  // (`\\server\share\x.csv`) makes Windows connect to that server over SMB and authenticate with the
+  // user's NTLM credentials, so an agent could learn the user's hash just by naming a file. Only a
+  // path on a local drive letter is resolved, and the resolved path must still be one (a link or a
+  // mapped network drive resolves to UNC). macOS and Linux skip both checks.
+  const windows = (scope.platform ?? process.platform) === "win32";
+  const separator = windows ? "\\" : sep;
+  const localOnly = (path: string) => {
+    if (windows && !isLocalDrivePath(path))
+      throw new ToolError("only files on a local drive are read");
+  };
   return (raw: string, profileSlug: string): { name: string; bytes: Uint8Array } => {
     if (!raw || raw.includes("\0")) throw new ToolError("path is required");
     let path: string;
+    let candidate: string;
     try {
       let expanded = raw;
       if (raw.startsWith("~")) {
-        const suffix = raw.slice(1).search(sep === "\\" ? /[/\\]/ : /\//);
+        const suffix = raw.slice(1).search(windows ? /[/\\]/ : /\//);
         const end = suffix === -1 ? raw.length : suffix + 1;
         const user = raw.slice(1, end);
         const home =
@@ -61,10 +76,19 @@ function checkedFileReader(scope: FileScope, policy: FilePolicy) {
         if (home === undefined || home.startsWith("~")) throw new Error("unresolved home");
         expanded = home + raw.slice(end);
       }
-      path = realpathSync.native(isAbsolute(expanded) ? expanded : scope.cwd + sep + expanded);
+      candidate = (windows ? win32 : posix).isAbsolute(expanded)
+        ? expanded
+        : scope.cwd + separator + expanded;
     } catch {
       throw new ToolError("file not found", "not_found");
     }
+    localOnly(candidate);
+    try {
+      path = realpathSync.native(candidate);
+    } catch {
+      throw new ToolError("file not found", "not_found");
+    }
+    localOnly(path);
     if (!statSync(path).isFile()) throw new ToolError("not a regular file");
     const name = basename(path);
     if (!policy.extensions.includes(extname(name).slice(1).toLowerCase()))

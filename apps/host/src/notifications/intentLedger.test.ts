@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, linkSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkFile } from "@cashu/node-host/testing/links";
 import { afterEach, expect, it } from "vitest";
 import { privateNotificationIntents } from "./intentLedger.js";
 import { hostNotifier } from "./notifier.js";
@@ -9,7 +10,7 @@ const dirs: string[] = [];
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
-function fixture() {
+function fixture(platform: NodeJS.Platform = process.platform) {
   const dir = mkdtempSync(join(tmpdir(), "cashu-notification-intents-"));
   dirs.push(dir);
   let now = 1_700_000_000_000;
@@ -17,6 +18,7 @@ function fixture() {
     dir,
     () => true,
     () => now,
+    platform,
   );
   return {
     dir,
@@ -48,16 +50,44 @@ it("stores a bounded opaque intent in a private durable file and consumes once",
   expect(ledger.resolve(first.requestId, first.intentToken)).toBeNull();
 });
 
-it("expires intents and refuses a corrupt or symlinked ledger", () => {
+it("expires intents and refuses a corrupt ledger", () => {
   const { dir, ledger, advance } = fixture();
   const intent = ledger.reserve(request);
   advance(7 * 24 * 60 * 60 * 1000);
   expect(ledger.resolve(intent.requestId, intent.intentToken)).toBeNull();
-  const path = join(dir, "notification-intents.json");
-  writeFileSync(path, "broken");
+  writeFileSync(join(dir, "notification-intents.json"), "broken");
   expect(() => ledger.reserve(request)).toThrow("notification_intents_unavailable");
-  rmSync(path);
-  symlinkSync(join(dir, "elsewhere"), path);
+});
+
+// POSIX permission bits: Windows reports a synthetic mode and ignores chmod.
+it.skipIf(process.platform === "win32")("refuses a ledger open to group or others", () => {
+  const { dir, ledger } = fixture();
+  const intent = ledger.reserve(request);
+  chmodSync(join(dir, "notification-intents.json"), 0o644);
+  expect(() => ledger.resolve(intent.requestId, intent.intentToken)).toThrow(
+    "notification_intents_unavailable",
+  );
+});
+
+it("reads Windows' synthetic modes as private and still refuses a hard link", () => {
+  const { dir, ledger } = fixture("win32");
+  const intent = ledger.reserve(request);
+  const path = join(dir, "notification-intents.json");
+  // Windows reports a writable file as 0666 and a directory as 0777; neither is a refusal there.
+  chmodSync(path, 0o644);
+  chmodSync(dir, 0o755);
+  expect(ledger.resolve(intent.requestId, intent.intentToken)).toEqual(intent);
+  linkSync(path, join(dir, "second-name"));
+  expect(() => ledger.resolve(intent.requestId, intent.intentToken)).toThrow(
+    "notification_intents_unavailable",
+  );
+});
+
+// A dangling file symlink; on a Windows runner without the privilege to create it the test skips
+// itself.
+it("refuses a symlinked ledger", ({ skip }) => {
+  const { dir, ledger } = fixture();
+  linkFile(join(dir, "elsewhere"), join(dir, "notification-intents.json"), skip);
   expect(() => ledger.reserve(request)).toThrow("notification_intents_unavailable");
 });
 

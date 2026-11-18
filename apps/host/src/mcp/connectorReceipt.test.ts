@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -13,8 +13,9 @@ afterEach(() => {
 it("reopens an intent after a lost response and reconciles only matching pending content", () => {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-proposal-receipt-"));
   roots.push(root);
-  mkdirSync(`${root}/data`, { mode: 0o700 });
-  const receipts = new ConnectorProposalReceipts(`${root}/data`);
+  const data = join(root, "data");
+  mkdirSync(data, { mode: 0o700 });
+  const receipts = new ConnectorProposalReceipts(data);
   const key = "01K9B2W000000000000000000C";
   const vault = "a".repeat(32);
   const contentSha256 = "b".repeat(64);
@@ -27,7 +28,7 @@ it("reopens an intent after a lost response and reconciles only matching pending
     replaced: false,
   };
   receipts.begin(row);
-  const reopened = new ConnectorProposalReceipts(`${root}/data`);
+  const reopened = new ConnectorProposalReceipts(data);
   let approval: string = "pending";
   let digest = "c".repeat(64);
   const catalog = {
@@ -37,9 +38,7 @@ it("reopens an intent after a lost response and reconciles only matching pending
   expect(reopened.status(key, vault, catalog)).toBe("outcome_unknown");
   digest = contentSha256;
   expect(reopened.status(key, vault, catalog)).toBe("completed");
-  expect(new ConnectorProposalReceipts(`${root}/data`).status(key, vault, catalog)).toBe(
-    "completed",
-  );
+  expect(new ConnectorProposalReceipts(data).status(key, vault, catalog)).toBe("completed");
   approval = "disabled";
   expect(reopened.status(key, vault, catalog)).toBe("completed");
   expect(reopened.lookup(key, vault)).toMatchObject({
@@ -70,4 +69,30 @@ it("reopens an intent after a lost response and reconciles only matching pending
   expect(() =>
     reopened.begin({ ...row, requestHash: connectorRequestHash({ catalogId: "different" }) }),
   ).toThrow("request_key_conflict");
+});
+
+it("reads Windows' synthetic modes as private receipts", () => {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-proposal-receipt-"));
+  roots.push(root);
+  const data = join(root, "data");
+  mkdirSync(data, { mode: 0o700 });
+  const receipts = new ConnectorProposalReceipts(data, "win32");
+  const vault = "a".repeat(32);
+  const row = {
+    key: "01K9B2W000000000000000000D",
+    vault,
+    requestHash: connectorRequestHash({ catalogId: "sample" }),
+    id: "sample-file",
+    contentSha256: "b".repeat(64),
+    replaced: false,
+  };
+  receipts.begin(row);
+  // Windows reports a writable file as 0666 and a directory as 0777; neither is a refusal there.
+  const receiptDir = join(data, "mcp-connector-receipts", vault);
+  for (const file of readdirSync(receiptDir)) chmodSync(join(receiptDir, file), 0o644);
+  for (const dir of [data, join(data, "mcp-connector-receipts"), receiptDir]) chmodSync(dir, 0o755);
+  expect(new ConnectorProposalReceipts(data, "win32").lookup(row.key, vault)).toMatchObject({
+    phase: "intent",
+    id: "sample-file",
+  });
 });

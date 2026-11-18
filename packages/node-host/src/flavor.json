@@ -4,7 +4,7 @@
     "prod": {
       "bundleId": "io.utopiasoft.cashu",
       "productName": "cashU",
-      "dataDirName": { "darwin": "cashU", "linux": "cashu" },
+      "dataDirName": { "darwin": "cashU", "linux": "cashu", "win32": "cashU" },
       "workspacesDirName": "cashU",
       "hostAgentLabel": "io.utopiasoft.cashu.host",
       "keychainPrefix": "cashu",
@@ -19,7 +19,11 @@
     "staging": {
       "bundleId": "io.utopiasoft.cashu.staging",
       "productName": "cashU Staging",
-      "dataDirName": { "darwin": "cashU Staging", "linux": "cashu-staging" },
+      "dataDirName": {
+        "darwin": "cashU Staging",
+        "linux": "cashu-staging",
+        "win32": "cashU Staging"
+      },
       "workspacesDirName": "cashU Staging",
       "hostAgentLabel": "io.utopiasoft.cashu.staging.host",
       "keychainPrefix": "cashu.staging",

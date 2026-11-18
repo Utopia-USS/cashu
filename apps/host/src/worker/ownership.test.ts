@@ -135,3 +135,23 @@ it("leaves an ineligible vault out of the native job switch", () => {
   expect(owner.isExclusive("investments.daily", f.vault)).toBe(false);
   expect(existsSync(join(f.dataDir, "worker", "ownership.json"))).toBe(false);
 });
+
+// POSIX permission bits: Windows reports a synthetic mode and ignores chmod.
+it.skipIf(process.platform === "win32")("refuses ownership open to group or others", () => {
+  const f = fixture();
+  const owner = admittedWorkerOwnership(f.input);
+  chmodSync(join(f.dataDir, "worker", "ownership.json"), 0o644);
+  expect(owner.isExclusive("investments.daily", f.vault)).toBe(false);
+  expect(() => admittedWorkerOwnership(f.input)).toThrow("worker_ownership_unavailable");
+});
+
+it("reads Windows' synthetic modes as private ownership", () => {
+  const f = fixture();
+  const input = { ...f.input, platform: "win32" as const };
+  const owner = admittedWorkerOwnership(input);
+  // Windows reports a writable file as 0666 and a directory as 0777; neither is a refusal there.
+  chmodSync(join(f.dataDir, "worker", "ownership.json"), 0o644);
+  chmodSync(join(f.dataDir, "worker"), 0o755);
+  expect(owner.isExclusive("investments.daily", f.vault)).toBe(true);
+  expect(admittedWorkerOwnership(input).isExclusive("budget.sync", f.vault)).toBe(true);
+});

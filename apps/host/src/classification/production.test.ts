@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
@@ -212,3 +212,45 @@ it("pushes the checked settings and checks again after each owner change", async
     f.lock.release();
   }
 });
+
+// POSIX modes are real on macOS and Linux only: a group-readable data dir is refused there, while on
+// Windows (synthetic modes; the per-user ACL of the data dir carries privacy) only type and links count.
+it.skipIf(process.platform === "win32")(
+  "checks owner-only modes on POSIX and leaves them to the ACL on Windows",
+  () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-classifier-modes-"));
+    roots.push(root);
+    const dataDir = join(root, "data");
+    mkdirSync(join(dataDir, "run"), { recursive: true, mode: 0o700 });
+    chmodSync(dataDir, 0o750);
+    const lock = acquireHostLock(hostRunPaths(dataDir).lockPath);
+    if (!lock) throw new Error("synthetic lock unavailable");
+    const options = {
+      dataDir,
+      lock,
+      stores: { vaults: new Map() } as unknown as HostStores,
+      isCurrentVault: () => true,
+      makeSecrets: (): ClassifierSecretStore => ({
+        get: async () => null,
+        set: async () => {},
+        clear: async () => {},
+      }),
+      fetch: async () => {
+        throw new Error("network forbidden");
+      },
+    };
+    try {
+      expect(() => createProductionClassifierBinding({ ...options, platform: "darwin" })).toThrow(
+        "classifier_config_unavailable",
+      );
+      expect(() => createProductionClassifierBinding({ ...options, platform: "linux" })).toThrow(
+        "classifier_config_unavailable",
+      );
+      expect(() =>
+        createProductionClassifierBinding({ ...options, platform: "win32" }),
+      ).not.toThrow();
+    } finally {
+      lock.release();
+    }
+  },
+);

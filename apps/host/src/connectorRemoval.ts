@@ -12,7 +12,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { HostLock } from "@cashu/node-host";
+import {
+  type HostLock,
+  isOwnerOnly,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  openedWithoutLink,
+  syncDirectory,
+} from "@cashu/node-host";
 import { type DurableCommandResult, defineCommand, mintUlid, ok, refuse } from "@cashu/store";
 import { z } from "zod";
 import { runHostVaultCommand } from "./commands.js";
@@ -70,23 +77,12 @@ const command = defineCommand({
 function markerPath(catalog: ConnectorCatalog, id: string): string {
   return join(catalog.root, `.removing-${id}.json`);
 }
-function sync(path: string): void {
-  const fd = openSync(path, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0));
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
 function marker(catalog: ConnectorCatalog, id: string): Marker | null {
   catalog.assertCurrentRoot();
   const path = markerPath(catalog, id);
   let fd: number;
   try {
-    fd = openSync(
-      path,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-    );
+    fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
@@ -97,8 +93,9 @@ function marker(catalog: ConnectorCatalog, id: string): Marker | null {
       !stat.isFile() ||
       stat.nlink !== 1 ||
       stat.size > 16384 ||
-      (stat.mode & 0o077) !== 0 ||
-      (typeof process.getuid === "function" && stat.uid !== process.getuid())
+      // Owner-only on macOS and Linux; Windows modes are synthetic (@cashu/node-host privateFs).
+      !isOwnerOnly(stat) ||
+      !openedWithoutLink(path, stat)
     )
       throw new Error("connector_removal_marker_invalid");
     const bytes = Buffer.alloc(16385);
@@ -118,7 +115,7 @@ function mark(catalog: ConnectorCatalog, row: Marker): void {
   if (Buffer.byteLength(bytes) > 16384) throw new Error("connector_removal_marker_invalid");
   const fd = openSync(
     path,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
     0o600,
   );
   try {
@@ -127,7 +124,7 @@ function mark(catalog: ConnectorCatalog, row: Marker): void {
   } finally {
     closeSync(fd);
   }
-  sync(catalog.root);
+  syncDirectory(catalog.root);
   // The fence makes the connector unapprovable: the live Settings list shows it.
   catalog.changed();
 }
@@ -138,7 +135,7 @@ function updateMarker(catalog: ConnectorCatalog, row: Marker): void {
   const temporary = join(catalog.root, `.removing-write-${randomBytes(16).toString("hex")}`);
   const fd = openSync(
     temporary,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
     0o600,
   );
   try {
@@ -149,7 +146,7 @@ function updateMarker(catalog: ConnectorCatalog, row: Marker): void {
   }
   try {
     renameSync(temporary, markerPath(catalog, row.id));
-    sync(catalog.root);
+    syncDirectory(catalog.root);
   } finally {
     rmSync(temporary, { force: true });
   }
@@ -157,7 +154,7 @@ function updateMarker(catalog: ConnectorCatalog, row: Marker): void {
 function unmark(catalog: ConnectorCatalog, id: string): void {
   catalog.assertCurrentRoot();
   rmSync(markerPath(catalog, id));
-  sync(catalog.root);
+  syncDirectory(catalog.root);
   catalog.changed();
 }
 const bindings = (vault: OpenVault, id: string): readonly { gid: string }[] =>

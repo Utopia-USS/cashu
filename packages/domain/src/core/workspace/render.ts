@@ -1,3 +1,4 @@
+import { powershellQuote, shellCommandLine, shlexQuote } from "../setup.js";
 import type { ManagedSections, WantedSkill, WorkspaceContentContext } from "./plan.js";
 import { SOURCE_ROUTES, SOURCE_TEMPLATES } from "./templates.js";
 
@@ -8,13 +9,24 @@ export interface WorkspaceRenderContext extends WorkspaceContentContext {
   readonly researchAvailable: boolean;
   /** Genuine CLI program argv for this exact bound vault; not inferred from a display slug. */
   readonly cli: readonly string[];
+  /**
+   * `process.platform` of the host that writes the workspace (absent: an sh-compatible shell). It
+   * picks the shell of the command lines in CLAUDE.md (`shellCommandLine`): they are for the user's
+   * own terminal, PowerShell on Windows, as on the app's setup card.
+   */
+  readonly platform?: string;
 }
 
-const quote = (s: string): string =>
-  /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) && s.length > 0 ? s : `'${s.replaceAll("'", `'"'"'`)}'`;
-const shellJoin = (args: readonly string[]): string => args.map(quote).join(" ");
-export function claudeCommand(path: string, prompt?: string): string {
-  return `cd ${quote(path)} && claude${prompt ? ` -p ${quote(prompt)}` : ""}`;
+/**
+ * The command that opens Claude Code in the workspace `path` (with `prompt`, a one-shot run), for the
+ * user's terminal on `platform`. PowerShell (Windows): `Set-Location -LiteralPath` takes the path
+ * as it is (no wildcards) and `-ErrorAction Stop` ends the line when the folder is missing, since
+ * Windows PowerShell 5.1 has no `&&`.
+ */
+export function claudeCommand(path: string, prompt?: string, platform?: string): string {
+  if (platform === "win32")
+    return `Set-Location -LiteralPath ${powershellQuote(path)} -ErrorAction Stop; claude${prompt ? ` -p ${powershellQuote(prompt)}` : ""}`;
+  return `cd ${shlexQuote(path)} && claude${prompt ? ` -p ${shlexQuote(prompt)}` : ""}`;
 }
 const replace = (text: string, from: string, to: string): string => text.replaceAll(from, to);
 const cell = (text: string): string =>
@@ -27,8 +39,11 @@ export function renderSections(ctx: WorkspaceRenderContext): ManagedSections {
   const profileModules = ctx.modules.length
     ? ctx.modules.map((m) => `${m.name} (\`${m.id}\`)`).join(", ")
     : "none (net worth only)";
-  const cliLine = shellJoin([...ctx.cli, "--profile", ctx.slug]);
-  const updateLine = shellJoin([...ctx.cli, "workspace", "update", "--profile", ctx.slug]);
+  const cliLine = shellCommandLine([...ctx.cli, "--profile", ctx.slug], ctx.platform);
+  const updateLine = shellCommandLine(
+    [...ctx.cli, "workspace", "update", "--profile", ctx.slug],
+    ctx.platform,
+  );
   let profile = replace(SOURCE_TEMPLATES.profile, "cashu-tokenslug", server);
   profile = replace(profile, "/TOKEN_CLI --profile tokenslug", cliLine);
   profile = replace(profile, "/TOKEN_CLI workspace update --profile tokenslug", updateLine);
@@ -78,7 +93,7 @@ export function renderSections(ctx: WorkspaceRenderContext): ManagedSections {
   const research = replace(
     researchTemplate,
     "cd /TOKEN_PATH && claude -p '/market-research rutyna'",
-    claudeCommand(ctx.path, "/market-research rutyna"),
+    claudeCommand(ctx.path, "/market-research rutyna", ctx.platform),
   );
 
   return {

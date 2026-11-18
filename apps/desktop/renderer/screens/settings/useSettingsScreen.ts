@@ -43,6 +43,7 @@ import {
   onServiceStatus,
 } from "../../serviceBridge.js";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
+import { type ManualUpdates, readManualUpdates } from "../../updateInstallBridge.js";
 import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
 import { useConnectorActivity } from "./connectors/useConnectorActivity.js";
 import { T } from "./Settings.strings.js";
@@ -222,6 +223,17 @@ export function useSettingsScreen(
   // status changes. Nothing on this screen polls.
   const updater = useQuery(updateStatus);
   const update = useUiAction(updateAction);
+  // A Windows install has no in-app updater: main reports its version and the releases page once.
+  const [manualUpdates, setManualUpdates] = useState<ManualUpdates | null>(null);
+  useEffect(() => {
+    let live = true;
+    void readManualUpdates().then((manual) => {
+      if (live) setManualUpdates(manual);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   // The call log is pushed on every MCP call; its 7-day count rolls with the calendar day (no Odśwież).
   const since = auditWindowStart(useCalendarDay());
   const audit = useQuery(mcpAudit, { vault, since, privacy: false });
@@ -636,6 +648,12 @@ export function useSettingsScreen(
     updatesAutoBusy,
     onCheckUpdates: checkUpdates,
     onUpdatesAutoPicked: setUpdatesAuto,
+    /** A Windows install: new versions are installed by hand from the releases page. */
+    manualUpdates,
+    /** Opens the releases page in the browser (the window's external-link path, main's openExternal). */
+    onReleasesOpened: () => {
+      if (manualUpdates) window.open(manualUpdates.releasesUrl, "_blank", "noopener");
+    },
     onThemePicked: setTheme,
     onLanguagePicked: setLanguagePin,
     notice,

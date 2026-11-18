@@ -4,7 +4,7 @@
 // for, past the no-host bound, and not raced; a failure the shim has no text for is named; an unknown
 // MCP profile is refused. A host command run through the shim is skills.test.ts.
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { startHost } from "@cashu/node-host";
 import { afterEach, describe, expect, it } from "vitest";
 import { removeTempDirs, tempDir } from "./testing/dirs.js";
@@ -86,9 +86,16 @@ describe("cashu shim: host admin and failures", () => {
       const run = await runShim(["stats"], e, { cwd: tempDir() });
       expect(run.code).toBe(69);
       expect(run.stdout).toBe("");
-      // The text names what failed: the data dir cannot hold the host's run dir.
+      // The text names what failed: the data dir cannot hold the host's run dir (Windows reports a
+      // path through a regular file as not found).
+      const notDir =
+        process.platform === "win32"
+          ? "(?:ENOTDIR: not a directory|ENOENT: no such file or directory)"
+          : "ENOTDIR: not a directory";
       expect(run.stderr).toMatch(
-        /^cashU could not reach its background service \(Error: ENOTDIR: not a directory, .*host\.token'\)\./,
+        new RegExp(
+          `^cashU could not reach its background service \\(Error: ${notDir}, .*host\\.token'\\)\\.`,
+        ),
       );
     },
     SLOW,
@@ -141,7 +148,8 @@ describe("cashu shim: host admin and failures", () => {
   }, 45_000);
 
   it("refuses the synthetic host fixture outside a fresh temporary HOME", async () => {
-    const e = env({ HOME: "/" });
+    // The root of the temp dir's file system: `/`, or the drive root on Windows.
+    const e = env({ HOME: parse(tempDir()).root });
     const run = await runShim(["stats"], e, { cwd: tempDir() });
     expect(run.code).not.toBe(0);
     expect(run.stdout).toBe("");

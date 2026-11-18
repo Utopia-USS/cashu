@@ -35,6 +35,11 @@ CI (`.github/workflows/ts.yml`) runs install, `turbo run typecheck lint`, `pnpm 
 `arch:check` and the mobile bundle check on Linux and macOS, and in a separate `emulator` job (Linux, Java 21,
 firebase-tools pinned through `CASHU_FIREBASE`) `pnpm test:emulator`. The emulator test files skip themselves in
 `pnpm test`, and the in-memory Firestore fake applies no rules, so only that job tests the security rules.
+A `windows` job (windows-latest) runs the node-host, cli and host suites, builds an unsigned installer with
+`package-windows.mjs` and smoke-tests it (`apps/desktop/scripts/smoke-windows.mjs`: silent per-user install
+into a temp folder, the installed shim on a fresh temp data dir, a synthetic vault with its key in the
+Credential Manager, a host restart, a stable build id; it refuses to run off Windows or outside GitHub
+Actions).
 
 ## Desktop app on a synthetic demo
 
@@ -128,6 +133,11 @@ entitlements `apps/desktop/build/entitlements.release.mac.plist`) and verifies e
 `verify-package.mjs --release --notarized`. Procedure: [releasing.md](../releasing.md); the update
 contract inside the app: [s47-update-operator.md](s47-update-operator.md). The owner's local
 `cashU Staging` app (`--flavor staging`) is described in [releasing.md](../releasing.md) "Staging build".
+
+Windows: `node apps/desktop/scripts/package-windows.mjs x64 [--out <dir>] [--sign azure]` builds the NSIS
+installer `cashU-<version>-win-x64.exe` (prod flavor only) and runs on Windows only, so from this Mac only
+through CI (the `windows` jobs of `ts.yml` and `release-macos.yml`); signing and the release side are in
+[releasing.md](../releasing.md) "Windows (x64 beta)".
 
 An installed app's CLI is the bundled shim run by the app binary in Node mode, reached through the
 launcher the host writes at every start:

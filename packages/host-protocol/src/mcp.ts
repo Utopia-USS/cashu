@@ -13,19 +13,23 @@
 //                                          host went away: the shim reconnects, replays the client's
 //                                          `initialize` and sends `notifications/tools/list_changed`.
 import { z } from "zod";
-import { CLI_ENV_KEYS } from "./cli.js";
+import { CLI_ENV_KEYS, cwdSchema } from "./cli.js";
+import type { PathFlavor } from "./paths.js";
 
-export const mcpOpenParamsSchema = z.object({
-  cwd: z
-    .string()
-    .max(4_096)
-    .refine((p) => p.startsWith("/"), "cwd must be absolute"),
-  /** Only `CLI_ENV_KEYS` (the variables an `.mcp.json` entry may set for the server). */
-  env: z
-    .record(z.string(), z.string().max(64 * 1024))
-    .refine((env) => Object.keys(env).every((k) => CLI_ENV_KEYS.test(k)), "env key not forwarded"),
-});
-export type McpOpenParams = z.infer<typeof mcpOpenParamsSchema>;
+/** `mcp.open` params as a host on a machine with `flavor` path rules accepts them. */
+export const mcpOpenParamsSchemaFor = (flavor: PathFlavor) =>
+  z.object({
+    /** The shim's working directory (absolute): file paths in tool arguments resolve against it. */
+    cwd: cwdSchema(flavor),
+    /** Only `CLI_ENV_KEYS` (the variables an `.mcp.json` entry may set for the server). */
+    env: z
+      .record(z.string(), z.string().max(64 * 1024))
+      .refine(
+        (env) => Object.keys(env).every((k) => CLI_ENV_KEYS.test(k)),
+        "env key not forwarded",
+      ),
+  });
+export type McpOpenParams = z.infer<ReturnType<typeof mcpOpenParamsSchemaFor>>;
 
 export const mcpStderrNoteSchema = z.object({ data: z.string().max(1024 * 1024) });
 

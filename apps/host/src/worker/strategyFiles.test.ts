@@ -1,14 +1,7 @@
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkFile } from "@cashu/node-host/testing/links";
 import { STRATEGY_MD, STRATEGY_YAML } from "@cashu/store/investments/services";
 import { afterEach, expect, it } from "vitest";
 import { workerStrategyFiles } from "./strategyFiles.js";
@@ -60,10 +53,11 @@ it("reports revoked or swapped file authority without returning stale contents",
   await expect(files.write(STRATEGY_MD, "synthetic")).rejects.toThrow();
 });
 
-it("refuses a symlinked strategy target", async () => {
+// A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+it("refuses a symlinked strategy target", async ({ skip }) => {
   const { root, directory, files } = fixture();
   const other = join(root, "other");
   writeFileSync(other, "synthetic", { mode: 0o600 });
-  symlinkSync(other, join(directory, STRATEGY_YAML));
+  linkFile(other, join(directory, STRATEGY_YAML), skip);
   await expect(files.read(STRATEGY_YAML)).rejects.toThrow();
 });

@@ -1,31 +1,21 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import { crypto } from "@cashu/sync";
 import { keychainService, processFlavor } from "../flavor.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { PrivateBlobFiles } from "./files.js";
 import { nativeOsKeyring, type OsKeyringPort } from "./native.js";
+import { serializeNamespace } from "./serial.js";
 
 export { enterTestBuildKeyringNamespace } from "./native.js";
 
 const ACCOUNT = "cashu.keystore.kek";
 const NAME = /^cashu\.(?:vault\.[0-9a-f]{32}\.keys|device\.[0-9a-f]{32}\.identity)$/;
 const TEST_SERVICE = /^cashu-next-test\.[0-9a-f]{32}$/;
-const mutationQueues = new Map<string, Promise<unknown>>();
-
-function serializeNamespace<T>(service: string, operation: () => Promise<T>): Promise<T> {
-  const previous = mutationQueues.get(service) ?? Promise.resolve();
-  const next = previous.then(operation, operation);
-  const settled = next.catch(() => undefined);
-  mutationQueues.set(service, settled);
-  void settled.then(() => {
-    if (mutationQueues.get(service) === settled) mutationQueues.delete(service);
-  });
-  return next;
-}
+const TEST_FIXTURE = "t44-test-";
 
 export interface ProvisionEvidence {
   /** The held per-data-dir host lock, acquired through acquireHostLock. */
@@ -278,8 +268,17 @@ export function createProductionKeyStore(input: ProductionKeyStoreInput): crypto
 function assertTestNamespace(dir: string, service: string): void {
   const buildRoot = resolve(process.cwd(), "build");
   const tempRoot = realpathSync(tmpdir());
-  const underTestRoot = (root: string) =>
-    dir.startsWith(`${root}/`) && /^t44-test-[^/]+\/data$/.test(dir.slice(root.length + 1));
+  // `<root>/t44-test-<anything without a separator>/data` (the platform's separator).
+  const underTestRoot = (root: string) => {
+    if (!dir.startsWith(`${root}${sep}`)) return false;
+    const [fixture = "", data, ...rest] = dir.slice(root.length + 1).split(sep);
+    return (
+      rest.length === 0 &&
+      data === "data" &&
+      fixture.length > TEST_FIXTURE.length &&
+      fixture.startsWith(TEST_FIXTURE)
+    );
+  };
   if (!TEST_SERVICE.test(service) || (!underTestRoot(buildRoot) && !underTestRoot(tempRoot))) {
     throw new crypto.CryptoError("keystore_unavailable");
   }

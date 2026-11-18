@@ -1,6 +1,7 @@
 // The host's socket side: take the machine lock, then (and only then) replace a stale socket, write a
-// fresh token, listen on the Unix socket (never TCP), and publish host.json. Each connection must
-// finish the mutual handshake within the hello deadline; an authenticated connection becomes a
+// fresh token, listen on the Unix socket (Windows: the named pipe of `paths.ts`; never TCP), and
+// publish host.json. Each connection must finish the mutual handshake within the hello deadline (the
+// client checks the host's token proof before it gives its own); an authenticated connection becomes a
 // `HostSession` bound to the role (and profile) it named, and any frame its role may not send, or
 // that is not a valid session frame, closes it. What a session does is the host app's business
 // (`onSession`); this module only guarantees who is on the other end.
@@ -28,10 +29,13 @@ import {
   assertSocketPath,
   ensurePrivateDir,
   type HostPathEnv,
+  HostPathError,
   type HostRunPaths,
+  hostPipeName,
   hostRunPaths,
 } from "./paths.js";
 import { assertHostAdmission } from "./updateAdmission.js";
+import { makeOwnerOnly } from "./windowsAcl.js";
 
 /** Exit code of a host that found another host holding the lock (spawn races end this way). */
 export const HOST_BUSY_EXIT = 3;
@@ -82,6 +86,8 @@ export interface StartHostOptions {
 
 export interface RunningHost {
   readonly paths: HostRunPaths;
+  /** Where this host listens (the Unix socket path, or this start's named pipe), as in host.json. */
+  readonly socket: string;
   readonly lock: HostLock;
   readonly startedAt: Date;
   /** Open sessions per role. */
@@ -114,7 +120,20 @@ const listen = (server: Server, path: string) =>
 export async function startHost(options: StartHostOptions): Promise<RunningHost> {
   mkdirSync(options.dataDir, { recursive: true, mode: 0o700 });
   const paths = hostRunPaths(options.dataDir, options.pathEnv);
+  // A pipe name is no path on macOS / Linux (and a socket path no pipe on Windows): listening on one
+  // would create a stray file in the working directory, so an injected platform must match.
+  if ((paths.transport === "named-pipe") !== (process.platform === "win32")) {
+    throw new HostPathError(`a ${paths.transport} host cannot run on ${process.platform}`);
+  }
+  const unixSocket = paths.transport === "unix-socket";
+  // A Unix socket has its fixed path; a named pipe gets a fresh name at every start (`paths.ts`).
+  const socket = unixSocket
+    ? paths.socketPath
+    : hostPipeName(paths.dataDirId, randomBytes(8).toString("hex"));
   assertSocketPath(paths);
+  // Windows has no 0700: the data dir gets its owner-only DACL before the run dir, the token or
+  // anything else is written into it, once per start (`windowsAcl.ts`; idempotent, fails closed).
+  if (!unixSocket) makeOwnerOnly(paths.dataDir);
   ensurePrivateDir(paths.runDir);
   const lock = acquireHostLock(paths.lockPath);
   if (lock === undefined) throw new HostBusyError();
@@ -173,15 +192,16 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
   try {
     assertHostAdmission(lock, options.dataDir, options.pathEnv);
     if (paths.socketDir !== paths.runDir) ensurePrivateDir(paths.socketDir);
-    // Safe only because we hold the lock: a stale socket of a dead host, or a squatter's.
-    rmSync(paths.socketPath, { force: true });
+    // Safe only because we hold the lock: a stale socket of a dead host, or a squatter's. A named pipe
+    // has no file to remove (it goes with its last handle) and no mode to set.
+    if (unixSocket) rmSync(socket, { force: true });
     writeHostToken(paths.tokenPath, token);
-    await listen(server, paths.socketPath);
-    chmodSync(paths.socketPath, 0o600);
+    await listen(server, socket);
+    if (unixSocket) chmodSync(socket, 0o600);
     writeDiscovery(paths.discoveryPath, {
       format: 1,
       pid: process.pid,
-      socket: paths.socketPath,
+      socket,
       protocol: HOST_PROTOCOL,
       build: options.build,
       startedAt: startedAt.toISOString(),
@@ -189,7 +209,7 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
     });
   } catch (error) {
     server.close();
-    rmSync(paths.socketPath, { force: true });
+    if (unixSocket) rmSync(socket, { force: true });
     lock.release();
     throw error;
   }
@@ -197,6 +217,7 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
   let closing: Promise<void> | undefined;
   return {
     paths,
+    socket,
     lock,
     startedAt,
     get stopping() {
@@ -226,7 +247,7 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
           rmSync(paths.discoveryPath, { force: true });
         }
         rmSync(paths.tokenPath, { force: true });
-        rmSync(paths.socketPath, { force: true });
+        if (unixSocket) rmSync(socket, { force: true });
         lock.release();
       })();
       return closing;

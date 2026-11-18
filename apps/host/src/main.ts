@@ -7,7 +7,6 @@
 // The data dir is `--data-dir <absolute path>` or CASHU_DATA_DIR; nothing else is guessed until the
 // shim's data dir resolution lands (S56d). Output is English for operators; the shim maps exit codes to
 // its localized texts (S56d).
-import { execFileSync } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
@@ -19,10 +18,13 @@ import {
   HostConnectError,
   HostStartError,
   RefusalError,
+  samePath,
 } from "@cashu/node-host";
 import {
   bundlePathFromEntry,
   packagedBuildId,
+  packagedLayout,
+  packagedVersion,
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
 import { processFlavor, workspacesRoot } from "@cashu/node-host/flavor";
@@ -80,6 +82,39 @@ export function requiresPackagedIdentity(checkout: string | undefined): boolean 
   return checkout === undefined;
 }
 
+/**
+ * The home folder of the user the host runs for (agent workspaces root, skill installs): HOME on
+ * macOS and Linux; on Windows USERPROFILE, never HOME (a Git Bash or MSYS shell sets a POSIX one
+ * there), else the account's own folder (`os.homedir()`).
+ */
+export function hostHome(
+  env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): string {
+  return (platform === "win32" ? env.USERPROFILE : env.HOME) || homedir();
+}
+
+/**
+ * The host features each platform runs. Classifier: HTTP (local Ollama or the Anthropic API), the
+ * OS keyring and per-vault settings in a private directory checked per platform
+ * (classification/production.ts over @cashu/node-host privateFs), so Windows too. Open Banking: HTTP, a loopback HTTPS callback with an in-memory TLS identity and
+ * the OS keyring only, so Windows too. Connectors need the macOS sandbox (`sandbox_unavailable`
+ * elsewhere). OS notifications: only the macOS helper routes a click back into the app.
+ */
+export function hostFeatureGates(platform: NodeJS.Platform): {
+  readonly classifier: boolean;
+  readonly banking: boolean;
+  readonly connectors: boolean;
+  readonly notifications: boolean;
+} {
+  return {
+    classifier: platform === "darwin" || platform === "linux" || platform === "win32",
+    banking: platform === "darwin" || platform === "linux" || platform === "win32",
+    connectors: platform === "darwin",
+    notifications: platform === "darwin",
+  };
+}
+
 function parse(argv: readonly string[], env: MainEnv["env"]): Args | string {
   const [command, ...rest] = argv;
   if (command === undefined) return "a command is required";
@@ -129,50 +164,78 @@ function checkedRuntime(
     return { build: io.build };
   }
   try {
-    const ownEntry = realpathSync.native(import.meta.filename);
-    const argvEntry = process.argv[1] ?? "";
-    const stat = lstatSync(ownEntry);
-    if (
-      !stat.isFile() ||
-      stat.isSymbolicLink() ||
-      argvEntry !== ownEntry ||
-      (args.bundle !== undefined && args.bundle !== ownEntry)
-    )
-      throw new Error("invalid bundle stamp");
-    const bundle = bundlePathFromEntry(ownEntry);
-    const identity = bundle ? readBundleIdentity(bundle) : { kind: "invalid" as const };
-    if (
-      identity.kind !== "present" ||
-      ownEntry !== `${identity.canonicalPath}/Contents/Resources/host.mjs` ||
-      realpathSync.native(process.execPath) !== `${identity.canonicalPath}/Contents/MacOS/cashU` ||
-      io.env.ELECTRON_RUN_AS_NODE !== "1"
-    )
-      throw new Error("invalid bundle identity");
-    const version = execFileSync(
-      "/usr/bin/plutil",
-      [
-        "-extract",
-        "CFBundleShortVersionString",
-        "raw",
-        "-o",
-        "-",
-        join(identity.canonicalPath, "Contents", "Info.plist"),
-      ],
-      { encoding: "utf8", timeout: 5_000 },
-    ).trim();
+    const identity = packagedHostIdentity({
+      ownEntry: realpathSync.native(import.meta.filename),
+      argvEntry: process.argv[1] ?? "",
+      execPath: realpathSync.native(process.execPath),
+      bundleArg: args.bundle,
+      env: io.env,
+      platform: process.platform,
+    });
     // A sealed test build (manifest-verified marker) never addresses a production keychain item:
     // every OS keyring service of this process maps into the cashu-next-test.<hex> namespace.
-    const testBuild = readTestBuildMarker(identity.canonicalPath);
-    if (testBuild) enterTestBuildKeyringNamespace();
-    return {
-      bundle,
-      build: packagedBuildId(version, identity.contentDigest),
-      fingerprint: identity.fingerprint,
-      ...(testBuild ? { testBuild } : {}),
-    };
+    if (identity.testBuild) enterTestBuildKeyringNamespace();
+    return identity;
   } catch {
     throw new RefusalError("packaged host identity is unavailable");
   }
+}
+
+/** What a packaged host process knows about itself, resolved by the caller. */
+export interface PackagedHostInput {
+  /** This module's file, native realpath. */
+  readonly ownEntry: string;
+  /** `process.argv[1]`: the entry the process was started with. */
+  readonly argvEntry: string;
+  /** The running executable, native realpath. */
+  readonly execPath: string;
+  /** The `--bundle <file>` stamp, when given. */
+  readonly bundleArg: string | undefined;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly platform: NodeJS.Platform;
+}
+
+/**
+ * The verified identity of a packaged host: its entry is the bundle's `host.mjs` (the `--bundle`
+ * stamp, when given, names the same file), run by the bundle's own executable in Node mode, and the
+ * bundle verifies (`readBundleIdentity`). The bundle is a `.app` on macOS, the install dir on Windows.
+ * Throws on anything else.
+ */
+export function packagedHostIdentity(input: PackagedHostInput): {
+  bundle: string;
+  build: string;
+  fingerprint: string;
+  testBuild?: TestBuildMarker;
+} {
+  const { ownEntry, platform } = input;
+  const same = (a: string, b: string) => samePath(a, b, platform);
+  const stat = lstatSync(ownEntry);
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    !same(input.argvEntry, ownEntry) ||
+    (input.bundleArg !== undefined && !same(input.bundleArg, ownEntry))
+  )
+    throw new Error("invalid bundle stamp");
+  const bundle = bundlePathFromEntry(ownEntry, platform);
+  const identity = bundle ? readBundleIdentity(bundle, platform) : { kind: "invalid" as const };
+  if (bundle === undefined || identity.kind !== "present")
+    throw new Error("invalid bundle identity");
+  const layout = packagedLayout(identity.canonicalPath, platform);
+  if (
+    !same(ownEntry, join(layout.resources, "host.mjs")) ||
+    !same(input.execPath, layout.executable) ||
+    input.env.ELECTRON_RUN_AS_NODE !== "1"
+  )
+    throw new Error("invalid bundle identity");
+  const version = packagedVersion(identity.canonicalPath, platform);
+  const testBuild = readTestBuildMarker(identity.canonicalPath, platform);
+  return {
+    bundle,
+    build: packagedBuildId(version, identity.contentDigest),
+    fingerprint: identity.fingerprint,
+    ...(testBuild ? { testBuild } : {}),
+  };
 }
 
 function canonicalDir(path: string): string {
@@ -196,7 +259,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
       throw new RefusalError("a test build runs only on its own data dir");
     switch (args.command) {
       case "run": {
-        const home = io.env.HOME || homedir();
+        const home = hostHome(io.env, process.platform);
         const flavor = processFlavor();
         const sourceRuntime = currentRuntime();
         let workspaceStores: import("./stores.js").HostStores | undefined;
@@ -312,8 +375,9 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
             ],
             worker: (context, notifications, queue, lock) => {
               assertAdmission();
+              const gates = hostFeatureGates(process.platform);
               workspaceStores = context.stores;
-              if (lock?.held && (process.platform === "darwin" || process.platform === "linux")) {
+              if (lock?.held && gates.classifier) {
                 classifier.bind({
                   dataDir: args.dataDir,
                   lock,
@@ -321,7 +385,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                   isCurrentVault: context.isCurrent,
                 });
               }
-              if (lock?.held && (process.platform === "darwin" || process.platform === "linux")) {
+              if (lock?.held && gates.banking) {
                 banking = new BankingRuntime({
                   dataDir: args.dataDir,
                   lock,
@@ -332,7 +396,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
                   isOwnerAction: () => false,
                 });
               }
-              if (process.platform === "darwin" && lock?.held) {
+              if (gates.connectors && lock?.held) {
                 connectorLock = lock;
                 connectors = createConnectorRuntime({
                   dataDir: args.dataDir,
@@ -349,7 +413,7 @@ export async function main(argv: readonly string[], io: MainEnv): Promise<number
               let notifier: ReturnType<NonNullable<typeof notifications>["notifier"]> = null;
               // On macOS, the checked helper routes activation into Electron. Other platform
               // click routing is still unavailable and must not silently discard a click.
-              if (process.platform === "darwin") {
+              if (gates.notifications) {
                 try {
                   notifier = notifications?.notifier(() => {}) ?? null;
                 } catch {

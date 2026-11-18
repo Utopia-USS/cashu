@@ -29,7 +29,7 @@ function memoryKeyring(calls: string[]): OsKeyringPort {
 }
 
 function privateDataDir(): string {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "cashu-relay-auth-test-"));
+  const root = mkdtempSync(join(realpathSync.native(tmpdir()), "cashu-relay-auth-test-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });

@@ -7,8 +7,9 @@ import {
   type CliExecParams,
   type CliExecResult,
   cliAnswerParamsSchema,
-  cliExecParamsSchema,
+  cliExecParamsSchemaFor,
   cliStdinParamsSchema,
+  pathFlavor,
 } from "@cashu/host-protocol";
 import { createBackendI18n, createTranslator, type Lang, type Translator } from "@cashu/i18n";
 import { type HostSession, nodeLanguageSource } from "@cashu/node-host";
@@ -17,6 +18,8 @@ import { S } from "./strings.js";
 import { type CommandIo, type PortedCommand, runTree } from "./tree.js";
 
 const FAILURE_EXIT = 70;
+/** The shim runs on this machine: its cwd follows this platform's path rules. */
+const cliExecParamsSchema = cliExecParamsSchemaFor(pathFlavor(process.platform));
 
 export interface CliRunnerDeps {
   readonly dataDir: string;

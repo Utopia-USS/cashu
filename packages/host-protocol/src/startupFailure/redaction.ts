@@ -18,19 +18,43 @@ const UNKNOWN_BUILD = "<unknown>";
 
 const COMPONENT = /^[A-Za-z0-9 ._()-]{1,64}$/;
 
+/** A Windows drive-letter path (`C:\...`, either separator). UNC homes are shown as outside home. */
+const WINDOWS_ABSOLUTE = /^[A-Za-z]:[\\/]/;
+
+/** The components of an absolute path and of the home folder, or null when either is not absolute. */
+function splitAbsolute(
+  path: string,
+  home: string,
+): { readonly parts: string[]; readonly homeParts: string[]; readonly fold: boolean } | null {
+  if (WINDOWS_ABSOLUTE.test(home)) {
+    // Windows: either separator, and names compare case-insensitively (as the file system does).
+    if (!WINDOWS_ABSOLUTE.test(path)) return null;
+    const split = (value: string) => value.split(/[\\/]/).filter((part) => part !== "");
+    return { parts: split(path), homeParts: split(home), fold: true };
+  }
+  const trimmedHome = home.replace(/\/+$/, "");
+  if (!path.startsWith("/") || !trimmedHome.startsWith("/") || trimmedHome === "") return null;
+  return {
+    parts: path.split("/").filter((part) => part !== ""),
+    homeParts: trimmedHome.split("/").filter((part) => part !== ""),
+    fold: false,
+  };
+}
+
 /**
  * `path` as `~` or `~/...` when it lies inside `home`, else `<outside home>`. Both must be absolute
- * POSIX paths; a component that is not plain ASCII (or is `.` / `..`) becomes `<...>`.
+ * paths of one kind: POSIX, or Windows drive-letter paths (shown with `/` like the POSIX ones); a
+ * component that is not plain ASCII (or is `.` / `..`) becomes `<...>`.
  */
 export function homeRelativePath(path: string, home: string): string {
-  const trimmedHome = home.replace(/\/+$/, "");
-  if (!path.startsWith("/") || !trimmedHome.startsWith("/") || trimmedHome === "")
-    return OUTSIDE_HOME;
-  const parts = path.split("/").filter((part) => part !== "");
-  const homeParts = trimmedHome.split("/").filter((part) => part !== "");
+  const split = splitAbsolute(path, home);
+  if (split === null) return OUTSIDE_HOME;
+  const { parts, homeParts, fold } = split;
+  const same = (a: string | undefined, b: string | undefined) =>
+    fold ? a?.toLowerCase() === b?.toLowerCase() : a === b;
   if (parts.some((part) => part === "." || part === "..")) return OUTSIDE_HOME;
   if (homeParts.length === 0 || parts.length < homeParts.length) return OUTSIDE_HOME;
-  for (let i = 0; i < homeParts.length; i++) if (parts[i] !== homeParts[i]) return OUTSIDE_HOME;
+  for (let i = 0; i < homeParts.length; i++) if (!same(parts[i], homeParts[i])) return OUTSIDE_HOME;
   const rest = parts
     .slice(homeParts.length)
     .map((part) => (COMPONENT.test(part) ? part : HIDDEN_COMPONENT));

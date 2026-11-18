@@ -20,6 +20,13 @@ import {
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { MAX_STRATEGY_CHARS } from "@cashu/domain/investments/strategy";
 import {
+  hasNoGroupOrOtherBits,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  samePath,
+  syncDirectory,
+} from "@cashu/node-host";
+import {
   type PrivateStrategyJournal,
   STRATEGY_MD,
   STRATEGY_YAML,
@@ -33,8 +40,6 @@ import { z } from "zod";
 const FILE_LIMIT = MAX_STRATEGY_CHARS * 4;
 const JOURNAL_LIMIT = 20 * 1024 * 1024;
 const JOURNAL_NAME = ".proposal-publication.json";
-const nofollow = constants.O_NOFOLLOW ?? 0;
-const nonblock = constants.O_NONBLOCK ?? 0;
 // Python read_text(encoding="utf-8") keeps an initial U+FEFF in digest and rollback source text.
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const stagedOwners = new Map<string, { owner: object; current: () => boolean }>();
@@ -48,6 +53,11 @@ export interface StrategyDirectoryAuthority {
   isCurrent(): boolean;
 }
 
+// Private strategy files per platform (@cashu/node-host privateFs): on macOS and Linux nothing may be
+// open to group or others (`hasNoGroupOrOtherBits`); Windows reports synthetic modes, so there privacy
+// rests on the per-user ACL of the data dir. A realpath matches its path without letter case on Windows
+// (`samePath`). The type, link and dev / ino / nlink checks hold on every platform.
+
 function unavailable(): never {
   throw new Error("strategy file authority unavailable");
 }
@@ -57,9 +67,9 @@ function missing(error: unknown): boolean {
 }
 
 function pinnedDirectory(path: string) {
-  if (!isAbsolute(path) || realpathSync.native(path) !== resolve(path)) unavailable();
+  if (!isAbsolute(path) || !samePath(realpathSync.native(path), resolve(path))) unavailable();
   const info = lstatSync(path);
-  if (!info.isDirectory() || (info.mode & 0o077) !== 0) unavailable();
+  if (!info.isDirectory() || !hasNoGroupOrOtherBits(info)) unavailable();
   return { path: resolve(path), dev: info.dev, ino: info.ino };
 }
 
@@ -80,8 +90,8 @@ function checkedDirectory(authority: StrategyDirectoryAuthority) {
           !info.isDirectory() ||
           info.dev !== pin.dev ||
           info.ino !== pin.ino ||
-          (info.mode & 0o077) !== 0 ||
-          realpathSync.native(pin.path) !== pin.path
+          !hasNoGroupOrOtherBits(info) ||
+          !samePath(realpathSync.native(pin.path), pin.path)
         )
           return false;
       }
@@ -102,7 +112,7 @@ function recoverCreatingLink(dir: ReturnType<typeof checkedDirectory>, name: Str
   const target = join(dir.directory, name);
   const current = lstatSync(target, { throwIfNoEntry: false });
   if (current?.nlink !== 2) return;
-  if (!current.isFile() || (current.mode & 0o077) !== 0) unavailable();
+  if (!current.isFile() || !hasNoGroupOrOtherBits(current)) unavailable();
   const pattern = new RegExp(
     `^\\.${name.replace(".", "\\.")}\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.creating$`,
   );
@@ -115,7 +125,7 @@ function recoverCreatingLink(dir: ReturnType<typeof checkedDirectory>, name: Str
       return (
         info.isFile() &&
         info.nlink === 2 &&
-        (info.mode & 0o077) === 0 &&
+        hasNoGroupOrOtherBits(info) &&
         info.dev === current.dev &&
         info.ino === current.ino
       );
@@ -129,7 +139,7 @@ function recoverCreatingLink(dir: ReturnType<typeof checkedDirectory>, name: Str
   if (
     !info.isFile() ||
     info.nlink !== 2 ||
-    (info.mode & 0o077) !== 0 ||
+    !hasNoGroupOrOtherBits(info) ||
     info.dev !== current.dev ||
     info.ino !== current.ino
   )
@@ -141,7 +151,7 @@ function recoverCreatingLink(dir: ReturnType<typeof checkedDirectory>, name: Str
   if (stageBefore.dev !== current.dev || stageBefore.ino !== current.ino || stageBefore.nlink !== 2)
     unavailable();
   unlinkSync(staged);
-  fsyncDirectory(dir.directory);
+  syncDirectory(dir.directory);
   dir.requireCurrent();
   const after = lstatSync(target);
   if (
@@ -149,7 +159,7 @@ function recoverCreatingLink(dir: ReturnType<typeof checkedDirectory>, name: Str
     after.dev !== current.dev ||
     after.ino !== current.ino ||
     after.nlink !== 1 ||
-    (after.mode & 0o077) !== 0
+    !hasNoGroupOrOtherBits(after)
   )
     unavailable();
 }
@@ -182,7 +192,7 @@ export function strategyDirectoryAccess(authority: StrategyDirectoryAuthority) {
       const temporary = join(dir.directory, `.${name}.${randomUUID()}.creating`);
       const fd = openSync(
         temporary,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | nofollow,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
         0o600,
       );
       let staged: { dev: number; ino: number } | null = null;
@@ -205,7 +215,7 @@ export function strategyDirectoryAccess(authority: StrategyDirectoryAuthority) {
           info.nlink !== 1 ||
           info.dev !== staged.dev ||
           info.ino !== staged.ino ||
-          (info.mode & 0o077) !== 0
+          !hasNoGroupOrOtherBits(info)
         )
           unavailable();
         checkedRegular(target);
@@ -221,13 +231,13 @@ export function strategyDirectoryAccess(authority: StrategyDirectoryAuthority) {
             return "exists";
           throw error;
         }
-        fsyncDirectory(dir.directory);
+        syncDirectory(dir.directory);
         return "created";
       } finally {
         const info = lstatSync(temporary, { throwIfNoEntry: false });
         if (dir.current() && staged && info?.dev === staged.dev && info.ino === staged.ino) {
           unlinkSync(temporary);
-          fsyncDirectory(dir.directory);
+          syncDirectory(dir.directory);
         }
       }
     },
@@ -237,7 +247,7 @@ export function strategyDirectoryAccess(authority: StrategyDirectoryAuthority) {
 function checkedRegular(path: string): boolean {
   const info = lstatSync(path, { throwIfNoEntry: false });
   if (info === undefined) return false;
-  if (!info.isFile() || info.nlink !== 1 || (info.mode & 0o077) !== 0) unavailable();
+  if (!info.isFile() || info.nlink !== 1 || !hasNoGroupOrOtherBits(info)) unavailable();
   return true;
 }
 
@@ -245,14 +255,14 @@ function readBounded(path: string, limit: number): string | null {
   if (!checkedRegular(path)) return null;
   let fd: number;
   try {
-    fd = openSync(path, constants.O_RDONLY | nofollow | nonblock);
+    fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch (error) {
     if (missing(error)) return null;
     return unavailable();
   }
   try {
     const info = fstatSync(fd);
-    if (!info.isFile() || info.nlink !== 1 || info.size > limit || (info.mode & 0o077) !== 0)
+    if (!info.isFile() || info.nlink !== 1 || info.size > limit || !hasNoGroupOrOtherBits(info))
       unavailable();
     const chunks: Buffer[] = [];
     let total = 0;
@@ -271,7 +281,7 @@ function readBounded(path: string, limit: number): string | null {
       now.nlink !== 1 ||
       now.dev !== info.dev ||
       now.ino !== info.ino ||
-      (now.mode & 0o077) !== 0 ||
+      !hasNoGroupOrOtherBits(now) ||
       after.size !== info.size ||
       after.mtimeMs !== info.mtimeMs ||
       after.ctimeMs !== info.ctimeMs
@@ -286,15 +296,6 @@ function readBounded(path: string, limit: number): string | null {
   }
 }
 
-function fsyncDirectory(path: string): void {
-  const fd = openSync(path, constants.O_RDONLY);
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
-
 /** A bounded, 0600 fixed-name temporary; at most one orphan per managed target. */
 function writeTemporary(directory: string, name: string, text: string, limit: number): string {
   const bytes = Buffer.from(text, "utf8");
@@ -303,7 +304,7 @@ function writeTemporary(directory: string, name: string, text: string, limit: nu
   if (checkedRegular(path)) unlinkSync(path);
   const fd = openSync(
     path,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | nofollow,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
     0o600,
   );
   try {
@@ -314,7 +315,7 @@ function writeTemporary(directory: string, name: string, text: string, limit: nu
   } finally {
     closeSync(fd);
   }
-  fsyncDirectory(directory);
+  syncDirectory(directory);
   return path;
 }
 
@@ -360,7 +361,7 @@ export function strategyPublicationPorts(authority: StrategyDirectoryAuthority):
     release();
     if (dir.current() && ownsTemp(temp)) {
       unlinkSync(temp.path);
-      fsyncDirectory(dir.directory);
+      syncDirectory(dir.directory);
     }
   };
   const path = (name: StrategyFileName) => {
@@ -419,7 +420,7 @@ export function strategyPublicationPorts(authority: StrategyDirectoryAuthority):
         if (!ownsTemp(temp)) unavailable();
         checkedRegular(path(name));
         renameSync(temp.path, path(name));
-        fsyncDirectory(dir.directory);
+        syncDirectory(dir.directory);
         dir.requireCurrent();
       } finally {
         retire(token, temp);
@@ -431,7 +432,7 @@ export function strategyPublicationPorts(authority: StrategyDirectoryAuthority):
       if (held?.owner !== owner && held?.current() === true) unavailable();
       if (checkedRegular(path(name))) {
         unlinkSync(path(name));
-        fsyncDirectory(dir.directory);
+        syncDirectory(dir.directory);
       }
       dir.requireCurrent();
     },
@@ -477,7 +478,7 @@ export function strategyPublicationPorts(authority: StrategyDirectoryAuthority):
       );
       dir.requireCurrent();
       renameSync(temp, journalPath);
-      fsyncDirectory(dir.directory);
+      syncDirectory(dir.directory);
       dir.requireCurrent();
     },
   };

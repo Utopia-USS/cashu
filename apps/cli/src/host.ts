@@ -4,7 +4,6 @@
 // bundle with the same runtime (the app's binary in Node mode, S47). A host that is still opening its
 // stores answers `starting`: the shim waits for it (bounded, connectOrStart) instead of starting
 // another. Never a fallback: when no host can be started the caller reports it and stops (exit 69).
-import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Role } from "@cashu/host-protocol";
@@ -15,37 +14,19 @@ import {
   type HostConnection,
   hostRunPaths,
   readDiscovery,
+  type SpawnHostOptions,
+  samePath,
+  sourceRunFlags,
   spawnDetachedHost,
 } from "@cashu/node-host";
 import {
   bundlePathFromEntry,
   packagedBuildId,
+  packagedLayout,
+  packagedVersion,
   readBundleIdentity,
 } from "@cashu/node-host/bundle-identity";
 import { bundleFlavor, FLAVORS, type Flavor } from "@cashu/node-host/flavor";
-
-/** A relative `--import` path made absolute (Node resolves it against the cwd of the start). */
-const absoluteSpecifier = (spec: string, cwd: string) =>
-  spec.startsWith("./") || spec.startsWith("../") ? resolve(cwd, spec) : spec;
-
-/** Node flags that run TypeScript from source; anything else (an inspector, a loader) is not passed on. */
-const SOURCE_FLAG = /^--(experimental-transform-types|no-warnings|disable-warning=.+|import=.+)$/;
-
-/** The `--import <x>` style flags of `execArgv` that run TypeScript from source, in order. */
-function sourceRunFlags(execArgv: readonly string[], cwd: string): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < execArgv.length; i++) {
-    const arg = execArgv[i] as string;
-    if (arg === "--import" && execArgv[i + 1] !== undefined) {
-      out.push(arg, absoluteSpecifier(execArgv[i + 1] as string, cwd));
-      i++;
-    } else if (arg.startsWith("--import=")) {
-      out.push(`--import=${absoluteSpecifier(arg.slice("--import=".length), cwd)}`);
-    } else if (arg === "--experimental-strip-types") out.push("--experimental-transform-types");
-    else if (SOURCE_FLAG.test(arg)) out.push(arg);
-  }
-  return out;
-}
 
 /** Where this shim runs from. */
 export interface ShimBuild {
@@ -78,35 +59,36 @@ export function shimBuild(
   return { self: real, checkout: undefined, ...packagedShimBuild(real, process.execPath, env) };
 }
 
-function packagedShimBuild(
+/**
+ * The build and flavor of a packaged shim: `self` is the verified bundle's `shim.mjs`, run by the
+ * bundle's own executable in Node mode. The bundle is a `.app` on macOS (and any non-Windows
+ * platform), the install dir on Windows (`<install>/resources/shim.mjs`, `<install>/cashU.exe`).
+ */
+export function packagedShimBuild(
   self: string,
   execPath: string,
   env: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform = process.platform,
 ): { readonly build: string; readonly flavor: Flavor } {
-  const bundle = bundlePathFromEntry(self);
-  const identity = bundle ? readBundleIdentity(bundle) : { kind: "invalid" as const };
+  const bundle = bundlePathFromEntry(self, platform);
+  const identity = bundle ? readBundleIdentity(bundle, platform) : { kind: "invalid" as const };
+  if (identity.kind !== "present") throw new Error("packaged_shim_identity_unavailable");
+  const layout = packagedLayout(identity.canonicalPath, platform);
+  // Windows compares the native realpath (on-disk case, long names) the bundle identity uses.
+  const running = (path: string) =>
+    platform === "win32" ? realpathSync.native(path) : realpathSync(path);
   if (
-    identity.kind !== "present" ||
-    self !== join(identity.canonicalPath, "Contents", "Resources", "shim.mjs") ||
-    realpathSync(execPath) !== join(identity.canonicalPath, "Contents", "MacOS", "cashU") ||
+    !samePath(self, join(layout.resources, "shim.mjs"), platform) ||
+    !samePath(running(execPath), layout.executable, platform) ||
     env.ELECTRON_RUN_AS_NODE !== "1"
   )
     throw new Error("packaged_shim_identity_unavailable");
-  const version = execFileSync(
-    "/usr/bin/plutil",
-    [
-      "-extract",
-      "CFBundleShortVersionString",
-      "raw",
-      "-o",
-      "-",
-      join(identity.canonicalPath, "Contents", "Info.plist"),
-    ],
-    { encoding: "utf8", timeout: 5_000 },
-  ).trim();
   return {
-    build: packagedBuildId(version, identity.contentDigest),
-    flavor: bundleFlavor(identity.canonicalPath),
+    build: packagedBuildId(
+      packagedVersion(identity.canonicalPath, platform),
+      identity.contentDigest,
+    ),
+    flavor: bundleFlavor(identity.canonicalPath, platform),
   };
 }
 
@@ -152,6 +134,25 @@ export interface HostTarget {
 /** The host's log, named in the shim's error text. */
 export const hostLogPath = (dataDir: string) => hostRunPaths(dataDir).logPath;
 
+/**
+ * How the shim starts the data dir's host: detached, logging to the data dir, and working in the data
+ * dir (resolved), never in the caller's directory. A long-lived host would otherwise keep that folder
+ * (a Claude Code project, a terminal's cwd) open, which Windows then cannot delete or rename. Nothing
+ * in the host depends on the cwd it starts in: its arguments are absolute (`hostCommand`) and each
+ * client sends its own cwd per request.
+ */
+export function hostSpawnOptions(target: HostTarget): SpawnHostOptions {
+  const { command, args } = hostCommand(
+    target.build,
+    target.dataDir,
+    target.execPath,
+    target.execArgv,
+    target.cwd,
+  );
+  const paths = hostRunPaths(target.dataDir);
+  return { command, args, logPath: paths.logPath, env: target.env, cwd: paths.dataDir };
+}
+
 /** Reports the wait for a host that is still starting (time since its first `starting` answer). */
 export type OnStarting = (elapsedMs: number) => void;
 
@@ -166,21 +167,14 @@ export async function reachHost(
   onStarting?: OnStarting,
 ): Promise<HostConnection> {
   assertPackagedShim(target);
-  const { command, args } = hostCommand(
-    target.build,
-    target.dataDir,
-    target.execPath,
-    target.execArgv,
-    target.cwd,
-  );
-  const paths = hostRunPaths(target.dataDir);
+  const spawnOptions = hostSpawnOptions(target);
   const { connection } = await connectOrStart({
     dataDir: target.dataDir,
     role,
     ...(profile === undefined ? {} : { profile }),
     build: target.build.build,
     start: () => {
-      spawnDetachedHost({ command, args, logPath: paths.logPath, env: target.env });
+      spawnDetachedHost(spawnOptions);
     },
     ...(onStarting === undefined ? {} : { onStarting }),
   });

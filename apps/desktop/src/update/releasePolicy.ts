@@ -8,3 +8,9 @@
 export const RELEASE_TEAM_ID: string | null = "29W838VKU4";
 export const RELEASE_FEED_URL: string | null =
   "https://github.com/Utopia-USS/cashu/releases/latest/download/";
+
+/**
+ * The releases page a Windows install points the owner to (Settings > App): new versions are installed
+ * by hand from there until verified NSIS updates exist. GitHub redirects it to the newest release.
+ */
+export const RELEASES_PAGE_URL = "https://github.com/Utopia-USS/cashu/releases/latest";

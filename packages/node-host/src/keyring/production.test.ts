@@ -8,7 +8,6 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -19,6 +18,7 @@ import { crypto } from "@cashu/sync";
 import { afterEach, describe, expect, it } from "vitest";
 import { acquireHostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
+import { linkDir, linkFile } from "../testing/links.js";
 import type { OsKeyringPort } from "./native.js";
 import { createTestKeyStore } from "./production.js";
 
@@ -27,6 +27,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const sodium = await crypto.loadNodeSodium();
+const ON_WINDOWS = process.platform === "win32";
 function fixture() {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "t44-test-"));
   roots.push(root);
@@ -130,7 +131,7 @@ describe("isolated Node OS KeyStore", () => {
     await expect(open.get(f.name)).rejects.toMatchObject({ code: "keystore_corrupt" });
     f.lock.release();
   });
-  it("rejects a missing KEK with existing blob and refuses unsafe file permissions", async () => {
+  it("rejects a missing KEK with an existing blob", async () => {
     const f = fixture();
     await f.make("provision").set(f.name, Uint8Array.of(1));
     const [item] = onlyItem(f);
@@ -138,6 +139,12 @@ describe("isolated Node OS KeyStore", () => {
     await expect(f.make("provision").set(f.second, Uint8Array.of(2))).rejects.toMatchObject({
       code: "keystore_unavailable",
     });
+    f.lock.release();
+  });
+  // Windows modes are synthetic; the data dir's per-user ACL stands in for them there.
+  it.skipIf(ON_WINDOWS)("refuses a blob with unsafe POSIX permissions", async () => {
+    const f = fixture();
+    await f.make("provision").set(f.name, Uint8Array.of(1));
     chmodSync(blobPath(f, f.name), 0o644);
     await expect(f.make("open").get(f.name)).rejects.toMatchObject({ code: "keystore_corrupt" });
     f.lock.release();
@@ -227,22 +234,47 @@ describe("isolated Node OS KeyStore", () => {
     first.lock.release();
     second.lock.release();
   });
-  it("refuses a symlinked blob and a released provisioning lock", async () => {
+  // A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+  it("refuses a symlinked blob, dangling or not, and never reads it as no key", async ({
+    skip,
+  }) => {
     const f = fixture();
     await f.make("provision").set(f.name, Uint8Array.of(5));
     const path = blobPath(f, f.name);
     unlinkSync(path);
-    symlinkSync(blobPath(f, f.second), path);
+    // Dangling: Windows opens it (no O_NOFOLLOW) to ENOENT, which must not mean "absent".
+    linkFile(blobPath(f, f.second), path, skip);
     await expect(f.make("open").get(f.name)).rejects.toMatchObject({
       code: "keystore_unavailable",
     });
+    // Resolving to a real blob of the same store: refused as well (POSIX at the O_NOFOLLOW open;
+    // Windows opens through the link and the lstat of the path refuses it).
+    await f.make("provision").set(f.second, Uint8Array.of(6));
+    await expect(f.make("open").get(f.name)).rejects.toMatchObject({
+      code: ON_WINDOWS ? "keystore_corrupt" : "keystore_unavailable",
+    });
+    f.lock.release();
+  });
+  // Runs everywhere without privilege: a dangling junction on Windows, a dangling symlink elsewhere.
+  it("refuses a dangling link in place of a vault key blob instead of reading it as no key", async () => {
+    const f = fixture();
+    await f.make("provision").set(f.second, Uint8Array.of(5));
+    linkDir(join(f.root, "missing"), blobPath(f, f.name));
+    await expect(f.make("open").get(f.name)).rejects.toMatchObject({
+      code: "keystore_unavailable",
+    });
+    f.lock.release();
+  });
+  it("refuses a released provisioning lock", async () => {
+    const f = fixture();
     const store = f.make("provision");
     f.lock.release();
     await expect(store.set(f.second, Uint8Array.of(2))).rejects.toMatchObject({
       code: "keystore_unavailable",
     });
   });
-  it("rejects a FIFO blob without blocking the process", () => {
+  // Windows has no FIFOs in the file system (and no mkfifo).
+  it.skipIf(ON_WINDOWS)("rejects a FIFO blob without blocking the process", () => {
     const f = fixture();
     const parent = join(f.dataDir, "vault-secrets");
     const version = join(parent, "v1");

@@ -5,7 +5,16 @@
 
 import { describe, expect, it } from "vitest";
 import type { SetupStep } from "./modules.js";
-import { claudeMcpAdd, cliPrefix, setupView, shlexJoin, shlexQuote } from "./setup.js";
+import {
+  claudeMcpAdd,
+  claudeMcpAddLine,
+  cliPrefix,
+  cmdLineSafe,
+  powershellQuote,
+  setupView,
+  shlexJoin,
+  shlexQuote,
+} from "./setup.js";
 
 const steps = (...specs: (readonly [boolean, boolean])[]): SetupStep[] =>
   specs.map(([done, optional], i) => ({
@@ -64,6 +73,102 @@ describe("cli prefix", () => {
     ).toBe(
       "claude mcp add cashu-staging-jan -- '/Users/x/Library/Application Support/cashU Staging/bin/cashu' mcp --profile jan",
     );
+  });
+
+  it("an explicit macOS or Linux platform renders exactly the sh form", () => {
+    const launcher = "/Users/x/Library/Application Support/cashU/bin/cashu";
+    for (const platform of ["darwin", "linux"]) {
+      expect(cliPrefix([launcher], "jan", platform)).toBe(cliPrefix([launcher], "jan"));
+      expect(claudeMcpAdd([launcher], "jan", "cashu", platform)).toBe(
+        claudeMcpAdd([launcher], "jan", "cashu"),
+      );
+    }
+  });
+
+  const WINDOWS_LAUNCHER = "C:\\Users\\Jan Kowalski\\AppData\\Local\\cashU\\bin\\cashu.cmd";
+
+  it("Windows: PowerShell runs the launcher through the call operator", () => {
+    expect(cliPrefix([WINDOWS_LAUNCHER], "jan", "win32")).toBe(
+      '& "C:\\Users\\Jan Kowalski\\AppData\\Local\\cashU\\bin\\cashu.cmd" --profile jan',
+    );
+    expect(cliPrefix(["cashu"], "jan", "win32")).toBe("cashu --profile jan");
+    expect(cliPrefix([WINDOWS_LAUNCHER], null, "win32")).toBe(
+      '& "C:\\Users\\Jan Kowalski\\AppData\\Local\\cashU\\bin\\cashu.cmd"',
+    );
+  });
+
+  it("Windows: the MCP server runs the .cmd launcher through cmd, which Claude Code can spawn", () => {
+    expect(claudeMcpAdd([WINDOWS_LAUNCHER], "jan", "cashu", "win32")).toBe(
+      'claude mcp add cashu-jan "--" cmd /d /c "C:\\Users\\Jan Kowalski\\AppData\\Local\\cashU\\bin\\cashu.cmd" mcp --profile jan',
+    );
+    expect(claudeMcpAdd(["D:\\cashu\\bin\\cashu.cmd"], "anna-2", "cashu", "win32")).toBe(
+      'claude mcp add cashu-anna-2 "--" cmd /d /c "D:\\cashu\\bin\\cashu.cmd" mcp --profile anna-2',
+    );
+  });
+
+  it("Windows: no MCP line for a launcher path cmd.exe would reinterpret", () => {
+    for (const path of [
+      "C:\\Users\\Tom & Jerry\\cashu.cmd",
+      "C:\\Users\\Jan (Work)\\cashu.cmd",
+      "C:\\Users\\a^b\\cashu.cmd",
+      "C:\\Users\\wow!\\cashu.cmd",
+      "C:\\Users\\100%\\cashu.cmd",
+    ])
+      expect(claudeMcpAdd([path], "jan", "cashu", "win32")).toBeNull();
+    // The CLI line is PowerShell's own quoting, which carries them.
+    expect(cliPrefix(["C:\\Users\\Tom & Jerry\\cashu.cmd"], "jan", "win32")).toBe(
+      '& "C:\\Users\\Tom & Jerry\\cashu.cmd" --profile jan',
+    );
+  });
+
+  it("the claude mcp add line from pre-quoted words, shared with the recovery prompt", () => {
+    expect(claudeMcpAddLine("cashu-<slug>", "pnpm cashu-next mcp --profile <slug>")).toBe(
+      "claude mcp add cashu-<slug> -- pnpm cashu-next mcp --profile <slug>",
+    );
+    expect(claudeMcpAddLine("cashu-<slug>", "pnpm cashu-next mcp --profile <slug>", "linux")).toBe(
+      "claude mcp add cashu-<slug> -- pnpm cashu-next mcp --profile <slug>",
+    );
+    expect(
+      claudeMcpAddLine(
+        "cashu-<slug>",
+        '"$env:USERPROFILE\\x\\cashu.cmd" mcp --profile <slug>',
+        "win32",
+      ),
+    ).toBe(
+      'claude mcp add cashu-<slug> "--" cmd /d /c "$env:USERPROFILE\\x\\cashu.cmd" mcp --profile <slug>',
+    );
+    expect(cmdLineSafe("C:\\Users\\Jan Kowalski\\cashu.cmd")).toBe(true);
+    for (const word of [
+      "a&b",
+      "a(b",
+      "a)b",
+      "a^b",
+      "a|b",
+      "a<b",
+      "a>b",
+      "a@b",
+      "a%b",
+      "a!b",
+      'a"b',
+      "a\nb",
+    ])
+      expect(cmdLineSafe(word)).toBe(false);
+  });
+
+  it("PowerShell quoting", () => {
+    expect(powershellQuote("cashu-jan")).toBe("cashu-jan");
+    expect(powershellQuote("--profile")).toBe("--profile");
+    expect(powershellQuote("/c")).toBe("/c");
+    expect(powershellQuote("--")).toBe('"--"');
+    expect(powershellQuote("")).toBe('""');
+    expect(powershellQuote("a b")).toBe('"a b"');
+    expect(powershellQuote("C:\\x")).toBe('"C:\\x"');
+    expect(powershellQuote('$env:X `a` "q" \u201Cs\u201D')).toBe(
+      '"`$env:X ``a`` `"q`" `\u201Cs`\u201D"',
+    );
+    expect(powershellQuote("@splat")).toBe('"@splat"');
+    expect(powershellQuote("a,b")).toBe('"a,b"');
+    expect(powershellQuote("it's")).toBe('"it\'s"');
   });
 
   it("shlex.quote", () => {

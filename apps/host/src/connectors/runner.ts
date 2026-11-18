@@ -159,6 +159,34 @@ export function snapshot(loaded: LoadedConnector, destination: string): LoadedCo
   return image;
 }
 
+/**
+ * Kills a sandboxed process and everything it started. POSIX: its own process group (it is spawned
+ * `detached`, so it leads one). Windows has no process groups and no sandbox here; there only the
+ * process itself can be ended (TerminateProcess).
+ */
+export function killConfined(
+  pid: number,
+  platform: NodeJS.Platform = process.platform,
+  kill: (pid: number, signal: NodeJS.Signals) => void = (target, signal) => {
+    process.kill(target, signal);
+  },
+): void {
+  try {
+    kill(platform === "win32" ? pid : -pid, "SIGKILL");
+  } catch {
+    /* already exited */
+  }
+}
+
+/** The result of a confined run that never started (no sandbox, or the spawn failed). */
+const NOT_STARTED = {
+  code: null,
+  stdout: Buffer.alloc(0),
+  stderr: Buffer.alloc(0),
+  overflow: false,
+  timedOut: false,
+} as const;
+
 export async function confinedProcess(
   args: string[],
   profile: string,
@@ -175,6 +203,9 @@ export async function confinedProcess(
   overflow: boolean;
   timedOut: boolean;
 }> {
+  // The sandbox is macOS's sandbox-exec. On Windows `/usr/bin/sandbox-exec` would name a path on the
+  // current drive that any user may create, so nothing is spawned there (callers refuse earlier).
+  if (process.platform === "win32") return NOT_STARTED;
   return new Promise((resolveResult) => {
     const child = spawn("/usr/bin/sandbox-exec", ["-p", profile, ...args], {
       cwd,
@@ -211,13 +242,7 @@ export async function confinedProcess(
     let overflow = false;
     let timedOut = false;
     const kill = () => {
-      if (child.pid) {
-        try {
-          process.kill(-child.pid, "SIGKILL");
-        } catch {
-          /* already exited */
-        }
-      }
+      if (child.pid) killConfined(child.pid);
     };
     const timer = setTimeout(() => {
       timedOut = true;

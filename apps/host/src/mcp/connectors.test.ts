@@ -141,7 +141,7 @@ it("installs only a checked workspace connector as pending", async () => {
     writeFileSync(join(source, "connector.py"), "print('synthetic')\n");
     const catalog = new ConnectorCatalog(data);
     const receipts = new ConnectorProposalReceipts(data);
-    const port = connectorMcpPort({
+    const authority = {
       catalog,
       vault: {
         id: VAULT,
@@ -169,10 +169,17 @@ it("installs only a checked workspace connector as pending", async () => {
       } as never,
       now: () => Date.parse("2026-11-04T00:00:00Z"),
       isCurrent: () => true,
-    });
+    };
+    const port = connectorMcpPort(authority);
     await expect(port.propose({ path: root }, "bad-path")).rejects.toThrow(
       "connector_path_invalid",
     );
+    // Windows: a share or device path is refused as text, before anything resolves it.
+    const windowsPort = connectorMcpPort({ ...authority, platform: "win32" });
+    for (const path of ["\\\\attacker\\share\\sample-file", "\\\\?\\UNC\\attacker\\x"])
+      await expect(windowsPort.propose({ path }, `unc-${path.length}`)).rejects.toThrow(
+        "connector_path_invalid",
+      );
     expect((await port.propose({ path: source }, "install-one")).status).toBe("pending");
     expect(catalog.list()[0]?.approval).toBe("pending");
     const reopened = new ConnectorProposalReceipts(data);
@@ -180,14 +187,17 @@ it("installs only a checked workspace connector as pending", async () => {
     await expect(port.propose({ catalogId: "different" }, "install-one")).rejects.toThrow(
       "request_key_conflict",
     );
-    const original = join(workspace, "connectors");
-    const moved = join(root, "moved-connectors");
-    renameSync(original, moved);
-    symlinkSync(moved, original);
-    expect((await port.propose({ path: source }, "install-one")).status).toBe("pending");
-    await expect(
-      port.propose({ path: join(original, "sample-file") }, "install-two"),
-    ).rejects.toThrow("connector_path_invalid");
+    // Creating a symlink needs Developer Mode or elevation on Windows.
+    if (process.platform !== "win32") {
+      const original = join(workspace, "connectors");
+      const moved = join(root, "moved-connectors");
+      renameSync(original, moved);
+      symlinkSync(moved, original);
+      expect((await port.propose({ path: source }, "install-one")).status).toBe("pending");
+      await expect(
+        port.propose({ path: join(original, "sample-file") }, "install-two"),
+      ).rejects.toThrow("connector_path_invalid");
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import { constants, lstatSync, watch } from "node:fs";
 import { link, lstat, open, readdir, realpath, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { isOwnerOnly } from "@cashu/node-host";
 import type { StrategyFileName } from "@cashu/store/investments/services";
 import { MAX_STRATEGY_FILE_BYTES } from "@cashu/store/investments/services";
+import { isStrategyPathSegment } from "../nativeStrategyDocuments.js";
 import type { StrategyScreenCapability } from "../strategiesScreen.js";
 export async function syntheticStrategyDocuments(options: {
   readonly root: string;
@@ -14,12 +16,13 @@ export async function syntheticStrategyDocuments(options: {
   /** Synthetic race/failure tests only: invoked after complete private staging, before publication. */
   beforePublish?(name: StrategyFileName): Promise<void>;
 }): Promise<StrategyScreenCapability> {
+  // Private = owner-only mode on macOS and Linux; on Windows (synthetic modes) the per-user ACL.
   const root = resolve(options.root);
   const pinned = await lstat(root);
   if (
     !pinned.isDirectory() ||
     pinned.isSymbolicLink() ||
-    (pinned.mode & 0o077) !== 0 ||
+    !isOwnerOnly(pinned) ||
     (await realpath(root)) !== root
   )
     throw new Error("invalid_synthetic_strategy_root");
@@ -32,7 +35,7 @@ export async function syntheticStrategyDocuments(options: {
         stat.ino === pinned.ino &&
         stat.isDirectory() &&
         !stat.isSymbolicLink() &&
-        (stat.mode & 0o077) === 0
+        isOwnerOnly(stat)
       );
     } catch {
       return false;
@@ -47,7 +50,7 @@ export async function syntheticStrategyDocuments(options: {
       stat.ino !== pinned.ino ||
       !stat.isDirectory() ||
       stat.isSymbolicLink() ||
-      (stat.mode & 0o077) !== 0
+      !isOwnerOnly(stat)
     )
       throw new Error("synthetic_strategy_authority_lost");
   };
@@ -55,8 +58,7 @@ export async function syntheticStrategyDocuments(options: {
     await current();
     let path = root;
     for (const [index, segment] of parts.entries()) {
-      if (!segment || segment === "." || segment === ".." || /[/\\\0]/.test(segment))
-        throw new Error("invalid_synthetic_strategy_path");
+      if (!isStrategyPathSegment(segment)) throw new Error("invalid_synthetic_strategy_path");
       path = join(path, segment);
       const stat = await lstat(path);
       if (stat.isSymbolicLink() || (index < parts.length - 1 && !stat.isDirectory()))
@@ -75,7 +77,7 @@ export async function syntheticStrategyDocuments(options: {
       throw error;
     }
     const expected = await lstat(path);
-    if (!expected.isFile() || expected.isSymbolicLink() || (expected.mode & 0o077) !== 0)
+    if (!expected.isFile() || expected.isSymbolicLink() || !isOwnerOnly(expected))
       throw new Error("invalid_synthetic_strategy_file");
     if (expected.size > limit) throw new Error("synthetic_strategy_too_large");
     const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -86,7 +88,7 @@ export async function syntheticStrategyDocuments(options: {
         stat.dev !== expected.dev ||
         stat.ino !== expected.ino ||
         stat.size > limit ||
-        (stat.mode & 0o077) !== 0
+        !isOwnerOnly(stat)
       )
         throw new Error("invalid_synthetic_strategy_file");
       const bytes = new Uint8Array(limit + 1);
@@ -218,7 +220,7 @@ export async function syntheticStrategyDocuments(options: {
             !stat.isFile() ||
             stat.isSymbolicLink() ||
             stat.nlink !== 1 ||
-            (stat.mode & 0o077) !== 0
+            !isOwnerOnly(stat)
           )
             throw new Error("invalid_synthetic_strategy_stage");
           // link publishes complete staged bytes without replacing an existing final target.

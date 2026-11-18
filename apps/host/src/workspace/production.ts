@@ -76,6 +76,8 @@ export interface ProductionWorkspaceOptions {
   sessions(vault: string): NativeVaultSession | null;
   inventory(): readonly NativeVaultInventoryEntry[];
   now?(): Date;
+  /** `process.platform` unless a test injects one: the shell of the workspace's command lines. */
+  readonly platform?: NodeJS.Platform;
 }
 
 function configClaim(dataRoot: string, vault: string): string | null {
@@ -213,6 +215,7 @@ export function createProductionWorkspaceProvider(
           server: mcpServerName(processFlavor(), slug),
         },
         cli: [options.program.command, ...options.program.args],
+        platform: options.platform ?? process.platform,
         tools: TOOL_INVENTORY.filter(
           (tool) =>
             tool.module === "core" ||

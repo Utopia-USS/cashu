@@ -22,6 +22,7 @@ export {
 export {
   appDisplayPath,
   commandPrefix,
+  launcherPath,
   type RecoveryCommand,
   type RecoveryCommandInput,
   recoveryCommand,

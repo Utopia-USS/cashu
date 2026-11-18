@@ -12,6 +12,7 @@ import {
   watch,
 } from "node:fs";
 import { join } from "node:path";
+import { hasNoGroupOrOtherBits, O_NOFOLLOW, O_NONBLOCK, openedWithoutLink } from "@cashu/node-host";
 import {
   type CurrentStrategySnapshot,
   strategySnapshot,
@@ -27,11 +28,27 @@ import {
 import type { StrategyScreenCapability } from "./strategiesScreen.js";
 
 const DOC_LIMIT = 512_000;
-const nofollow = constants.O_NOFOLLOW ?? 0;
-const nonblock = constants.O_NONBLOCK ?? 0;
-const safeSegment = (part: string) =>
-  part !== "" && part !== "." && part !== ".." && !/[/\\\0]/.test(part);
 const normalized = (text: string) => text.replace(/\r\n?/g, "\n");
+
+/**
+ * Whether `part` is one plain name inside the strategy folder: not empty, not `.` or `..`, and
+ * without a separator or NUL. On Windows also without `:`, which there opens an NTFS alternate data
+ * stream (`name.md:hidden`, bytes beside the file every type and size check sees) or names a drive
+ * (`C:x`).
+ */
+export function isStrategyPathSegment(
+  part: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return (
+    part !== "" &&
+    part !== "." &&
+    part !== ".." &&
+    !/[/\\\0]/.test(part) &&
+    (platform !== "win32" || !part.includes(":"))
+  );
+}
+
 type WatchDirectory = (
   path: string,
   changed: (event: string, name: string | Buffer | null) => void,
@@ -45,7 +62,7 @@ function nativeAccess(authority: StrategyDirectoryAuthority) {
   const dir = strategyDirectoryAccess(authority);
   const checkedPath = (parts: readonly string[], leaf: "file" | "directory") => {
     dir.requireCurrent();
-    if (parts.length > 5 || parts.some((part) => !safeSegment(part)))
+    if (parts.length > 5 || parts.some((part) => !isStrategyPathSegment(part)))
       throw new Error("invalid_strategy_path");
     let current = dir.directory;
     const pins: { path: string; dev: number; ino: number }[] = [];
@@ -55,7 +72,7 @@ function nativeAccess(authority: StrategyDirectoryAuthority) {
       const last = index === parts.length - 1;
       if (
         info.isSymbolicLink() ||
-        (info.mode & 0o077) !== 0 ||
+        !hasNoGroupOrOtherBits(info) ||
         (last && leaf === "file" ? !info.isFile() || info.nlink !== 1 : !info.isDirectory())
       )
         throw new Error("strategy_file_authority_unavailable");
@@ -73,7 +90,7 @@ function nativeAccess(authority: StrategyDirectoryAuthority) {
         info.isSymbolicLink() ||
         info.dev !== pin.dev ||
         info.ino !== pin.ino ||
-        (info.mode & 0o077) !== 0
+        !hasNoGroupOrOtherBits(info)
       )
         throw new Error("strategy_directory_changed");
     }
@@ -89,14 +106,15 @@ function nativeAccess(authority: StrategyDirectoryAuthority) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
     }
-    const fd = openSync(file, constants.O_RDONLY | nofollow | nonblock);
+    const fd = openSync(file, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     try {
       const before = fstatSync(fd);
       if (
         !before.isFile() ||
         before.nlink !== 1 ||
         before.size > limit ||
-        (before.mode & 0o077) !== 0
+        !hasNoGroupOrOtherBits(before) ||
+        !openedWithoutLink(file, before)
       )
         throw new Error("strategy_file_authority_unavailable");
       const chunks: Buffer[] = [];
@@ -145,7 +163,7 @@ function nativeAccess(authority: StrategyDirectoryAuthority) {
         name,
         kind: info.isSymbolicLink()
           ? ("symlink" as const)
-          : (info.mode & 0o077) !== 0 || (info.isFile() && info.nlink !== 1)
+          : !hasNoGroupOrOtherBits(info) || (info.isFile() && info.nlink !== 1)
             ? ("other" as const)
             : info.isFile()
               ? ("file" as const)

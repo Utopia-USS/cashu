@@ -1,10 +1,17 @@
 // Refusals on resolved paths with a fake home (a data dir plus two labelled outputs), plus the
 // labels of a host with several outputs.
-import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { type GuardedPaths, RefusalError, refusePaths, resolveReal } from "./guard.js";
+import {
+  type GuardEnv,
+  type GuardedPaths,
+  RefusalError,
+  refusePaths,
+  resolveReal,
+} from "./guard.js";
+import { linkDir } from "./testing/links.js";
 
 interface Layout {
   readonly dataDir: string;
@@ -43,11 +50,19 @@ const refusal = (fn: () => void) => {
 
 const refuse = (p: Layout, home: string) => refusal(() => refusePaths(flagPaths(p), home));
 
+/** Whether this machine's temp file system ignores letter case (macOS APFS by default, NTFS). */
+const CASE_INSENSITIVE = (() => {
+  const probe = join(mkdtempSync(join(tmpdir(), "cashu-node-host-case-")), "CaseProbe");
+  mkdirSync(probe);
+  return existsSync(join(probe, "..", "caseprobe"));
+})();
+
 describe("path guard", () => {
+  // A directory link: a junction on Windows (no privilege needed), a symlink elsewhere.
   it("resolves a path whose tail does not exist yet through the real prefix", () => {
     const { base } = layout();
     mkdirSync(join(base, "real"));
-    symlinkSync(join(base, "real"), join(base, "link"));
+    linkDir(join(base, "real"), join(base, "link"));
     expect(resolveReal(join(base, "link", "new", "file"))).toBe(join(base, "real", "new", "file"));
   });
 
@@ -90,8 +105,8 @@ describe("path guard", () => {
     expect(refuse({ ...ok, out: join(home, "Documents", "cashU-demo") }, home)).toBeUndefined();
   });
 
-  it("refuses outputs inside the data dir, also through a symlink", () => {
-    const { base, home, ok } = layout();
+  it("refuses outputs inside the data dir", () => {
+    const { home, ok } = layout();
     mkdirSync(ok.dataDir);
     expect(refuse({ ...ok, out: join(ok.dataDir, "out") }, home)).toBe(
       "--out is inside the data dir",
@@ -99,7 +114,13 @@ describe("path guard", () => {
     expect(refuse({ ...ok, keys: join(ok.dataDir, "k.json") }, home)).toBe(
       "--keys is inside the data dir",
     );
-    symlinkSync(ok.dataDir, join(base, "alias"));
+  });
+
+  // A directory link: a junction on Windows (no privilege needed), a symlink elsewhere.
+  it("refuses outputs inside the data dir through a directory link", () => {
+    const { base, home, ok } = layout();
+    mkdirSync(ok.dataDir);
+    linkDir(ok.dataDir, join(base, "alias"));
     const out = resolveReal(join(base, "alias", "out"));
     expect(refuse({ ...ok, out }, home)).toBe("--out is inside the data dir");
   });
@@ -137,6 +158,88 @@ describe("path guard", () => {
     ).toBe("remotes[1].root points into the cashU application data");
     expect(
       refusal(() => refusePaths(paths(join(base, "s"), join(base, "r1")), home)),
+    ).toBeUndefined();
+  });
+
+  it.skipIf(!CASE_INSENSITIVE)(
+    "resolves to the on-disk letter case on Windows and keeps the given case elsewhere",
+    () => {
+      const { base } = layout();
+      mkdirSync(join(base, "MixedCase"));
+      const given = join(base, "mixedcase", "new");
+      expect(resolveReal(given, "win32")).toBe(join(base, "MixedCase", "new"));
+      expect(resolveReal(given, "darwin")).toBe(given);
+      expect(resolveReal(given, "linux")).toBe(given);
+    },
+  );
+});
+
+describe("path guard on Windows", () => {
+  const home = "C:\\Users\\anna";
+  const local = "C:\\Users\\anna\\AppData\\Local";
+  const win: GuardEnv = { platform: "win32", localAppData: local };
+  const paths = (dataDir: string, out = "D:\\work\\out"): GuardedPaths => ({
+    dataDir: { label: "--data-dir", path: dataDir },
+    outputs: [{ label: "--out", path: out }],
+  });
+  const refuseWin = (dataDir: string, out?: string, env: GuardEnv = win) =>
+    refusal(() => refusePaths(paths(dataDir, out), home, env));
+
+  it("refuses every flavor's default data dir and anything inside, in any letter case", () => {
+    for (const name of ["cashU", "CASHU", "cashU Staging", "cashu-old", "cashu-updater"]) {
+      expect(refuseWin(`${local}\\${name}`)).toBe(
+        "--data-dir points into the cashU application data",
+      );
+      expect(refuseWin(`${local.toUpperCase()}\\${name}\\stores\\vaults`)).toBe(
+        "--data-dir points into the cashU application data",
+      );
+    }
+    expect(refuseWin("D:\\demo", `${local}\\cashU\\export.csv`)).toBe(
+      "--out points into the cashU application data",
+    );
+  });
+
+  it("allows cashU-demo as the data dir only", () => {
+    expect(refuseWin(`${local}\\cashU-demo`)).toBeUndefined();
+    expect(refuseWin("D:\\demo", `${local}\\cashU-demo\\o`)).toBe(
+      "--out points into the cashU application data",
+    );
+  });
+
+  it("refuses the per-user install dir and anything inside it", () => {
+    for (const dir of [`${local}\\Programs\\cashu`, `${local}\\PROGRAMS\\cashU\\resources`]) {
+      expect(refuseWin(dir)).toBe("--data-dir points into the installed cashU app");
+    }
+    expect(refuseWin(`${local}\\Programs\\cashu-tools`)).toBeUndefined();
+  });
+
+  it("falls back to <home>\\AppData\\Local without an absolute LOCALAPPDATA", () => {
+    for (const localAppData of [undefined, "", "relative\\dir"]) {
+      expect(refuseWin(`${local}\\cashU`, undefined, { platform: "win32", localAppData })).toBe(
+        "--data-dir points into the cashU application data",
+      );
+    }
+  });
+
+  it("refuses the data dir under a LOCALAPPDATA that is not below the home", () => {
+    const env: GuardEnv = { platform: "win32", localAppData: "E:\\Profiles\\anna\\Local" };
+    expect(refuseWin("E:\\Profiles\\anna\\Local\\cashU", undefined, env)).toBe(
+      "--data-dir points into the cashU application data",
+    );
+    expect(refuseWin(`${local}\\cashU`, undefined, env)).toBe(
+      "--data-dir points into the cashU application data",
+    );
+  });
+
+  it("accepts data dirs elsewhere, on another drive and beside the real ones", () => {
+    expect(refuseWin("D:\\cashU")).toBeUndefined();
+    expect(refuseWin(`${local}\\other\\cashU`)).toBeUndefined();
+    expect(refuseWin(`${local}\\Temp\\demo`)).toBeUndefined();
+  });
+
+  it("leaves the Windows locations to Windows", () => {
+    expect(
+      refuseWin(`${local}\\cashU`, undefined, { platform: "darwin", localAppData: local }),
     ).toBeUndefined();
   });
 });

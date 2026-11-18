@@ -3,6 +3,7 @@
 // `host.mjs` run by the app's binary in Node mode, with `shim.mjs` beside it (S47).
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { sourceRunFlags } from "@cashu/node-host";
 
 /** A program: an absolute executable and the arguments before the caller's own. */
 export interface Program {
@@ -22,28 +23,6 @@ export interface HostRuntime {
   /** The working directory the host started in (relative Node flags resolve against it). */
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
-}
-
-/** A relative `--import` path made absolute (Node resolves it against the cwd of the start). */
-const absoluteSpecifier = (spec: string, cwd: string) =>
-  spec.startsWith("./") || spec.startsWith("../") ? resolve(cwd, spec) : spec;
-
-/** Node flags that run TypeScript from source; anything else (an inspector, a loader) stays here. */
-const SOURCE_FLAG = /^--(experimental-transform-types|no-warnings|disable-warning=.+|import=.+)$/;
-
-function sourceRunFlags(execArgv: readonly string[], cwd: string): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < execArgv.length; i++) {
-    const arg = execArgv[i] as string;
-    if (arg === "--import" && execArgv[i + 1] !== undefined) {
-      out.push(arg, absoluteSpecifier(execArgv[i + 1] as string, cwd));
-      i++;
-    } else if (arg.startsWith("--import=")) {
-      out.push(`--import=${absoluteSpecifier(arg.slice("--import=".length), cwd)}`);
-    } else if (arg === "--experimental-strip-types") out.push("--experimental-transform-types");
-    else if (SOURCE_FLAG.test(arg)) out.push(arg);
-  }
-  return out;
 }
 
 export function currentRuntime(): HostRuntime {

@@ -45,7 +45,9 @@ it("provisions demo-anna as a native vault under the lab root and serves it with
   );
   expect(existsSync(join(dataDir, "native", "v1", "inventory.json"))).toBe(true);
   const keys = join(dataDir, "demo-keys");
-  expect(statSync(keys).mode & 0o777).toBe(0o700);
+  // Windows has no POSIX permission bits (Node reports a synthetic mode).
+  const posixModes = process.platform !== "win32";
+  if (posixModes) expect(statSync(keys).mode & 0o777).toBe(0o700);
   expect(readdirSync(keys).length).toBeGreaterThan(0);
 
   // The demo's own relay wiring (what `devDemo.ts serve` binds), served by the fake.
@@ -78,7 +80,8 @@ it("provisions demo-anna as a native vault under the lab root and serves it with
   // The vault's recovery secret is in the demo's key files (0600) and its hash at the relay.
   const kept = await demoRelayRecoverySecrets(dataDir).get(anna.id);
   expect(kept?.current.length).toBe(32);
-  expect(statSync(join(keys, `relay-recovery.${anna.id}`)).mode & 0o777).toBe(0o600);
+  if (posixModes)
+    expect(statSync(join(keys, `relay-recovery.${anna.id}`)).mode & 0o777).toBe(0o600);
   expect(fake.documents(`vaults/${anna.id}`).get(`vaults/${anna.id}`)?.fields.recoveryHash).toEqual(
     {
       bytesValue: createHash("sha256")

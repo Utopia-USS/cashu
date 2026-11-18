@@ -10,6 +10,10 @@
 // the configured workspaces dir (never ~/cashU or ~/Documents/cashU) and maps every OS keyring service into the
 // synthetic `cashu-next-test.<hex>` namespace (keyring/native.ts). Without the marker every code path is
 // the release one.
+//
+// Windows has no test builds: package-windows.mjs never writes a marker, and a Windows install is never
+// honoured as one. An install that carries `resources/test-build.json` anyway refuses to start
+// (`test_build_marker_unsupported`) instead of running a build meant for a test dir on the real one.
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
@@ -18,6 +22,8 @@ import { FLAVOR_IDS, FLAVORS } from "./flavor.js";
 
 /** Bundle-relative path of the marker (same literal as apps/desktop/scripts/release-policy.mjs). */
 export const TEST_BUILD_MARKER = "Contents/Resources/test-build.json";
+/** Where a Windows install would carry a marker; its presence is refused, never honoured. */
+export const WINDOWS_TEST_BUILD_MARKER = "resources/test-build.json";
 const KEYS = ["schema", "kind", "feedUrl", "installRoot", "dataDir", "workspacesDir"] as const;
 const FEED = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{3,4})\/$/;
 const MAX_BYTES = 4096;
@@ -108,19 +114,35 @@ export function parseTestBuildMarker(text: string): TestBuildMarker {
   };
 }
 
+/** Whether a bundle-relative file exists; any error but ENOENT is unreadable. */
+function present(bundlePath: string, relativePath: string): boolean {
+  try {
+    lstatSync(join(bundlePath, ...relativePath.split("/")));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw new Error("test_build_marker_unreadable");
+  }
+}
+
 /**
  * The marker of the app bundle at `bundlePath`, or null when it has none (every release). A present
  * marker counts only when the bundle verifies and the marker's bytes match its manifest entry;
- * anything else throws, so a tampered or unverifiable test build refuses to start.
+ * anything else throws, so a tampered or unverifiable test build refuses to start. On Windows
+ * (`platform` "win32") a marker is never honoured: null without one, `test_build_marker_unsupported`
+ * with one.
  */
-export function readTestBuildMarker(bundlePath: string): TestBuildMarker | null {
-  try {
-    lstatSync(join(bundlePath, TEST_BUILD_MARKER));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw new Error("test_build_marker_unreadable");
+export function readTestBuildMarker(
+  bundlePath: string,
+  platform: NodeJS.Platform = process.platform,
+): TestBuildMarker | null {
+  if (platform === "win32") {
+    if (present(bundlePath, WINDOWS_TEST_BUILD_MARKER))
+      throw new Error("test_build_marker_unsupported");
+    return null;
   }
-  const identity = readBundleIdentity(bundlePath);
+  if (!present(bundlePath, TEST_BUILD_MARKER)) return null;
+  const identity = readBundleIdentity(bundlePath, platform);
   if (identity.kind !== "present") throw new Error("test_build_marker_unverified");
   const path = join(identity.canonicalPath, TEST_BUILD_MARKER);
   const stat = lstatSync(path);

@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
 import {
   chmodSync,
   copyFileSync,
@@ -9,6 +10,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,6 +32,7 @@ import {
   releaseTargetProblems,
   releaseUrls,
   sanitizedEnv,
+  windowsAssetsProblems,
 } from "./release-macos.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +52,20 @@ describe("argument and environment rules", () => {
     const fake = { CASHU_RELEASE_FAKE_PACKAGE: "/fake.mjs" };
     expect(() => parseCliArgs(["--yes"], fake)).toThrow(/refused outside --dry-run/);
     expect(parseCliArgs(["--dry-run"], fake).fakePackage).toBe("/fake.mjs");
+  });
+
+  it("takes --windows-assets <dir> in owner and CI modes, once, never without a directory", () => {
+    expect(parseCliArgs(["--check"]).windowsAssets).toBeNull();
+    expect(parseCliArgs(["--yes", "--windows-assets", "/w"]).windowsAssets).toBe("/w");
+    expect(
+      parseCliArgs(["--ci", "--yes", "--windows-assets", "/w"], { GITHUB_ACTIONS: "true" })
+        .windowsAssets,
+    ).toBe("/w");
+    expect(() => parseCliArgs(["--yes", "--windows-assets"])).toThrow(/needs a directory/);
+    expect(() => parseCliArgs(["--windows-assets", "--yes"])).toThrow(/needs a directory/);
+    expect(() =>
+      parseCliArgs(["--yes", "--windows-assets", "/a", "--windows-assets", "/b"]),
+    ).toThrow(/given twice/);
   });
 
   it("takes the CI signing inputs by name and only the owner's Developer ID", () => {
@@ -81,6 +98,9 @@ describe("argument and environment rules", () => {
       ELECTRON_BUILDER_PUBLISH: "x",
       CASHU_NOTARY_KEY_PATH: "/x.p8",
       CASHU_RELEASE_KEYCHAIN: "/x.keychain-db",
+      AZURE_TENANT_ID: "x",
+      CASHU_AZURE_ENDPOINT: "https://x.codesigning.azure.net",
+      WIN_CSC_LINK: "x",
     });
     expect(env).toEqual({ PATH: "/usr/bin", HOME: "/home/x" });
   });
@@ -140,6 +160,69 @@ describe("version and tag checks", () => {
       "https://github.com/Utopia-USS/cashu/releases/download/v0.5.1/cashU-0.5.1-mac-x64.dmg",
     );
   });
+
+  it("adds the Windows installer as the eighth asset only when asked", () => {
+    expect(expectedAssets("0.5.1", { windows: false })).toEqual(expectedAssets("0.5.1"));
+    const eight = expectedAssets("0.5.1", { windows: true });
+    expect(eight).toHaveLength(8);
+    expect(eight.filter((name) => !expectedAssets("0.5.1").includes(name))).toEqual([
+      "cashU-0.5.1-win-x64.exe",
+    ]);
+    expect(eight).toEqual([...eight].sort());
+  });
+});
+
+describe("the --windows-assets directory", () => {
+  const PE = Buffer.from("MZ synthetic installer bytes");
+  let count = 0;
+  /** A fresh directory with `files` (name -> contents, or a function that creates the entry itself). */
+  const dirWith = (files) => {
+    const dir = join(base, `windows-assets-${++count}`);
+    mkdirSync(dir);
+    for (const [name, contents] of Object.entries(files)) {
+      if (typeof contents === "function") contents(join(dir, name));
+      else writeFileSync(join(dir, name), contents);
+    }
+    return dir;
+  };
+  const exe = "cashU-0.5.1-win-x64.exe";
+
+  it("accepts exactly the installer of the version, a non-empty PE file", () => {
+    expect(windowsAssetsProblems(dirWith({ [exe]: PE }), "0.5.1", fs)).toEqual([]);
+  });
+
+  it("refuses a missing directory, a file, a link, extra or misnamed files", () => {
+    expect(windowsAssetsProblems(join(base, "nowhere"), "0.5.1", fs)[0]).toMatch(/does not exist/);
+    const real = dirWith({ [exe]: PE });
+    expect(windowsAssetsProblems(join(real, exe), "0.5.1", fs)[0]).toMatch(/not a directory/);
+    const link = join(base, `windows-assets-link-${++count}`);
+    symlinkSync(real, link);
+    expect(windowsAssetsProblems(link, "0.5.1", fs)[0]).toMatch(/not a directory \(or is a link\)/);
+    expect(windowsAssetsProblems(dirWith({}), "0.5.1", fs)[0]).toMatch(
+      /must hold exactly cashU-0\.5\.1-win-x64\.exe, found \[\]/,
+    );
+    expect(
+      windowsAssetsProblems(dirWith({ [exe]: PE, "latest.yml": "x" }), "0.5.1", fs)[0],
+    ).toMatch(/found \[cashU-0\.5\.1-win-x64\.exe, latest\.yml\]/);
+    expect(
+      windowsAssetsProblems(dirWith({ "cashU-0.5.0-win-x64.exe": PE }), "0.5.1", fs)[0],
+    ).toMatch(/must hold exactly cashU-0\.5\.1-win-x64\.exe/);
+  });
+
+  it("refuses an installer that is a link, a directory, empty or not a PE image", () => {
+    const target = join(base, `real-installer-${++count}.exe`);
+    writeFileSync(target, PE);
+    expect(
+      windowsAssetsProblems(dirWith({ [exe]: (path) => symlinkSync(target, path) }), "0.5.1", fs),
+    ).toEqual([`${exe} is not a regular file (or is a link)`]);
+    expect(
+      windowsAssetsProblems(dirWith({ [exe]: (path) => mkdirSync(path) }), "0.5.1", fs),
+    ).toEqual([`${exe} is not a regular file (or is a link)`]);
+    expect(windowsAssetsProblems(dirWith({ [exe]: "" }), "0.5.1", fs)).toEqual([`${exe} is empty`]);
+    expect(windowsAssetsProblems(dirWith({ [exe]: "#!/bin/sh" }), "0.5.1", fs)).toEqual([
+      `${exe} is not a Windows executable`,
+    ]);
+  });
 });
 
 // --- Stub tools on PATH (all /bin/sh, so a stub call costs a few ms, not a Node start) -------------------
@@ -161,7 +244,7 @@ case "$1 $2" in
   "release create")
     names=""
     for a in "$@"; do case "$a" in
-      *.zip|*.dmg|*.yml|*.xml) n=$(basename "$a"); [ "$n" = "$STUB_GH_DROP" ] || names="$names\${names:+,}{\\"name\\":\\"$n\\"}" ;;
+      *.zip|*.dmg|*.yml|*.xml|*.exe) n=$(basename "$a"); [ "$n" = "$STUB_GH_DROP" ] || names="$names\${names:+,}{\\"name\\":\\"$n\\"}" ;;
     esac; done
     printf '%s' "$names" > "$STUB_STATE" ;;
   "release edit") : > "$STUB_STATE.published" ;;
@@ -323,24 +406,31 @@ describe("publish (--yes) against a recording gh", () => {
   const log = join(base, "publish-calls.log");
   const state = join(base, "publish-state");
   let assetPaths;
+  let windowsAssetPaths;
   let notesFile;
   beforeAll(() => {
     const dir = join(base, "publish-assets");
     mkdirSync(dir, { recursive: true });
-    assetPaths = expectedAssets("0.5.1").map((name) => {
+    const write = (name) => {
       writeFileSync(join(dir, name), name);
       return join(dir, name);
-    });
+    };
+    assetPaths = expectedAssets("0.5.1").map(write);
+    windowsAssetPaths = expectedAssets("0.5.1", { windows: true }).map(write);
     notesFile = join(dir, "notes.md");
     writeFileSync(notesFile, "- Add a thing\n");
   });
-  const run = (extraEnv = {}) => {
+  const run = (
+    extraEnv = {},
+    { windows = false, paths = windows ? windowsAssetPaths : assetPaths } = {},
+  ) => {
     for (const path of [log, state, `${state}.published`]) rmSync(path, { force: true });
     publish({
       version: "0.5.1",
       commit: "c0ffee",
       notesFile,
-      assetPaths,
+      assetPaths: paths,
+      windows,
       env: {
         ...process.env,
         PATH: `${stubs}${delimiter}${process.env.PATH}`,
@@ -379,6 +469,24 @@ describe("publish (--yes) against a recording gh", () => {
   it("stops before publishing when the draft lacks an asset", () => {
     expect(() => run({ STUB_GH_DROP: "latest-mac.yml" })).toThrow(/fix or delete the draft/);
     expect(calls(log).some((call) => call[1] === "release" && call[2] === "edit")).toBe(false);
+  });
+
+  it("with the Windows installer: uploads and checks 8 assets, and stops when it is missing", () => {
+    run({}, { windows: true });
+    const create = calls(log)[0];
+    expect(create.slice(1, 3)).toEqual(["release", "create"]);
+    expect(create.filter((arg) => arg.endsWith(".exe"))).toEqual([
+      join(base, "publish-assets", "cashU-0.5.1-win-x64.exe"),
+    ]);
+    expect(calls(log).some((call) => call[1] === "release" && call[2] === "edit")).toBe(true);
+    expect(() => run({ STUB_GH_DROP: "cashU-0.5.1-win-x64.exe" }, { windows: true })).toThrow(
+      /expected \[.*cashU-0\.5\.1-win-x64\.exe.*\]: fix or delete the draft/,
+    );
+    expect(calls(log).some((call) => call[1] === "release" && call[2] === "edit")).toBe(false);
+    // A draft that carries an installer the release did not ask for is refused too.
+    expect(() => run({}, { windows: false, paths: windowsAssetPaths })).toThrow(
+      /fix or delete the draft/,
+    );
   });
 });
 
@@ -422,6 +530,43 @@ describe.skipIf(process.platform !== "darwin")(
       // Each arch: the app from the zip and the app from the dmg.
       expect(fake.filter((call) => call[1] === "verify")).toHaveLength(4);
       expect(fake.every((call) => call.at(-1) === "no-token")).toBe(true);
+    });
+
+    it("dry run with --windows-assets: the installer is the eighth asset, copied unchanged, with its sha256", () => {
+      const repo = fixtureRepo(template);
+      const windows = join(repo.tmp, "..", "windows-assets");
+      mkdirSync(windows);
+      writeFileSync(join(windows, "cashU-0.5.0-win-x64.exe"), "MZ synthetic installer");
+      const result = runScript(repo, ["--dry-run", "--windows-assets", windows], {
+        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+      });
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      const out = join(repo.work, "build", "release", "v0.5.0");
+      expect(readdirSync(out).sort()).toEqual(
+        [...expectedAssets("0.5.0", { windows: true }), "release-notes.md"].sort(),
+      );
+      expect(readFileSync(join(out, "cashU-0.5.0-win-x64.exe"), "utf8")).toBe(
+        "MZ synthetic installer",
+      );
+      // The hand-over directory is left as it was.
+      expect(readdirSync(windows)).toEqual(["cashU-0.5.0-win-x64.exe"]);
+      expect(result.stdout).toMatch(/[0-9a-f]{64} {2}cashU-0\.5\.0-win-x64\.exe\n/);
+      expect(result.stdout).toMatch(/# expect the 8 assets/);
+    });
+
+    it("refuses a Windows hand-over of another version before building anything", () => {
+      const repo = fixtureRepo(template);
+      const windows = join(repo.tmp, "..", "windows-assets");
+      mkdirSync(windows);
+      writeFileSync(join(windows, "cashU-0.4.9-win-x64.exe"), "MZ synthetic installer");
+      const result = runScript(repo, ["--dry-run", "--windows-assets", windows], {
+        CASHU_RELEASE_FAKE_PACKAGE: repo.fake,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/must hold exactly cashU-0\.5\.0-win-x64\.exe/);
+      expect(existsSync(join(repo.work, "build"))).toBe(false);
+      expect(calls(repo.log).some((call) => call[0] === "fake")).toBe(false);
     });
 
     it("stops in preflight when the tag already exists on origin", () => {

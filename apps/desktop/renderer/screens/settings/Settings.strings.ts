@@ -114,6 +114,15 @@ export const T = catalog({
     pl: "Sprawdzanie i instalowanie aktualizacji jest niedostępne.",
     en: "Update checking and installation are unavailable.",
   },
+  updatesManualHint: {
+    pl: "na Windows nowe wersje instalujesz ręcznie ze strony wydań; dane zostają na miejscu",
+    en: "on Windows you install new versions yourself from the releases page; your data stays in place",
+  },
+  releasesPage: { pl: "Strona wydań", en: "Releases page" },
+  releasesPageTitle: {
+    pl: "Otwiera w przeglądarce stronę wydań cashU z instalatorem najnowszej wersji",
+    en: "Opens the cashU releases page with the latest installer in your browser",
+  },
   auditUnknownArgs: {
     pl: (n: number) =>
       `oraz ${plCount(n, "nieznany argument", "nieznane argumenty", "nieznanych argumentów")}`,

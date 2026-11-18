@@ -129,9 +129,12 @@ describe("connector approval authority", () => {
       manifest,
       readFileSync(manifest, "utf8").replace("../outside.py", "connector.py"),
     );
-    symlinkSync(f.outside, join(f.source, "link"));
-    expect(() => scanConnector(f.source)).toThrow(ConnectorFault);
-    rmSync(join(f.source, "link"));
+    // Creating a symlink needs Developer Mode or elevation on Windows.
+    if (process.platform !== "win32") {
+      symlinkSync(f.outside, join(f.source, "link"));
+      expect(() => scanConnector(f.source)).toThrow(ConnectorFault);
+      rmSync(join(f.source, "link"));
+    }
     linkSync(f.outside, join(f.source, "linked"));
     expect(() => scanConnector(f.source)).toThrow(ConnectorFault);
     rmSync(join(f.source, "linked"));

@@ -15,6 +15,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import {
+  isOwnerOnly,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  openedWithoutLink,
+  samePath,
+  syncDirectory,
+} from "@cashu/node-host";
 import { z } from "zod";
 import type { ConnectorCatalog } from "../connectors/catalog.js";
 
@@ -59,13 +67,16 @@ export const connectorRequestHash = (request: {
   readonly catalogId?: string;
 }): string => hash(JSON.stringify([request.path ?? null, request.catalogId ?? null]));
 
-function privateDir(path: string): { dev: number; ino: number } {
+// Receipt directories and files belong to this user with nothing for group and others on macOS and
+// Linux; on Windows the modes are synthetic and privacy rests on the data dir's per-user ACL
+// (@cashu/node-host privateFs), and a realpath matches its path without letter case (`samePath`). The
+// type, link, dev / ino and nlink checks hold on every platform.
+function privateDir(path: string, platform: NodeJS.Platform): { dev: number; ino: number } {
   const stat = lstatSync(path);
   if (
     !stat.isDirectory() ||
-    (stat.mode & 0o077) !== 0 ||
-    realpathSync.native(path) !== resolve(path) ||
-    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+    !isOwnerOnly(stat, platform) ||
+    !samePath(realpathSync.native(path), resolve(path), platform)
   )
     throw new Error("connector_receipt_directory_unavailable");
   return { dev: stat.dev, ino: stat.ino };
@@ -79,17 +90,20 @@ export class ConnectorProposalReceipts {
   private readonly dataPin: { dev: number; ino: number };
   private readonly rootPin: { dev: number; ino: number };
   private readonly vaultPins = new Map<string, { dev: number; ino: number }>();
-  constructor(dataDir: string) {
-    this.dataPin = privateDir(dataDir);
+  private readonly platform: NodeJS.Platform;
+  /** `platform` is a test seam only; production uses `process.platform`. */
+  constructor(dataDir: string, platform: NodeJS.Platform = process.platform) {
+    this.platform = platform;
+    this.dataPin = privateDir(dataDir, platform);
     this.root = join(dataDir, "mcp-connector-receipts");
     mkdirSync(this.root, { recursive: true, mode: 0o700 });
-    this.rootPin = privateDir(this.root);
+    this.rootPin = privateDir(this.root, platform);
   }
   private directory(vault: string, create: boolean): string | null {
     vaultId.parse(vault);
     if (
-      !same(privateDir(resolve(this.root, "..")), this.dataPin) ||
-      !same(privateDir(this.root), this.rootPin)
+      !same(privateDir(resolve(this.root, ".."), this.platform), this.dataPin) ||
+      !same(privateDir(this.root, this.platform), this.rootPin)
     )
       throw new Error("connector_receipt_directory_changed");
     const dir = join(this.root, vault);
@@ -98,7 +112,7 @@ export class ConnectorProposalReceipts {
       this.syncDir(this.root);
     }
     if (!existsSync(dir)) return null;
-    const pin = privateDir(dir);
+    const pin = privateDir(dir, this.platform);
     const previous = this.vaultPins.get(vault);
     if (previous && !same(pin, previous)) throw new Error("connector_receipt_directory_changed");
     this.vaultPins.set(vault, pin);
@@ -114,18 +128,15 @@ export class ConnectorProposalReceipts {
     if (!file) return null;
     let bytes: Buffer;
     try {
-      const fd = openSync(
-        file,
-        constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-      );
+      const fd = openSync(file, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
       try {
         const stat = fstatSync(fd);
         if (
           !stat.isFile() ||
           stat.nlink !== 1 ||
           stat.size > 8192 ||
-          (stat.mode & 0o077) !== 0 ||
-          (typeof process.getuid === "function" && stat.uid !== process.getuid())
+          !isOwnerOnly(stat, this.platform) ||
+          !openedWithoutLink(file, stat)
         )
           throw new Error("connector_receipt_invalid");
         const buffer = Buffer.alloc(8193);
@@ -150,7 +161,7 @@ export class ConnectorProposalReceipts {
     if (!file) throw new Error("connector_receipt_directory_unavailable");
     const fd = openSync(
       file,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     try {
@@ -185,7 +196,7 @@ export class ConnectorProposalReceipts {
     const tmp = join(dir, `.receipt-${randomUUID()}`);
     const fd = openSync(
       tmp,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     try {
@@ -203,12 +214,7 @@ export class ConnectorProposalReceipts {
     return completed;
   }
   private syncDir(dir: string): void {
-    const fd = openSync(dir, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0));
-    try {
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
-    }
+    syncDirectory(dir, this.platform);
   }
   status(
     key: string,

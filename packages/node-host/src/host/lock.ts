@@ -3,9 +3,15 @@
 // (fcntl on POSIX, LockFileEx on Windows) the OS releases when the process dies, however it dies, so
 // there is no stale lock and no pid-reuse hazard (Node has no flock; an O_EXCL pid file can go stale).
 // Only the holder unlinks and binds the socket, so a stale-socket takeover cannot race.
+//
+// The lock file must be a regular file with one link, the same dev / ino before and after the lock is
+// taken, and (macOS, Linux) mode 0600 of this user. Windows reports synthetic modes and has no uid or
+// O_NOFOLLOW, so there the mode / owner part is skipped (the run dir's per-user ACL covers it) and the
+// lstat type and dev / ino / nlink checks carry the rest (`privateFs.ts`).
 
 import { closeSync, constants, lstatSync, openSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { hasPrivateMode, O_NOFOLLOW } from "./privateFs.js";
 
 const SQLITE_BUSY = 5;
 const KEY = Symbol("HostLock");
@@ -38,8 +44,7 @@ export class HostLock {
         stat.nlink === 1 &&
         stat.dev === this.#device &&
         stat.ino === this.#inode &&
-        (stat.mode & 0o777) === 0o600 &&
-        (typeof process.getuid !== "function" || stat.uid === process.getuid())
+        hasPrivateMode(stat, 0o600)
       );
     } catch {
       return false;
@@ -64,7 +69,7 @@ export function acquireHostLock(path: string): HostLock | undefined {
   try {
     const fd = openSync(
       path,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
       0o600,
     );
     closeSync(fd);
@@ -76,8 +81,7 @@ export function acquireHostLock(path: string): HostLock | undefined {
     !before.isFile() ||
     before.isSymbolicLink() ||
     before.nlink !== 1 ||
-    (before.mode & 0o777) !== 0o600 ||
-    (typeof process.getuid === "function" && before.uid !== process.getuid())
+    !hasPrivateMode(before, 0o600)
   )
     throw new Error("host_lock_path_invalid");
   const db = new DatabaseSync(path);

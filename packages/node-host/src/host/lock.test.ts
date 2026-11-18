@@ -1,12 +1,15 @@
 import { spawnSync } from "node:child_process";
-import { lstatSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { lstatSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ExclusiveOpenError, openNodeSqlite } from "../nodeSqlite.js";
 import { cleanup, tempDir, trackDir } from "../testing/hostHarness.js";
+import { linkFile } from "../testing/links.js";
 import { acquireHostLock, HostLock } from "./lock.js";
 
 afterEach(cleanup);
+
+const ON_WINDOWS = process.platform === "win32";
 
 /** Another process opens `path` and reads it, as a stray second writer would. */
 function foreignRead(path: string): string {
@@ -43,7 +46,9 @@ describe("host lock", () => {
     expect(() => new Forged(Symbol("HostLock"), "x", undefined)).toThrow(TypeError);
   });
 
-  it("creates private lock bytes and invalidates a replaced lock path", () => {
+  // POSIX only: Windows modes are synthetic, and SQLite holds its file without FILE_SHARE_DELETE, so
+  // the lock path cannot be renamed away under a held lock there.
+  it.skipIf(ON_WINDOWS)("creates private lock bytes and invalidates a replaced lock path", () => {
     const dir = trackDir(tempDir());
     const path = join(dir, "host.lock.db");
     const lock = acquireHostLock(path);
@@ -56,10 +61,11 @@ describe("host lock", () => {
     lock.release();
   });
 
-  it("refuses an existing symlink lock path", () => {
+  // A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+  it("refuses an existing symlink lock path", ({ skip }) => {
     const dir = trackDir(tempDir());
     writeFileSync(join(dir, "target"), "synthetic", { mode: 0o600 });
-    symlinkSync(join(dir, "target"), join(dir, "host.lock.db"));
+    linkFile(join(dir, "target"), join(dir, "host.lock.db"), skip);
     expect(() => acquireHostLock(join(dir, "host.lock.db"))).toThrow("host_lock_path_invalid");
   });
 });

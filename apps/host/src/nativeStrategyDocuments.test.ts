@@ -7,14 +7,18 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { linkDir, linkFile } from "@cashu/node-host/testing/links";
 import { discoverStrategies, readStrategyFile } from "@cashu/store/investments/services";
 import { afterEach, expect, it } from "vitest";
-import { nativeStrategyCliFiles, nativeStrategyDocuments } from "./nativeStrategyDocuments.js";
+import {
+  isStrategyPathSegment,
+  nativeStrategyCliFiles,
+  nativeStrategyDocuments,
+} from "./nativeStrategyDocuments.js";
 
 const roots: string[] = [];
 function fixture() {
@@ -63,13 +67,20 @@ it("creates complete private templates only when absent and reads actual native 
   expect(await f.cap.filePath?.(main, "strategy.md")).toBe(join(f.directory, "strategy.md"));
 });
 
-it("refuses a competing target, unsafe links and revoked directory authority", async () => {
+// A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+it("refuses a symlinked target", async ({ skip }) => {
   const f = fixture();
   const outside = join(f.root, "outside");
   writeFileSync(outside, "outside", { mode: 0o600 });
-  symlinkSync(outside, join(f.directory, "strategy.yaml"));
+  linkFile(outside, join(f.directory, "strategy.yaml"), skip);
   await expect(f.files.createAbsent?.("strategy.yaml", "new")).rejects.toThrow();
-  rmSync(join(f.directory, "strategy.yaml"));
+  expect(readFileSync(outside, "utf8")).toBe("outside");
+});
+
+it("refuses a competing hard-linked target and revoked directory authority", async () => {
+  const f = fixture();
+  const outside = join(f.root, "outside");
+  writeFileSync(outside, "outside", { mode: 0o600 });
   linkSync(outside, join(f.directory, "strategy.yaml"));
   await expect(f.files.createAbsent?.("strategy.yaml", "new")).rejects.toThrow();
   rmSync(join(f.directory, "strategy.yaml"));
@@ -122,13 +133,14 @@ it("recovers an interrupted owned link publication after reopening the capabilit
   expect(await reopened.createAbsent?.("strategy.yaml", "different")).toBe("exists");
 });
 
+// The linked folder is a junction on Windows (no privilege needed there).
 it("rejects symlinked strategy folders and a changed document while keeping the main files", async () => {
   const f = fixture();
   await f.files.createAbsent?.("strategy.md", "# Main\n");
   const outside = join(f.root, "outside-dir");
   mkdirSync(outside, { mode: 0o700 });
   writeFileSync(join(outside, "unsafe.md"), "outside", { mode: 0o600 });
-  symlinkSync(outside, join(f.directory, "strategies"));
+  linkDir(outside, join(f.directory, "strategies"));
   linkSync(join(outside, "unsafe.md"), join(f.directory, "linked.md"));
   const docs = await discoverStrategies(f.cap.documents);
   expect(docs).toHaveLength(1);
@@ -176,4 +188,20 @@ it("closes and invalidates a failed native watcher without an unhandled error", 
   fail?.(new Error("repeated_failure"));
   expect(changes).toBe(1);
   stop?.();
+});
+
+it("accepts only plain names as strategy path segments, and no NTFS stream or drive on Windows", () => {
+  for (const platform of ["darwin", "linux", "win32"] as const) {
+    for (const plain of ["strategy.md", "strategies", "a b.md", ".hidden.md"])
+      expect(isStrategyPathSegment(plain, platform)).toBe(true);
+    for (const unsafe of ["", ".", "..", "a/b", "a\\b", "a\0b"])
+      expect(isStrategyPathSegment(unsafe, platform)).toBe(false);
+  }
+  // A colon is an ordinary file name character on macOS and Linux, as before.
+  for (const platform of ["darwin", "linux"] as const) {
+    expect(isStrategyPathSegment("notes:2026.md", platform)).toBe(true);
+    expect(isStrategyPathSegment("strategy.md:hidden", platform)).toBe(true);
+  }
+  for (const stream of ["strategy.md:hidden", "strategy.md::$DATA", "C:", "C:x.md", ":"])
+    expect(isStrategyPathSegment(stream, "win32")).toBe(false);
 });

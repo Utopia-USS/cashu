@@ -3,7 +3,6 @@ import {
   closeSync,
   constants,
   existsSync,
-  fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
@@ -26,7 +25,13 @@ import type {
   NativeCreationReady,
 } from "@cashu/host-protocol";
 import { nativeCreationPrepareParamsSchema } from "@cashu/host-protocol";
-import { type HostLock, NodeFolderFs } from "@cashu/node-host";
+import {
+  type HostLock,
+  hasPrivateMode,
+  NodeFolderFs,
+  O_NOFOLLOW,
+  syncPrivateDirectory,
+} from "@cashu/node-host";
 import { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import {
@@ -112,30 +117,14 @@ function privateDirectory(path: string): void {
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
     realpathSync(path) !== path ||
-    (stat.mode & 0o777) !== 0o700 ||
-    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+    !hasPrivateMode(stat, 0o700)
   )
     throw new Error("native_creation_path_invalid");
 }
 
 function syncDir(path: string): void {
   privateDirectory(path);
-  const fd = openSync(
-    path,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY | constants.O_NONBLOCK,
-  );
-  try {
-    const stat = fstatSync(fd);
-    if (
-      !stat.isDirectory() ||
-      (stat.mode & 0o777) !== 0o700 ||
-      (typeof process.getuid === "function" && stat.uid !== process.getuid())
-    )
-      throw new Error("native_creation_path_invalid");
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
+  if (!syncPrivateDirectory(path)) throw new Error("native_creation_path_invalid");
 }
 
 function ensureChild(parent: string, name: string): string {
@@ -162,7 +151,7 @@ function privateNewFile(path: string, bytes: Uint8Array, max = MAX_ARTIFACT): vo
   if (bytes.length > max) throw new Error("native_creation_artifact_invalid");
   const fd = openSync(
     path,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW,
     0o600,
   );
   try {

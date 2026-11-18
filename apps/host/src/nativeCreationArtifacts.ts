@@ -8,6 +8,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
+import { hasPrivateMode, O_NOFOLLOW, O_NONBLOCK } from "@cashu/node-host";
 import { crypto } from "@cashu/sync";
 
 const ID = /^[0-9a-f]{32}$/;
@@ -20,8 +21,7 @@ function privateDirectory(path: string): void {
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
     realpathSync(path) !== path ||
-    (stat.mode & 0o777) !== 0o700 ||
-    (typeof process.getuid === "function" && stat.uid !== process.getuid())
+    !hasPrivateMode(stat, 0o700)
   )
     throw new Error("native_recovery_wrap_invalid");
 }
@@ -40,12 +40,11 @@ export function readNativeRecoveryWrap(dataDir: string, vaultId: string): Uint8A
     !before.isFile() ||
     before.isSymbolicLink() ||
     before.nlink !== 1 ||
-    (before.mode & 0o777) !== 0o600 ||
-    (typeof process.getuid === "function" && before.uid !== process.getuid()) ||
+    !hasPrivateMode(before, 0o600) ||
     before.size > MAX_WRAP_FILE
   )
     throw new Error("native_recovery_wrap_invalid");
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   try {
     const opened = fstatSync(fd);
     if (
@@ -54,8 +53,7 @@ export function readNativeRecoveryWrap(dataDir: string, vaultId: string): Uint8A
       opened.dev !== before.dev ||
       opened.size !== before.size ||
       opened.nlink !== 1 ||
-      (opened.mode & 0o777) !== 0o600 ||
-      (typeof process.getuid === "function" && opened.uid !== process.getuid())
+      !hasPrivateMode(opened, 0o600)
     )
       throw new Error("native_recovery_wrap_invalid");
     const bytes = readFileSync(fd);

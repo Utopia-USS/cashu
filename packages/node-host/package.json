@@ -12,10 +12,13 @@
     "./relay-auth": "./src/keyring/relay.ts",
     "./sqlite": "./src/sqlite.ts",
     "./testing": "./src/testing.ts",
+    "./testing/windows-install": "./src/testing/windowsInstall.ts",
+    "./testing/links": "./src/testing/links.ts",
     "./bundle-identity": "./src/bundleIdentity.ts",
     "./test-build": "./src/testBuild.ts",
     "./admission": "./src/admissionGuard.ts",
-    "./flavor": "./src/flavor.ts"
+    "./flavor": "./src/flavor.ts",
+    "./windows-path": "./src/windowsPath.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

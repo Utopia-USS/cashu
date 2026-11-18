@@ -1,6 +1,7 @@
-import { closeSync, mkdirSync, openSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, truncateSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ToolError } from "@cashu/mcp";
+import { linkDir, linkFile } from "@cashu/node-host/testing/links";
 import { afterEach, expect, it } from "vitest";
 import { cleanup, tempDir } from "../testing/harness.js";
 import { budgetFileReader, investmentFileReader, investmentMappingReader } from "./files.js";
@@ -27,9 +28,11 @@ it("keeps budget extensions unchanged and grants only the explicit investment/pr
   expect(() => mapping(own, "other")).toThrow("native workspace mapping is unavailable");
   const outside = f.file(join(f.cwd, "map.yml"));
   expect(() => mapping(outside, "demo")).toThrow("must be in the selected profile's workspace");
-  const alias = join(workspace, "alias.yaml");
-  symlinkSync(outside, alias);
-  expect(() => mapping(alias, "demo")).toThrow("must be in the selected profile's workspace");
+  // A linked folder inside the workspace (a junction on Windows) does not widen it.
+  linkDir(f.cwd, join(workspace, "linked"));
+  expect(() => mapping(join(workspace, "linked", "map.yml"), "demo")).toThrow(
+    "must be in the selected profile's workspace",
+  );
   truncateSync(own, 256 * 1024 + 1);
   expect(() => mapping(own, "demo")).toThrow("mapping file is too large");
   for (const path of [
@@ -150,16 +153,45 @@ it("uses NFC and full casefold containment, not only lowercase or string prefixe
     "files inside the cashU data dir are not read",
   );
 });
-it("checks the symlink target, including hidden and foreign profile targets", () => {
+it("checks the target of a linked folder (a junction on Windows), including hidden and foreign profile targets", () => {
+  const f = fixture();
+  f.file(join(f.home, ".private", "sample.json"));
+  linkDir(join(f.home, ".private"), join(f.cwd, "public"));
+  expect(() => f.read(join(f.cwd, "public", "sample.json"), "demo")).toThrow("hidden files");
+  f.file(join(f.dataDir, "profiles", "other", "sample.json"));
+  linkDir(join(f.dataDir, "profiles", "other"), join(f.cwd, "other"));
+  expect(() => f.read(join(f.cwd, "other", "sample.json"), "demo")).toThrow(
+    "files inside the cashU data dir",
+  );
+  f.file(join(f.legacyDataDir, "sample.json"));
+  linkDir(f.legacyDataDir, join(f.cwd, "legacy"));
+  expect(() => f.read(join(f.cwd, "legacy", "sample.json"), "demo")).toThrow(
+    "files inside the legacy data folder are not read",
+  );
+});
+// File symlinks; on a Windows runner without the privilege to create them the test skips itself.
+it("checks the symlink target, including hidden and foreign profile targets", ({ skip }) => {
   const f = fixture();
   const hidden = f.file(join(f.home, ".private", "sample.json"));
   const alias = join(f.cwd, "public.json");
-  symlinkSync(hidden, alias);
+  linkFile(hidden, alias, skip);
   expect(() => f.read(alias, "demo")).toThrow("hidden files");
   const other = f.file(join(f.dataDir, "profiles", "other", "sample.json"));
   const alias2 = join(f.cwd, "other.json");
-  symlinkSync(other, alias2);
+  linkFile(other, alias2, skip);
   expect(() => f.read(alias2, "demo")).toThrow("files inside the cashU data dir");
+  const workspace = join(f.root, "profile-workspace");
+  const mapping = investmentMappingReader({
+    cwd: f.cwd,
+    home: f.home,
+    dataDir: f.dataDir,
+    profileOnlyRoot: workspace,
+    profileOnlySlug: "demo",
+  });
+  const alias3 = join(workspace, "alias.yaml");
+  mkdirSync(workspace);
+  linkFile(f.file(join(f.cwd, "map.yml")), alias3, skip);
+  expect(() => mapping(alias3, "demo")).toThrow("must be in the selected profile's workspace");
 });
 it("refuses an oversized file before allocating its contents", () => {
   const f = fixture();
@@ -167,4 +199,35 @@ it("refuses an oversized file before allocating its contents", () => {
   closeSync(openSync(path, "w"));
   truncateSync(path, 20 * 1024 * 1024 + 1);
   expect(() => f.read(path, "demo")).toThrow("file is too large (max 20 MB)");
+});
+it("on Windows reads only drive-letter paths, refused as text before anything resolves them", () => {
+  const f = fixture();
+  const scope = { cwd: "C:\\work", home: "C:\\Users\\synthetic", dataDir: f.dataDir };
+  const read = budgetFileReader({ ...scope, platform: "win32" });
+  const refused = new ToolError("only files on a local drive are read");
+  // A refusal, not "file not found": nothing tried to resolve the path (an SMB connection for UNC).
+  for (const path of [
+    "\\\\attacker\\share\\x.csv",
+    "//attacker/share/x.csv",
+    "\\\\?\\UNC\\attacker\\share\\x.csv",
+    "\\\\.\\pipe\\x.csv",
+    "\\x.csv",
+    "C:x.csv",
+    "C:\\data\\NUL.csv",
+    "x.csv:stream",
+  ])
+    expect(() => read(path, "demo")).toThrow(refused);
+  // A relative path under a share, and a home on a share, are refused the same way.
+  expect(() =>
+    budgetFileReader({ ...scope, cwd: "\\\\attacker\\share", platform: "win32" })("x.csv", "demo"),
+  ).toThrow(refused);
+  expect(() =>
+    budgetFileReader({ ...scope, home: "\\\\attacker\\home", platform: "win32" })(
+      "~\\x.csv",
+      "demo",
+    ),
+  ).toThrow(refused);
+  // A drive-letter path passes the check and is then resolved (missing here).
+  for (const path of ["C:\\nowhere\\x.csv", "nowhere\\x.csv", "~\\nowhere\\x.csv"])
+    expect(() => read(path, "demo")).toThrow(new ToolError("file not found", "not_found"));
 });

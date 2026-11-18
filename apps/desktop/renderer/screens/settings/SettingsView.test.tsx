@@ -9,6 +9,8 @@ import {
   ConnectorRemovalFixture,
   ConnectorsReady,
   UnboundProviders,
+  WindowsManualUpdates,
+  WindowsReleasesFixture,
 } from "./SettingsView.stories.js";
 
 class Observer {
@@ -117,6 +119,67 @@ it("requires explicit all-profile confirmation before removing a connector", asy
       button("Yes, delete")?.click();
     });
     expect(onAction).toHaveBeenCalledWith({ op: "remove", id: "synthetic-fetch", allVaults: true });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("points a Windows install to the releases page in both languages", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    setLanguageForTests("en");
+    await act(async () => root.render(<WindowsManualUpdates.render />));
+    expect(container.textContent).toContain(
+      "on Windows you install new versions yourself from the releases page",
+    );
+    expect(container.textContent).toContain("1.0.0");
+    // No daily check or "Check" button: there is no in-app updater to drive.
+    expect(container.textContent).not.toContain("Check daily");
+    await act(async () => root.unmount());
+    setLanguageForTests("pl");
+    const polish = createRoot(container);
+    await act(async () => polish.render(<WindowsManualUpdates.render />));
+    expect(container.textContent).toContain("na Windows nowe wersje instalujesz ręcznie");
+    expect(container.textContent).toContain("Strona wydań");
+    await act(async () => polish.unmount());
+  } finally {
+    container.remove();
+  }
+});
+
+it("opens the releases page through the screen's handler", async () => {
+  setLanguageForTests("en");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const opened = vi.fn();
+  try {
+    await act(async () => root.render(<WindowsReleasesFixture onOpened={opened} />));
+    const button = [...container.querySelectorAll("button")].find(
+      (item) => item.textContent === "Releases page",
+    );
+    expect(button?.title).toBe(
+      "Opens the cashU releases page with the latest installer in your browser",
+    );
+    await act(async () => button?.click());
+    expect(opened).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("shows no manual-update row outside Windows", async () => {
+  setLanguageForTests("en");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<UnboundProviders.render />));
+    expect(container.textContent).not.toContain("Releases page");
   } finally {
     await act(async () => root.unmount());
     container.remove();

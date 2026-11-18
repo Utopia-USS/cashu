@@ -4,9 +4,10 @@ import { claudeMcpAdd, cliPrefix } from "@cashu/domain/core";
 import { lang } from "@cashu/i18n";
 import { S as INVESTMENTS } from "@cashu/i18n/investments/index.strings";
 import { profile } from "@cashu/store/core";
-import { hostSettingsInfo } from "@cashu/store/core/desktop-settings";
+import { type HostSettingsInfo, hostSettingsInfo } from "@cashu/store/core/desktop-settings";
 import { overviewQueries, profileIdentity } from "@cashu/store/overview";
 import { useQuery } from "@cashu/store-react";
+import { shellPlatform } from "../../platformBridge.js";
 
 export type SetupAgentContext =
   | { readonly kind: "unavailable"; readonly reason: string }
@@ -14,20 +15,30 @@ export type SetupAgentContext =
 
 const q = overviewQueries({ prices: null });
 
+/**
+ * The card's commands for the host's stable launcher and the flavor's MCP server prefix, in the shell
+ * syntax of `platform` (`process.platform` of the shell; PowerShell on Windows). Unavailable without
+ * a launcher or profile, and on Windows for a launcher path cmd.exe would misread (`claudeMcpAdd`).
+ */
+export function setupAgentContext(
+  host: HostSettingsInfo,
+  slug: string | null,
+  platform: string | undefined,
+): SetupAgentContext {
+  if (host.availability !== "ready" || !host.launcher || !host.mcpServerPrefix || !slug)
+    return { kind: "unavailable", reason: "launcher_unavailable" };
+  const mcpAdd = claudeMcpAdd([host.launcher], slug, host.mcpServerPrefix, platform);
+  if (mcpAdd === null) return { kind: "unavailable", reason: "launcher_unquotable" };
+  return { kind: "ready", cliPrefix: cliPrefix([host.launcher], slug, platform), mcpAdd };
+}
+
 export function useSetupAgent(moduleId: string) {
   const identity = useQuery(profile);
   const slug = useQuery(profileIdentity)?.slug ?? null;
   // The stable launcher and the flavor's MCP server prefix the host reports (Settings > Agent AI reads
   // the same query).
   const host = useQuery(hostSettingsInfo, { privacy: false });
-  const agent: SetupAgentContext =
-    host.availability !== "ready" || !host.launcher || !host.mcpServerPrefix || !slug
-      ? { kind: "unavailable", reason: "launcher_unavailable" }
-      : {
-          kind: "ready",
-          cliPrefix: cliPrefix([host.launcher], slug),
-          mcpAdd: claudeMcpAdd([host.launcher], slug, host.mcpServerPrefix),
-        };
+  const agent = setupAgentContext(host, slug, shellPlatform());
   const setup = useQuery(q.moduleSetup, {
     module: moduleId,
     cli: agent.kind === "ready" ? agent.cliPrefix : "",

@@ -47,6 +47,17 @@ export {
   MAX_SOCKET_PATH_BYTES,
 } from "./host/paths.js";
 export {
+  hasNoGroupOrOtherBits,
+  hasPrivateMode,
+  isOwnerOnly,
+  O_NOFOLLOW,
+  O_NONBLOCK,
+  openedWithoutLink,
+  samePath,
+  syncDirectory,
+  syncPrivateDirectory,
+} from "./host/privateFs.js";
+export {
   HOST_BUSY_EXIT,
   HostBusyError,
   type HostSession,
@@ -90,3 +101,4 @@ export type {
   ServiceStatus,
   StartOutcome,
 } from "./service/types.js";
+export { sourceRunFlags } from "./sourceRun.js";

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   CLI_ENV_KEYS,
-  cliExecParamsSchema,
+  cliExecParamsSchemaFor,
   cliExecResultSchema,
   cliStdinParamsSchema,
 } from "./cli.js";
-import { mcpOpenParamsSchema } from "./mcp.js";
+import { mcpOpenParamsSchemaFor } from "./mcp.js";
+
+const cliExecParamsSchema = cliExecParamsSchemaFor("posix");
+const mcpOpenParamsSchema = mcpOpenParamsSchemaFor("posix");
 
 const exec = {
   argv: ["--profile", "demo-anna", "stats"],
@@ -70,4 +73,49 @@ it("requires the caller path context and carries terminal context without forwar
   );
   const tty = { ...exec.tty, compatible: false };
   expect(cliExecParamsSchema.parse({ ...exec, tty }).tty).toEqual(tty);
+});
+
+describe("the working directory follows the host's path rules", () => {
+  const winExec = cliExecParamsSchemaFor("win32");
+  const winMcp = mcpOpenParamsSchemaFor("win32");
+  const accepted = (schema: typeof winExec, cwd: string) =>
+    schema.safeParse({ ...exec, cwd }).success;
+
+  it("accepts a drive path with either separator and a UNC share on Windows", () => {
+    for (const cwd of ["C:\\Users\\anna", "c:/work", "D:\\", "\\\\nas\\home\\anna", "//nas/home"]) {
+      expect(accepted(winExec, cwd)).toBe(true);
+      expect(winMcp.safeParse({ cwd, env: {} }).success).toBe(true);
+      // A POSIX host never takes a Windows spelling (`//nas/home` is a POSIX path there too).
+      if (!cwd.startsWith("/")) {
+        expect(accepted(cliExecParamsSchema, cwd)).toBe(false);
+        expect(mcpOpenParamsSchema.safeParse({ cwd, env: {} }).success).toBe(false);
+      }
+    }
+  });
+
+  it("refuses relative, drive-relative, rooted and namespace paths on Windows", () => {
+    for (const cwd of [
+      "work",
+      ".\\work",
+      "C:",
+      "C:work",
+      "\\work",
+      "/work",
+      "\\\\nas",
+      "\\\\nas\\",
+      "\\\\?\\C:\\work",
+      "\\\\.\\pipe\\x",
+      "",
+    ]) {
+      expect(accepted(winExec, cwd)).toBe(false);
+      expect(winMcp.safeParse({ cwd, env: {} }).success).toBe(false);
+    }
+  });
+
+  it("refuses a NUL under either rules", () => {
+    expect(accepted(winExec, "C:\\work\u0000x")).toBe(false);
+    expect(accepted(cliExecParamsSchema, "/work\u0000x")).toBe(false);
+    expect(mcpOpenParamsSchema.safeParse({ cwd: "/w\u0000", env: {} }).success).toBe(false);
+    expect(accepted(cliExecParamsSchema, "/work")).toBe(true);
+  });
 });

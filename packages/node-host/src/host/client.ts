@@ -1,7 +1,9 @@
-// The client side of the host socket: find the socket (host.json, else the computed path), run the
+// The client side of the host socket: find the socket (host.json, else the computed path; on Windows
+// host.json only, and only a named pipe of this data dir, which `net.connect` takes like a path), run the
 // handshake (verify the host first, then prove ourselves), and hand back a connection bound to the
 // role. Failures come back as `HostConnectError` with a kind that says what to do next:
-//   unavailable  no host answers (no token, no socket, refused connect, closed early): start one
+//   unavailable  no host answers (no token, no socket, on Windows no host.json, refused connect,
+//                closed early): start one
 //   stopping     the host is shutting down: start a new one and retry
 //   starting     a host is still opening its stores: wait for it (do not start another) and retry
 //   unverified   the peer cannot prove it holds the token (a stale token file or a squatter): retry
@@ -27,7 +29,7 @@ import {
 } from "@cashu/host-protocol";
 import { readDiscovery, readHostToken } from "./files.js";
 import { FrameSocket } from "./frameSocket.js";
-import { type HostPathEnv, hostRunPaths } from "./paths.js";
+import { type HostPathEnv, type HostRunPaths, hostRunPaths, isHostPipeName } from "./paths.js";
 
 export type HostConnectErrorKind =
   | "unavailable"
@@ -102,7 +104,15 @@ export function connectHost(options: ConnectHostOptions): Promise<HostConnection
   if (token === undefined) {
     return Promise.reject(new HostConnectError("unavailable", "no host token: no host is running"));
   }
-  const socketPath = readDiscovery(paths.discoveryPath)?.socket ?? paths.socketPath;
+  const socketPath = hostAddress(paths);
+  if (socketPath === undefined) {
+    return Promise.reject(
+      new HostConnectError(
+        "unavailable",
+        "no host.json naming this data dir's pipe: no host is running",
+      ),
+    );
+  }
   const hello = makeHello({
     role: options.role,
     ...(options.profile === undefined ? {} : { profile: options.profile }),
@@ -127,7 +137,8 @@ export function connectHost(options: ConnectHostOptions): Promise<HostConnection
       () => fail(new HostConnectError("timeout", "the host did not finish the handshake")),
       options.timeoutMs ?? 2_000,
     );
-    // ENOENT (no socket), ECONNREFUSED (a dead host's socket file), ECONNRESET, ...: no host answers.
+    // ENOENT (no socket; Windows: no such pipe), ECONNREFUSED (a dead host's socket file),
+    // ECONNRESET, ...: no host answers.
     socket.on("error", (error: NodeJS.ErrnoException) =>
       fail(
         new HostConnectError(
@@ -175,6 +186,19 @@ export function connectHost(options: ConnectHostOptions): Promise<HostConnection
       resolve(openConnection(conn, options.role, host));
     });
   });
+}
+
+/**
+ * Where the data dir's host listens: host.json's `socket`, else (Unix socket only) the computed path.
+ * On Windows the pipe name is new at every start, so host.json is the only source, and only a pipe
+ * of this data dir counts (never a file path or a pipe on another machine).
+ */
+function hostAddress(paths: HostRunPaths): string | undefined {
+  const discovered = readDiscovery(paths.discoveryPath)?.socket;
+  if (paths.transport === "unix-socket") return discovered ?? paths.socketPath;
+  return discovered !== undefined && isHostPipeName(discovered, paths.dataDirId)
+    ? discovered
+    : undefined;
 }
 
 function refusedError(reason: RefusalReason): HostConnectError {

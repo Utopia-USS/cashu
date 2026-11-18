@@ -1055,7 +1055,8 @@ describe("the pairing commit point", () => {
     TIMEOUT,
   );
 
-  it(
+  // The log is made unwritable with chmod 0500, which Windows ignores (no POSIX permission bits).
+  it.skipIf(process.platform === "win32")(
     "re-appends after the append failed past the member write (reopen), never downgrading to not_started",
     async () => {
       const paired = await syncedHost();

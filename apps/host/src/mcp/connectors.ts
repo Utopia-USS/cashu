@@ -1,6 +1,7 @@
 import { lstatSync, realpathSync } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, join, relative, resolve, sep, win32 } from "node:path";
 import { builtinRegistry } from "@cashu/domain/core";
+import { isLocalDrivePath } from "@cashu/node-host/windows-path";
 import { mcpProfile } from "@cashu/store/core";
 import { listConnectorRuns } from "@cashu/store/device";
 import { shippedConnector, shippedConnectorList } from "../cli/connectors/index.js";
@@ -18,6 +19,8 @@ export interface ConnectorMcpAuthority {
   readonly receipts: ConnectorProposalReceipts;
   readonly shippedCatalog?: string;
   readonly workspace?: WorkspaceProvider;
+  /** `process.platform` unless a test injects one. */
+  readonly platform?: NodeJS.Platform;
   now(): number;
   isCurrent(): boolean;
 }
@@ -42,9 +45,13 @@ async function checkedWorkspace(authority: ConnectorMcpAuthority) {
   return { path: status.path, current: () => authority.isCurrent() && binding.isCurrent() };
 }
 
-function workspaceConnector(path: string, workspace: string): string {
+function workspaceConnector(path: string, workspace: string, platform: NodeJS.Platform): string {
   if (!path || path.includes("\0")) throw new Error("connector_path_invalid");
   const declared = join(workspace, "connectors");
+  // Windows: the agent's path is checked as text before anything resolves it (a UNC path would make
+  // Windows authenticate to that server over SMB with the user's NTLM credentials; files.ts).
+  if (platform === "win32" && !isLocalDrivePath(win32.resolve(declared, path)))
+    throw new Error("connector_path_invalid");
   const root = realpathSync.native(declared);
   if (root !== resolve(declared) || lstatSync(declared).isSymbolicLink())
     throw new Error("connector_path_invalid");
@@ -117,7 +124,11 @@ export function connectorMcpPort(authority: ConnectorMcpAuthority) {
         if (!source) throw new Error("connector_catalog_entry_unavailable");
       } else {
         const workspace = await checkedWorkspace(authority);
-        source = workspaceConnector(request.path ?? "", workspace.path);
+        source = workspaceConnector(
+          request.path ?? "",
+          workspace.path,
+          authority.platform ?? process.platform,
+        );
         current = workspace.current;
       }
       if (!current()) throw new Error("connector_mcp_authority_lost");

@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { lstatSync } from "node:fs";
 import { join } from "node:path";
+import { hasNoGroupOrOtherBits } from "@cashu/node-host";
 import { backupNodeSqlite } from "@cashu/node-host/sqlite";
 import { NativeBlobPublication } from "../nativeBlobs.js";
 import { createNativeCheckpoint } from "../nativeCheckpoint.js";
@@ -74,8 +75,8 @@ export function sessionBindings(
         if (
           !rootInfo.isDirectory() ||
           rootInfo.isSymbolicLink() ||
-          (rootInfo.mode & 0o077) !== 0 ||
-          (strategyInfo.mode & 0o077) !== 0
+          !hasNoGroupOrOtherBits(rootInfo) ||
+          !hasNoGroupOrOtherBits(strategyInfo)
         )
           return null;
         return { vault: entry.vaultId, privateRoot: root, directory, isCurrent };

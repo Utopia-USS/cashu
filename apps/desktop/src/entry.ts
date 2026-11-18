@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { join } from "node:path";
 import { app, protocol } from "electron/main";
 import { dispatchDesktopEntry } from "./entryDispatch.js";
 import { registerEarlyNotificationResponses } from "./notification/early.js";
@@ -31,7 +32,7 @@ if (
     runHelper: async () => (await import("./notification/helper.js")).runNotificationHelper(),
     refuseCommand: (command) =>
       process.stderr.write(
-        `cashU: "${command}" is not a command of this app; use ${process.execPath} only to open the window, and the bundled shim (Contents/Resources/shim.mjs) for the CLI\n`,
+        `cashU: "${command}" is not a command of this app; use ${process.execPath} only to open the window, and the bundled shim (${join(process.resourcesPath, "shim.mjs")}) for the CLI\n`,
       ),
   });
   if (exitCode !== null) app.exit(exitCode);

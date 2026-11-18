@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTranslator } from "@cashu/i18n";
+import { linkDir } from "@cashu/node-host/testing/links";
 import { afterEach, expect, it } from "vitest";
 import type { CommandIo } from "../tree.js";
 import { skillsCommand } from "./skills.js";
@@ -75,7 +76,7 @@ it("prints the shipped source, and installs into the caller home rather than hos
   expect(await f.run(["install"])).toBe(0);
   expect(f.output.stdout).toContain("up to date  /alpha");
 });
-it("preserves a local edit unless force is explicit and never replaces target symlinks", async () => {
+it("preserves a local edit unless force is explicit", async () => {
   const f = fixture();
   const dest = join(f.cwd, "target");
   await f.run(["install", "--dest", dest]);
@@ -84,35 +85,44 @@ it("preserves a local edit unless force is explicit and never replaces target sy
   expect(readFileSync(join(dest, "alpha", "SKILL.md"), "utf8")).toBe("owner edit\n");
   expect(await f.run(["install", "--dest", dest, "--force"])).toBe(0);
   expect(readFileSync(join(dest, "alpha", "SKILL.md"), "utf8")).toBe("synthetic original\n");
-  rmSync(join(dest, "alpha"), { recursive: true });
+});
+// The target link is a junction on Windows (no privilege needed there).
+it("never replaces a target symlink, even with force", async () => {
+  const f = fixture();
+  const dest = join(f.cwd, "target");
+  mkdirSync(dest);
   const owner = join(f.dir, "owner");
   mkdirSync(owner);
   writeFileSync(join(owner, "SKILL.md"), "protected\n");
-  symlinkSync(owner, join(dest, "alpha"));
+  linkDir(owner, join(dest, "alpha"));
   expect(await f.run(["install", "--dest", dest, "--force"])).toBe(1);
   expect(lstatSync(join(dest, "alpha")).isSymbolicLink()).toBe(true);
   expect(readFileSync(join(owner, "SKILL.md"), "utf8")).toBe("protected\n");
 });
-it("follows source links, accepts identical target links and skips target files", async () => {
-  const f = fixture();
-  const dest = join(f.cwd, "target");
-  mkdirSync(dest);
-  const external = join(f.dir, "external.md");
-  writeFileSync(external, "linked bytes\n");
-  symlinkSync(external, join(f.source, "alpha", "linked.md"));
-  expect(await f.run(["install", "--dest", dest])).toBe(0);
-  expect(lstatSync(join(dest, "alpha", "linked.md")).isSymbolicLink()).toBe(false);
-  const existing = join(f.dir, "existing");
-  cpSync(join(dest, "alpha"), existing, { recursive: true });
-  rmSync(join(dest, "alpha"), { recursive: true });
-  symlinkSync(existing, join(dest, "alpha"));
-  expect(await f.run(["install", "--dest", dest, "--force"])).toBe(0);
-  expect(lstatSync(join(dest, "alpha")).isSymbolicLink()).toBe(true);
-  rmSync(join(dest, "alpha"), { recursive: true });
-  writeFileSync(join(dest, "alpha"), "file remains");
-  expect(await f.run(["install", "--dest", dest, "--force"])).toBe(1);
-  expect(readFileSync(join(dest, "alpha"), "utf8")).toBe("file remains");
-});
+// Creates symlinks (needs Developer Mode or elevation on Windows).
+it.skipIf(process.platform === "win32")(
+  "follows source links, accepts identical target links and skips target files",
+  async () => {
+    const f = fixture();
+    const dest = join(f.cwd, "target");
+    mkdirSync(dest);
+    const external = join(f.dir, "external.md");
+    writeFileSync(external, "linked bytes\n");
+    symlinkSync(external, join(f.source, "alpha", "linked.md"));
+    expect(await f.run(["install", "--dest", dest])).toBe(0);
+    expect(lstatSync(join(dest, "alpha", "linked.md")).isSymbolicLink()).toBe(false);
+    const existing = join(f.dir, "existing");
+    cpSync(join(dest, "alpha"), existing, { recursive: true });
+    rmSync(join(dest, "alpha"), { recursive: true });
+    symlinkSync(existing, join(dest, "alpha"));
+    expect(await f.run(["install", "--dest", dest, "--force"])).toBe(0);
+    expect(lstatSync(join(dest, "alpha")).isSymbolicLink()).toBe(true);
+    rmSync(join(dest, "alpha"), { recursive: true });
+    writeFileSync(join(dest, "alpha"), "file remains");
+    expect(await f.run(["install", "--dest", dest, "--force"])).toBe(1);
+    expect(readFileSync(join(dest, "alpha"), "utf8")).toBe("file remains");
+  },
+);
 it("uses caller cwd while preserving pathlib spelling in output", async () => {
   const f = fixture();
   expect(await f.run(["install", "--dest", "./target//nested/../skills/"])).toBe(0);
@@ -213,19 +223,24 @@ it("reports a missing source and leaves the destination untouched", async () => 
   expect(f.output).toEqual({ stdout: "", stderr: "No skills found in this installation.\n" });
 });
 
-it("resolves symlink/.. against the filesystem and keeps the requested spelling", async () => {
-  const f = fixture();
-  const parent = join(f.dir, "linked-parent");
-  mkdirSync(join(parent, "child"), { recursive: true });
-  symlinkSync(join(parent, "child"), join(f.cwd, "link"));
-  expect(await f.run(["install", "--dest", "link/../skills"])).toBe(0);
-  expect(readFileSync(join(parent, "skills", "alpha", "SKILL.md"), "utf8")).toBe(
-    "synthetic original\n",
-  );
-  expect(f.output.stdout).toContain("link/../skills/alpha");
-});
+// Creates a symlink (needs Developer Mode or elevation on Windows).
+it.skipIf(process.platform === "win32")(
+  "resolves symlink/.. against the filesystem and keeps the requested spelling",
+  async () => {
+    const f = fixture();
+    const parent = join(f.dir, "linked-parent");
+    mkdirSync(join(parent, "child"), { recursive: true });
+    symlinkSync(join(parent, "child"), join(f.cwd, "link"));
+    expect(await f.run(["install", "--dest", "link/../skills"])).toBe(0);
+    expect(readFileSync(join(parent, "skills", "alpha", "SKILL.md"), "utf8")).toBe(
+      "synthetic original\n",
+    );
+    expect(f.output.stdout).toContain("link/../skills/alpha");
+  },
+);
 
-it.skipIf(process.getuid?.() === 0)(
+// chmod-based permission failures: root bypasses them, Windows ignores POSIX permission bits.
+it.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
   "refuses predictable permission failures before output or filesystem writes",
   async () => {
     const f = fixture();

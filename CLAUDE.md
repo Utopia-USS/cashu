@@ -214,6 +214,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Data from the Python app | no app import: the first start shows the old-data screen; its prompt sends the agent through the import-builder skill ("Old cashU (Python) data") |
 | Build cashU.app (macOS, ad hoc) | `node apps/desktop/scripts/package-macos.mjs arm64` (`x64`; `--dmg` for a disk image) |
 | Build the owner's `cashU Staging` app | `node apps/desktop/scripts/package-macos.mjs arm64 --flavor staging` ([releasing.md](docs/releasing.md) "Staging build") |
+| Build the Windows installer (Windows only; CI from a Mac) | `node apps/desktop/scripts/package-windows.mjs x64 --out <dir>` (`--sign azure` with the Azure Artifact Signing env; [releasing.md](docs/releasing.md) "Windows (x64 beta)") |
 | Release (owner only) | merge `staging` -> `main` and approve the `release` environment; fallback `node apps/desktop/scripts/release-macos.mjs --check` ([releasing.md](docs/releasing.md)) |
 
 ## Documentation

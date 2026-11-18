@@ -29,6 +29,7 @@ import {
   startupFailure,
 } from "@cashu/host-protocol/startup-failure";
 import { ensurePrivateDir } from "./paths.js";
+import { O_NOFOLLOW, O_NONBLOCK, openedWithoutLink } from "./privateFs.js";
 
 /** Bytes of the host log's end read for the sanitized tail. */
 const LOG_TAIL_BYTES = 64 * 1024;
@@ -77,13 +78,17 @@ function readTail(path: string, max: number): { text: string; mtimeMs: number } 
   try {
     const link = lstatSync(path);
     if (!link.isFile() || link.isSymbolicLink()) return null;
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   } catch {
     return null;
   }
   try {
     const stat = fstatSync(fd);
-    if (!stat.isFile() || (typeof process.getuid === "function" && stat.uid !== process.getuid()))
+    if (
+      !stat.isFile() ||
+      (typeof process.getuid === "function" && stat.uid !== process.getuid()) ||
+      !openedWithoutLink(path, stat)
+    )
       return null;
     const length = Math.min(stat.size, max);
     const buffer = Buffer.alloc(length);

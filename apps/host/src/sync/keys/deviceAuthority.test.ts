@@ -85,7 +85,8 @@ describe("device authority foundation", () => {
     ).toThrow("invalid_inventory");
     c.driver.close();
   });
-  it("refuses noncanonical and symlinked inventory roots", async () => {
+  // Creates a symlink (needs Developer Mode or elevation on Windows).
+  it.skipIf(process.platform === "win32")("refuses a symlinked inventory root", async () => {
     const c = await creator();
     const alias = join(c.input.dataDir, "alias");
     symlinkSync(c.input.entry.vaultRoot, alias);
@@ -95,6 +96,10 @@ describe("device authority foundation", () => {
         entry: { ...c.input.entry, vaultRoot: alias },
       }),
     ).rejects.toThrow("invalid_inventory");
+    c.driver.close();
+  });
+  it("refuses a noncanonical inventory root", async () => {
+    const c = await creator();
     await expect(
       loadDeviceAuthority({
         ...c.input,

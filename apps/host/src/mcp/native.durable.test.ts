@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { NativeMcpServer } from "@cashu/mcp";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { defineCommand, ok, runCommand, setModules } from "@cashu/store";
@@ -17,7 +18,7 @@ it("keeps the original MCP key unknown after an invoked native engine write fail
   const host = await startLocalHost({ ...testHostOptions(dataDir), launcher: false });
   const original = [...host.stores.vaults.values()][0];
   if (!original) throw new Error("missing synthetic vault");
-  const driver = openNodeSqlite(`${dataDir}/attempts-test.db`);
+  const driver = openNodeSqlite(join(dataDir, "attempts-test.db"));
   try {
     await original.queue.run(() =>
       runCommand(

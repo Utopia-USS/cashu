@@ -62,7 +62,9 @@ async function fixture() {
   };
 }
 
-describe("systemd user service adapter", () => {
+// systemd user units are Linux-only, and these cases lean on POSIX modes, symlinks, hard links and
+// FIFOs (/usr/bin/mkfifo); they run on macOS and Linux against temp homes, never on Windows.
+describe.skipIf(process.platform === "win32")("systemd user service adapter", () => {
   it("writes exact on-demand units and enables only the timer", async () => {
     const f = await fixture();
     expect(await f.service.enable()).toEqual({ state: "enabled" });

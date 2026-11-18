@@ -8,7 +8,7 @@
 //   node apps/desktop/scripts/release-macos.mjs --dry-run   + build, sign, notarize, verify, feeds; nothing is uploaded
 //   node apps/desktop/scripts/release-macos.mjs --yes       + publish (the owner has reviewed the commits)
 // CI mode (.github/workflows/release-macos.yml; allowed only with GITHUB_ACTIONS=true):
-//   node apps/desktop/scripts/release-macos.mjs --ci --check | --dry-run [--unsigned] | --yes
+//   node apps/desktop/scripts/release-macos.mjs --ci --check | --dry-run [--unsigned] | --yes [--windows-assets <dir>]
 //
 // Options:
 //   --ref <rev>     build <rev> instead of origin/main (owner --check / --dry-run only; --yes builds origin/main)
@@ -23,6 +23,14 @@
 //                   --yes publishes with GH_TOKEN.
 //   --unsigned      (--ci --dry-run only) ad hoc build without signing or notarization: proves the build and the
 //                   7-asset layout where no signing secrets exist.
+//   --windows-assets <dir>
+//                   (every mode) add the Windows installer built elsewhere (package-windows.mjs runs on Windows
+//                   only: the workflow's `windows` job, never this Mac): <dir> must hold exactly
+//                   cashU-<version>-win-x64.exe, a non-empty regular file (a PE image), and nothing else. It is
+//                   checked in preflight, copied next to the macOS artifacts, listed with their sha256 and
+//                   uploaded with them; the draft must then carry 8 assets. Without it a release carries the 7
+//                   macOS assets. This script does not check the installer's Authenticode signature (the
+//                   `windows` job does, on Windows).
 //
 // Owner modes build a `git archive` export of the commit (never a worktree or a second checkout) in a fresh
 // directory under $TMPDIR, outside the checkout, so Node resolution cannot fall back to this checkout's
@@ -30,7 +38,8 @@
 // Artifacts land in <checkout>/build/release/v<version>/:
 //   cashU-<v>-mac-arm64.zip / .dmg, cashU-<v>-mac-x64.zip / .dmg, latest-mac.yml,
 //   appcast-macos-arm64.xml, appcast-macos-x86_64.xml (the 7 release assets; the Python app's Sparkle feed names
-//   come from `uname -m`), release-notes.md (the release text).
+//   come from `uname -m`), with --windows-assets also cashU-<v>-win-x64.exe (the 8th), release-notes.md (the
+//   release text).
 //
 // Owner modes keep the secrets in the login keychain: codesign and `xcrun notarytool --keychain-profile` read
 // them themselves. CI mode gets paths and ids only (the workflow owns the keychain and the key file). This script
@@ -43,12 +52,17 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   accessSync,
+  closeSync,
   constants,
+  copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -93,8 +107,8 @@ export const CI_ENV = {
   notaryIssuer: "CASHU_NOTARY_ISSUER",
 };
 const USAGE =
-  "usage: node apps/desktop/scripts/release-macos.mjs --check | --dry-run | --yes [--ref <rev>] [--keep-src] [--notes <file>]\n" +
-  "       node apps/desktop/scripts/release-macos.mjs --ci --check | --dry-run [--unsigned] | --yes [--notes <file>]";
+  "usage: node apps/desktop/scripts/release-macos.mjs --check | --dry-run | --yes [--ref <rev>] [--keep-src] [--notes <file>] [--windows-assets <dir>]\n" +
+  "       node apps/desktop/scripts/release-macos.mjs --ci --check | --dry-run [--unsigned] | --yes [--notes <file>] [--windows-assets <dir>]";
 
 // --- Pure parts (unit tested) -----------------------------------------------------------------------------
 
@@ -112,6 +126,7 @@ export function parseCliArgs(argv, env = {}) {
   let keepSrc = false;
   let notesPath = null;
   let unsigned = false;
+  let windowsAssets = null;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--check" || arg === "--dry-run" || arg === "--yes") modes.push(arg.slice(2));
@@ -121,6 +136,11 @@ export function parseCliArgs(argv, env = {}) {
     else if (arg === "--notes") {
       notesPath = argv[++i];
       if (!notesPath || notesPath.startsWith("-")) throw new Error("--notes needs a file");
+    } else if (arg === "--windows-assets") {
+      if (windowsAssets !== null) throw new Error("--windows-assets given twice");
+      windowsAssets = argv[++i];
+      if (!windowsAssets || windowsAssets.startsWith("-"))
+        throw new Error("--windows-assets needs a directory");
     } else if (arg === "--ref" || arg.startsWith("--ref=")) {
       const value = arg === "--ref" ? argv[++i] : arg.slice("--ref=".length);
       if (!value || value.startsWith("-")) throw new Error("--ref needs a revision");
@@ -140,7 +160,7 @@ export function parseCliArgs(argv, env = {}) {
   const fakePackage = env.CASHU_RELEASE_FAKE_PACKAGE || null;
   if (fakePackage && mode !== "dry-run")
     throw new Error("CASHU_RELEASE_FAKE_PACKAGE is a test hook and is refused outside --dry-run.");
-  return { mode, ci, unsigned, ref, keepSrc, notesPath, fakePackage };
+  return { mode, ci, unsigned, ref, keepSrc, notesPath, fakePackage, windowsAssets };
 }
 
 /**
@@ -281,18 +301,55 @@ export function artifactNames(version) {
     // The retired Python app builds its feed name from `uname -m`: x86_64 on Intel Macs (release/appcast.mjs).
     appcast: { arm64: appcastFileName("arm64"), x64: appcastFileName("x64") },
     latest: "latest-mac.yml",
+    // The NSIS installer of apps/desktop/scripts/package-windows.mjs (x64 only).
+    windows: { x64: `cashU-${version}-win-x64.exe` },
   };
 }
 
-/** The 7 assets every release carries, sorted. */
-export function expectedAssets(version) {
+/**
+ * The assets a release carries, sorted: the 7 macOS ones, plus the Windows installer (8) when `windows`.
+ */
+export function expectedAssets(version, { windows = false } = {}) {
   const names = artifactNames(version);
   return [
     ...Object.values(names.zip),
     ...Object.values(names.dmg),
     ...Object.values(names.appcast),
     names.latest,
+    ...(windows ? Object.values(names.windows) : []),
   ].sort();
+}
+
+/**
+ * Why the --windows-assets directory cannot ship with `version`, as a list (empty when it can): it must be a
+ * real directory (not a link) holding exactly the installer, a non-empty regular file (not a link) that starts
+ * like a PE image ("MZ"). `fs` is node:fs's lstatSync / readdirSync / openSync / readSync / closeSync.
+ */
+export function windowsAssetsProblems(dir, version, fs) {
+  const expected = artifactNames(version).windows.x64;
+  let stat;
+  try {
+    stat = fs.lstatSync(dir);
+  } catch {
+    return [`--windows-assets ${dir} does not exist`];
+  }
+  if (!stat.isDirectory()) return [`--windows-assets ${dir} is not a directory (or is a link)`];
+  const entries = fs.readdirSync(dir).sort();
+  if (entries.length !== 1 || entries[0] !== expected)
+    return [`--windows-assets ${dir} must hold exactly ${expected}, found [${entries.join(", ")}]`];
+  const path = join(dir, expected);
+  const file = fs.lstatSync(path);
+  if (!file.isFile()) return [`${expected} is not a regular file (or is a link)`];
+  if (file.size === 0) return [`${expected} is empty`];
+  const head = Buffer.alloc(2);
+  const fd = fs.openSync(path, "r");
+  try {
+    fs.readSync(fd, head, 0, 2, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (head.toString("latin1") !== "MZ") return [`${expected} is not a Windows executable`];
+  return [];
 }
 
 export function releaseUrls(version, arch) {
@@ -318,7 +375,7 @@ export function releaseNotes(subjects, { previous, tag }) {
 const SECRET_KEY_RE =
   /(^|_)(TOKEN|SECRET|PASSWORD|PASSWD|PASS|AUTH|AUTHTOKEN|API_KEY|APIKEY|PRIVATE_KEY|CREDENTIALS?)($|_)/i;
 const SECRET_PREFIX_RE =
-  /^(GH_|GITHUB_|CSC_|APPLE_|NOTARIZE_|SPARKLE_|ELECTRON_BUILDER_PUBLISH|NPM_CONFIG__|CASHU_NOTARY_|CASHU_RELEASE_)/i;
+  /^(GH_|GITHUB_|CSC_|WIN_CSC_|AZURE_|APPLE_|NOTARIZE_|SPARKLE_|ELECTRON_BUILDER_PUBLISH|NPM_CONFIG__|CASHU_NOTARY_|CASHU_RELEASE_|CASHU_AZURE_)/i;
 
 /** The environment for child builds: no tokens, no signing or publishing variables. */
 export function sanitizedEnv(env) {
@@ -412,7 +469,15 @@ function onPath(tool, env) {
  * published release is immutable); a mismatch stops with the draft left for the owner to fix or delete.
  * `gh` comes from PATH (tests put a recording stub there).
  */
-export function publish({ version, commit, notesFile, assetPaths, env = process.env, log = ok }) {
+export function publish({
+  version,
+  commit,
+  notesFile,
+  assetPaths,
+  windows = false,
+  env = process.env,
+  log = ok,
+}) {
   const tag = `v${version}`;
   run("gh", ghCreateArgs({ version, commit, notesFile, assetPaths }), { env });
   log(`draft ${tag} created`);
@@ -420,7 +485,7 @@ export function publish({ version, commit, notesFile, assetPaths, env = process.
     run("gh", ["release", "view", tag, "--repo", REPO, "--json", "assets,isDraft"], { env }).stdout,
   );
   const names = (view.assets ?? []).map((asset) => asset.name).sort();
-  const expected = expectedAssets(version);
+  const expected = expectedAssets(version, { windows });
   if (view.isDraft !== true || JSON.stringify(names) !== JSON.stringify(expected))
     throw new Error(
       `the draft ${tag} has [${names.join(" ")}] (draft: ${view.isDraft}), expected [${expected.join(" ")}]: ` +
@@ -437,6 +502,25 @@ export function publish({ version, commit, notesFile, assetPaths, env = process.
 
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+const WINDOWS_FS = { lstatSync, readdirSync, openSync, readSync, closeSync };
+
+/**
+ * The checked --windows-assets directory (absolute), or null without the option. Throws for a directory that
+ * cannot ship with `version`, or one that overlaps the release output `outDir` (emptied before every build).
+ */
+function windowsInstaller({ options, version, outDir }) {
+  if (options.windowsAssets === null) return null;
+  const dir = resolve(options.windowsAssets);
+  const problems = windowsAssetsProblems(dir, version, WINDOWS_FS);
+  if (problems.length) throw new Error(problems.join("\n       "));
+  const real = realpathSync(dir);
+  if (isInside(outDir, real) || isInside(real, outDir))
+    throw new Error(`--windows-assets ${dir} overlaps the release output ${outDir}`);
+  const name = artifactNames(version).windows.x64;
+  ok(`Windows installer: ${name} (${lstatSync(join(dir, name)).size} bytes, from ${dir})`);
+  return real;
 }
 
 function preflight({ root, options, signing, env }) {
@@ -749,12 +833,19 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
   const target = preflight({ root, options, signing, env });
   const { commit, version, tag } = target;
+  const dir = join(root, "build", "release", tag);
+  // Checked before anything is built, so a wrong or partial hand-over from the Windows job stops at once.
+  const windowsDir = windowsInstaller({
+    options,
+    version,
+    outDir: join(realpathSync(root), "build", "release", tag),
+  });
+  const windows = windowsDir !== null;
   if (options.mode === "check") {
     say("Preflight passed (nothing built).");
     return;
   }
 
-  const dir = join(root, "build", "release", tag);
   const buildEnv = sanitizedEnv(env);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
@@ -839,7 +930,19 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     const notesFile = join(dir, "release-notes.md");
     writeFileSync(notesFile, customNotes ?? target.notes);
 
-    const assets = expectedAssets(version);
+    if (windows) {
+      // Copied, never moved: the hand-over directory stays as it was. Checked again (it sat there during the
+      // build) and compared byte for byte after the copy.
+      const name = names.windows.x64;
+      const problems = windowsAssetsProblems(windowsDir, version, WINDOWS_FS);
+      if (problems.length) throw new Error(problems.join("\n       "));
+      copyFileSync(join(windowsDir, name), join(dir, name), constants.COPYFILE_EXCL);
+      if (sha256(join(windowsDir, name)) !== sha256(join(dir, name)))
+        throw new Error(`${name}: the copy differs from ${join(windowsDir, name)}`);
+      ok(`${name} (built by the Windows job, added unchanged)`);
+    }
+
+    const assets = expectedAssets(version, { windows });
     const present = readdirSync(dir)
       .filter((name) => assets.includes(name))
       .sort();
@@ -857,7 +960,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
         `    ${formatCommand("gh", ghCreateArgs({ version, commit, notesFile, assetPaths }))}\n`,
       );
       process.stdout.write(
-        `    gh release view ${tag} --repo ${REPO} --json assets,isDraft   # expect the 7 assets\n`,
+        `    gh release view ${tag} --repo ${REPO} --json assets,isDraft   # expect the ${assets.length} assets\n`,
       );
       process.stdout.write(`    ${formatCommand("gh", ghPublishArgs(version))}\n`);
       process.stdout.write(`    artifacts: ${dir}\n`);
@@ -885,7 +988,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
           `origin/main moved to ${remoteMain.slice(0, 12)} during the build: run again.`,
         );
     }
-    publish({ version, commit, notesFile, assetPaths, env });
+    publish({ version, commit, notesFile, assetPaths, windows, env });
     note('installed apps find it at their next check, or at once with "Check for updates".');
   } finally {
     if (exported && options.keepSrc) note(`source export kept: ${exported.parent}`);

@@ -1,6 +1,7 @@
 import { dirname, join, resolve, sep } from "node:path";
 import { pyCasefold } from "@cashu/domain";
 import {
+  claudeCommand,
   denyRules,
   mcpCommandStale,
   mergeClaudeMd,
@@ -78,6 +79,11 @@ export interface WorkspaceVaultAuthority {
   readonly cli: readonly string[] | null;
   readonly tools: WorkspaceContentContext["tools"] | null;
   readonly protected: readonly string[];
+  /**
+   * `process.platform` of the host (absent: an sh-compatible shell). Picks the shell of the command
+   * lines the workspace shows the user (`WorkspaceRenderContext.platform`).
+   */
+  readonly platform?: string;
   readonly publication: WorkspacePublication;
   /** Production binds publication to the canonical target selected for this operation. */
   publicationFor?(path: string): WorkspacePublication;
@@ -134,10 +140,6 @@ const same = (a: unknown, b: unknown): boolean => {
   }
   return false;
 };
-const quoted = (s: string): string =>
-  /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) && s ? s : `'${s.replaceAll("'", `'"'"'`)}'`;
-const command = (path: string, prompt?: string): string =>
-  `cd ${quoted(path)} && claude${prompt ? ` -p ${quoted(prompt)}` : ""}`;
 
 function readJson(io: WorkspacePublication, path: string): { value: Json | null; valid: boolean } {
   if (io.kind(path) === "missing") return { value: null, valid: true };
@@ -212,6 +214,7 @@ function targetContext(
     ),
     researchAvailable: authority.shipped.has("market-research"),
     cli: authority.cli,
+    ...(authority.platform === undefined ? {} : { platform: authority.platform }),
   };
 }
 
@@ -328,8 +331,8 @@ function inspectReady(
     outdated,
     skills: state?.skills ?? [],
     skillsSource: authority.skillsSourceAvailable,
-    claudeCommand: command(path),
-    routineCommand: command(path, "/market-research rutyna"),
+    claudeCommand: claudeCommand(path, undefined, authority.platform),
+    routineCommand: claudeCommand(path, "/market-research rutyna", authority.platform),
     routinePermissions: cfg.routine,
   };
 }

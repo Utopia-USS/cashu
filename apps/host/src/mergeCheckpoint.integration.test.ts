@@ -92,54 +92,58 @@ it("publishes a pre-merge checkpoint, merges once, and retains the keyed result 
   }
 });
 
-it("does not record a merge intent when encrypted checkpoint capture fails", async () => {
-  const fixture = await nativeVaultFixture({ modules: ["investments"] });
-  let host: Awaited<ReturnType<typeof startLocalHost>> | undefined;
-  try {
-    host = await startLocalHost({
-      dataDir: fixture.dataDir,
-      home: fixture.home,
-      build: "test",
-      launcher: false,
-      vaultSource: fixture.vaultSource,
-    });
-    const vault = host.stores.vaults.get(fixture.vaultId);
-    if (!vault?.native) throw new Error("native vault missing");
-    const source = await runHostVaultCommand(
-      vault,
-      investmentsCommands.createInstrument,
-      { name: "Synthetic source", assetClass: "equity", currency: "PLN" },
-      "source-key",
-    );
-    const target = await runHostVaultCommand(
-      vault,
-      investmentsCommands.createInstrument,
-      { name: "Synthetic target", assetClass: "equity", currency: "PLN" },
-      "target-key",
-    );
-    if (source.kind !== "completed" || target.kind !== "completed")
-      throw new Error("instruments absent");
-    const input = { source: source.value.gid, target: target.value.gid };
-    const logRoot = join(fixture.dataDir, "vaults", fixture.vaultId, "log");
-    chmodSync(logRoot, 0o755);
-    expect(
-      await runHostVaultCommand(vault, investmentsCommands.mergeInstruments, input, "merge-key"),
-    ).toEqual({ kind: "not_started", reason: "checkpoint_failed" });
-    expect(
-      vault.native.attempts.status(vault.id, "merge-key", investmentsCommands.mergeInstruments.id)
-        .phase,
-    ).toBe("absent");
-    expect(vault.store.read<{ gid: string }>("SELECT gid FROM inv_instruments")).toHaveLength(2);
-    chmodSync(logRoot, 0o700);
-    expect(
-      (await runHostVaultCommand(vault, investmentsCommands.mergeInstruments, input, "merge-key"))
-        .kind,
-    ).toBe("completed");
-  } finally {
-    await host?.stop();
-    fixture.cleanup();
-  }
-});
+// Capture is made to fail by a group-readable log dir (chmod 0755); Windows has no POSIX permission bits.
+it.skipIf(process.platform === "win32")(
+  "does not record a merge intent when encrypted checkpoint capture fails",
+  async () => {
+    const fixture = await nativeVaultFixture({ modules: ["investments"] });
+    let host: Awaited<ReturnType<typeof startLocalHost>> | undefined;
+    try {
+      host = await startLocalHost({
+        dataDir: fixture.dataDir,
+        home: fixture.home,
+        build: "test",
+        launcher: false,
+        vaultSource: fixture.vaultSource,
+      });
+      const vault = host.stores.vaults.get(fixture.vaultId);
+      if (!vault?.native) throw new Error("native vault missing");
+      const source = await runHostVaultCommand(
+        vault,
+        investmentsCommands.createInstrument,
+        { name: "Synthetic source", assetClass: "equity", currency: "PLN" },
+        "source-key",
+      );
+      const target = await runHostVaultCommand(
+        vault,
+        investmentsCommands.createInstrument,
+        { name: "Synthetic target", assetClass: "equity", currency: "PLN" },
+        "target-key",
+      );
+      if (source.kind !== "completed" || target.kind !== "completed")
+        throw new Error("instruments absent");
+      const input = { source: source.value.gid, target: target.value.gid };
+      const logRoot = join(fixture.dataDir, "vaults", fixture.vaultId, "log");
+      chmodSync(logRoot, 0o755);
+      expect(
+        await runHostVaultCommand(vault, investmentsCommands.mergeInstruments, input, "merge-key"),
+      ).toEqual({ kind: "not_started", reason: "checkpoint_failed" });
+      expect(
+        vault.native.attempts.status(vault.id, "merge-key", investmentsCommands.mergeInstruments.id)
+          .phase,
+      ).toBe("absent");
+      expect(vault.store.read<{ gid: string }>("SELECT gid FROM inv_instruments")).toHaveLength(2);
+      chmodSync(logRoot, 0o700);
+      expect(
+        (await runHostVaultCommand(vault, investmentsCommands.mergeInstruments, input, "merge-key"))
+          .kind,
+      ).toBe("completed");
+    } finally {
+      await host?.stop();
+      fixture.cleanup();
+    }
+  },
+);
 
 it("retains the original key and one checkpoint when a merge reply is lost after append", async () => {
   const fixture = await nativeVaultFixture({ modules: ["investments"] });

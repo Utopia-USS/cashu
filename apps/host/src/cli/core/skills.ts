@@ -3,7 +3,7 @@
 
 import { realpathSync } from "node:fs";
 import { cp, mkdir, rm } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import type { PlatformPath } from "node:path";
 import type { CommandIo, PortedCommand } from "../tree.js";
 import { printConsole } from "./console.js";
 import {
@@ -11,6 +11,8 @@ import {
   directoryTarget,
   expandHome,
   filesystemPath,
+  homeRelative,
+  hostPath,
   isSymlink,
   pathSpelling,
   removableTree,
@@ -18,6 +20,7 @@ import {
   sameTree,
   skillNames,
   stat,
+  strictlyInside,
   writableAncestor,
 } from "./skillsFiles.js";
 import { C } from "./strings.js";
@@ -102,19 +105,22 @@ function plan(
   dest: string,
   actualDest: string,
   force: boolean,
+  p: PlatformPath,
 ): Action[] {
   const actions: Action[] = [];
-  const shownDest = pathSpelling(dest);
+  const shownDest = pathSpelling(dest, p);
   for (const name of fromSource(io, () => skillNames(source))) {
-    const from = join(source, name);
-    const shown = pathSpelling(`${dest}/${name}`);
-    const target = join(actualDest, name);
+    const from = p.join(source, name);
+    const shown = pathSpelling(`${dest}${p.sep}${name}`, p);
+    const target = p.join(actualDest, name);
     if (controlText(name)) throw new Refusal(io.t.tr(C.skillsControlText), 2);
-    const relation = relative(
-      fromSource(io, () => realpathSync(from)),
-      target,
-    );
-    if (relation && !relation.startsWith("../") && relation !== ".." && !relation.startsWith("/"))
+    if (
+      strictlyInside(
+        fromSource(io, () => realpathSync(from)),
+        target,
+        p,
+      )
+    )
       throw new Refusal(io.t.tr(C.skillsInsideSource), 2);
     const existing = atDestination(io, shownDest, () => stat(target));
     let kind: Action["kind"];
@@ -141,7 +147,7 @@ function plan(
     if (kind === "installed" || kind === "replaced") {
       if (!fromSource(io, () => copyableTree(from)))
         throw new Refusal(io.t.tr(C.skillsUnreadable), 1);
-      atDestination(io, shownDest, () => writableAncestor(dirname(target)));
+      atDestination(io, shownDest, () => writableAncestor(p.dirname(target), p));
     }
     if (kind === "replaced") atDestination(io, shownDest, () => removableTree(target));
     actions.push({ name, source: from, target, shown, kind });
@@ -156,8 +162,14 @@ function missingSource(io: CommandIo): number {
   });
   return 1;
 }
-/** Resource path is injected; undefined means this build ships no skills. */
-export function skillsCommand(source: string | undefined): PortedCommand {
+/**
+ * Resource path is injected; undefined means this build ships no skills. `p` is the path module of
+ * the machine the host and its clients run on (tests inject `win32` / `posix`).
+ */
+export function skillsCommand(
+  source: string | undefined,
+  p: PlatformPath = hostPath,
+): PortedCommand {
   return {
     name: "skills",
     async run(args, io) {
@@ -176,17 +188,20 @@ export function skillsCommand(source: string | undefined): PortedCommand {
           io.stdout(`${source}\n`);
           return 0;
         }
-        const spelling = pathSpelling(parsed.dest);
-        if (/^~[^/]/.test(spelling)) throw new Refusal(io.t.tr(C.skillsUserHome), 2);
-        const expands = spelling === "~" || spelling.startsWith("~/");
+        const spelling = pathSpelling(parsed.dest, p);
+        if (spelling.startsWith("~") && !homeRelative(spelling, p))
+          throw new Refusal(io.t.tr(C.skillsUserHome), 2);
+        const expands = homeRelative(spelling, p);
         if (expands && io.paths === undefined) throw new Refusal(io.t.tr(C.skillsNoHome), 1);
-        const dest = expands ? expandHome(spelling, io.paths?.home ?? "") : spelling;
+        const dest = expands ? expandHome(spelling, io.paths?.home ?? "", p) : spelling;
         if (controlText(dest)) throw new Refusal(io.t.tr(C.skillsControlText), 2);
-        absolute = filesystemPath(io.cwd, dest);
-        const target = atDestination(io, pathSpelling(dest), () => directoryTarget(absolute));
-        if (target === undefined)
-          throw new Refusal(io.t.tr(C.skillsNotDirectory)(pathSpelling(dest)), 1);
-        actions = plan(io, source, dest, target, parsed.force);
+        const resolved = filesystemPath(io.cwd, dest, p);
+        if (resolved === undefined) throw new Refusal(io.t.tr(C.skillsDriveRelative), 2);
+        absolute = resolved;
+        const shownDest = pathSpelling(dest, p);
+        const target = atDestination(io, shownDest, () => directoryTarget(resolved, p));
+        if (target === undefined) throw new Refusal(io.t.tr(C.skillsNotDirectory)(shownDest), 1);
+        actions = plan(io, source, dest, target, parsed.force, p);
       } catch (error) {
         if (!(error instanceof Refusal)) throw error;
         io.stderr(`${error.message}\n`);

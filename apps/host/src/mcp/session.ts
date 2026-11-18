@@ -4,9 +4,12 @@
 // `initialize` advertises `tools.listChanged`, because the shim sends
 // `notifications/tools/list_changed` after it reconnected to a restarted host. When the server exits on
 // its own the shim gets `mcp.exit` and stops; when the host stops, the session just closes.
-import { type McpOpenParams, mcpOpenParamsSchema } from "@cashu/host-protocol";
+import { type McpOpenParams, mcpOpenParamsSchemaFor, pathFlavor } from "@cashu/host-protocol";
 import type { HostSession } from "@cashu/node-host";
 import type { HostLog } from "../log.js";
+
+/** The shim runs on this machine: its cwd follows this platform's path rules. */
+const mcpOpenParamsSchema = mcpOpenParamsSchemaFor(pathFlavor(process.platform));
 
 /** A running MCP server for one session. */
 export interface McpBackend {

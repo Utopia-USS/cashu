@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { isOwnerOnly, O_NOFOLLOW, O_NONBLOCK, syncDirectory } from "@cashu/node-host";
 import { z } from "zod";
 import type { WorkerNotification } from "../worker/contracts.js";
 
@@ -57,16 +58,21 @@ const refuse = (): never => {
   throw new Error("notification_intents_unavailable");
 };
 
+/**
+ * The intent ledger file in `directory`. On macOS and Linux the directory and the file belong to this
+ * user with nothing for group and others; on Windows the modes are synthetic and privacy rests on the
+ * data dir's per-user ACL (@cashu/node-host privateFs). `platform` is a test seam only.
+ */
 export function privateNotificationIntents(
   directory: string,
   isCurrent: () => boolean,
   now: () => number,
+  platform: NodeJS.Platform = process.platform,
 ): NotificationIntentLedger {
   const root = realpathSync.native(directory);
   if (lstatSync(directory).isSymbolicLink()) refuse();
   const pinned = lstatSync(root);
   const path = join(root, "notification-intents.json");
-  const nofollow = constants.O_NOFOLLOW ?? 0;
   const check = () => {
     if (!isCurrent()) refuse();
     if (realpathSync.native(directory) !== root || lstatSync(directory).isSymbolicLink()) refuse();
@@ -75,8 +81,7 @@ export function privateNotificationIntents(
       !info.isDirectory() ||
       info.dev !== pinned.dev ||
       info.ino !== pinned.ino ||
-      (info.mode & 0o077) !== 0 ||
-      (process.getuid !== undefined && info.uid !== process.getuid())
+      !isOwnerOnly(info, platform)
     )
       refuse();
   };
@@ -86,9 +91,8 @@ export function privateNotificationIntents(
       if (
         !info.isFile() ||
         info.nlink !== 1 ||
-        (info.mode & 0o077) !== 0 ||
         info.size > MAX_BYTES ||
-        (process.getuid !== undefined && info.uid !== process.getuid())
+        !isOwnerOnly(info, platform)
       )
         refuse();
       return info;
@@ -101,7 +105,7 @@ export function privateNotificationIntents(
     check();
     const info = regular();
     if (info === null) return [];
-    const fd = openSync(path, constants.O_RDONLY | nofollow | (constants.O_NONBLOCK ?? 0));
+    const fd = openSync(path, constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     try {
       const current = fstatSync(fd);
       if (
@@ -110,7 +114,7 @@ export function privateNotificationIntents(
         current.dev !== info.dev ||
         current.ino !== info.ino ||
         current.size > MAX_BYTES ||
-        (current.mode & 0o077) !== 0
+        !isOwnerOnly(current, platform)
       )
         refuse();
       const bytes = Buffer.alloc(MAX_BYTES + 1);
@@ -153,7 +157,7 @@ export function privateNotificationIntents(
     const temporary = join(root, `.notification-intents-${randomUUID()}.tmp`);
     const fd = openSync(
       temporary,
-      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | nofollow,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | O_NOFOLLOW,
       0o600,
     );
     try {
@@ -166,12 +170,7 @@ export function privateNotificationIntents(
       check();
       regular();
       renameSync(temporary, path);
-      const dir = openSync(root, constants.O_RDONLY);
-      try {
-        fsyncSync(dir);
-      } finally {
-        closeSync(dir);
-      }
+      syncDirectory(root, platform);
       check();
     } finally {
       rmSync(temporary, { force: true });

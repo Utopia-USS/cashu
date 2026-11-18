@@ -1,7 +1,8 @@
-import { chmodSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { cleanup, tempDir, trackDir } from "../testing/hostHarness.js";
+import { linkFile } from "../testing/links.js";
 import { acquireHostLock } from "./lock.js";
 import { ensurePrivateDir, hostRunPaths } from "./paths.js";
 import {
@@ -186,27 +187,54 @@ it("recovers only an abandoned prepared intent for the identical old bundle", ()
   lock.release();
 });
 
-it("fails closed on malformed, symlinked or weakened barriers", () => {
+it("fails closed on a malformed barrier", () => {
   const dir = trackDir(tempDir());
-  const barrier = publishUpdateAdmission(dir, OLD, "1.0.0", "2.0.0");
+  publishUpdateAdmission(dir, OLD, "1.0.0", "2.0.0");
   const marker = join(hostRunPaths(dir).runDir, "update-admission.json");
   const lock = acquireHostLock(hostRunPaths(dir).lockPath);
   if (!lock) throw new Error("lock");
   writeFileSync(marker, "{}");
   expect(() => assertHostAdmission(lock, dir)).toThrow("update_barrier_invalid");
+  lock.release();
+});
+
+// POSIX only: Windows modes are synthetic.
+it.skipIf(process.platform === "win32")("fails closed on a weakened barrier", () => {
+  const dir = trackDir(tempDir());
+  const barrier = publishUpdateAdmission(dir, OLD, "1.0.0", "2.0.0");
+  const marker = join(hostRunPaths(dir).runDir, "update-admission.json");
+  const lock = acquireHostLock(hostRunPaths(dir).lockPath);
+  if (!lock) throw new Error("lock");
   writeFileSync(marker, JSON.stringify(barrier));
   chmodSync(marker, 0o644);
   expect(() => assertHostAdmission(lock, dir)).toThrow("update_barrier_invalid");
   lock.release();
+});
+
+// A file symlink; on a Windows runner without the privilege to create it the test skips itself.
+it("fails closed on a symlinked barrier", ({ skip }) => {
+  const dir = trackDir(tempDir());
+  publishUpdateAdmission(dir, OLD, "1.0.0", "2.0.0");
+  const marker = join(hostRunPaths(dir).runDir, "update-admission.json");
   const other = trackDir(tempDir());
   const link = join(hostRunPaths(other).runDir, "update-admission.json");
   publishUpdateAdmission(other, OLD, "1.0.0", "2.0.0");
   rmSync(link);
-  symlinkSync(marker, link);
+  linkFile(marker, link, skip);
   const next = acquireHostLock(hostRunPaths(other).lockPath);
   if (!next) throw new Error("lock");
   expect(() => assertHostAdmission(next, other)).toThrow("update_barrier_invalid");
   next.release();
+});
+
+// A dangling link is not "no barrier": Windows opens through it to ENOENT, POSIX refuses the link.
+it("fails closed on a dangling barrier link", ({ skip }) => {
+  const dir = trackDir(tempDir());
+  publishUpdateAdmission(dir, OLD, "1.0.0", "2.0.0");
+  const marker = join(hostRunPaths(dir).runDir, "update-admission.json");
+  rmSync(marker);
+  linkFile(join(hostRunPaths(dir).runDir, "missing.json"), marker, skip);
+  expect(() => readUpdateAdmission(dir)).toThrow("update_barrier_invalid");
 });
 
 it("fails closed on barrier and completion records with a wrong field", async () => {

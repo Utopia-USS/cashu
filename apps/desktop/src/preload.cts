@@ -95,6 +95,15 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     syncNow: (input: unknown): Promise<unknown> =>
       electron.ipcRenderer.invoke("cashu:relay-syncNow", input),
   });
+  // The OS, a constant (no IPC): the renderer renders copyable commands for its shell (PowerShell on
+  // Windows).
+  electron.contextBridge.exposeInMainWorld("cashuPlatform", process.platform);
+  // Settings > App: how this install gets new versions (a Windows install: by hand from the releases
+  // page whose URL main pins).
+  electron.contextBridge.exposeInMainWorld("cashuUpdates", {
+    installMethod: (): Promise<unknown> =>
+      electron.ipcRenderer.invoke("cashu:update-install-method"),
+  });
   // Start-up recovery: main holds the report, builds the prompt and owns the clipboard, the data
   // folder and the start sequence. The page sends only the prompt language.
   electron.contextBridge.exposeInMainWorld("cashuRecovery", {

@@ -56,7 +56,7 @@ import {
   uiPairingAllowed,
   uiRelayAllowed,
 } from "@cashu/host-protocol";
-import { recoveryCommand } from "@cashu/host-protocol/startup-failure";
+import { launcherPath, recoveryCommand } from "@cashu/host-protocol/startup-failure";
 import {
   acquireHostLock,
   activateHost,
@@ -121,6 +121,13 @@ import { createNotificationClickRouter } from "./notification/clickRouter.js";
 import { notificationIntake } from "./notification/early.js";
 import { loadNativeNotificationCenter, releaseResponseHandler } from "./notification/native.js";
 import type { NotificationResponsePair } from "./notification/responses.js";
+import {
+  applicationMenuRoles,
+  appUserModelId,
+  runningBundle,
+  trayIconSource,
+  trayOpensOnClick,
+} from "./platformShell.js";
 import { type OldAppData, StartupRecovery } from "./recovery.js";
 import {
   ALLOW,
@@ -132,19 +139,25 @@ import {
 import { desktopHostService, nextDailyWake } from "./service/runtime.js";
 import { ensurePrivateDir } from "./state.js";
 import { pickLang, t } from "./strings.js";
-import { releaseAuthority } from "./update/authority.js";
+import { installsUpdatesByHand, releaseAuthority } from "./update/authority.js";
 import { startMainUpdateBridge } from "./update/bridge.js";
 import { createElectronUpdateController } from "./update/electron.js";
 import { updatePreferences } from "./update/preferences.js";
+import { RELEASES_PAGE_URL } from "./update/releasePolicy.js";
 import { startUpdateSchedule } from "./update/schedule.js";
 import { windowSize } from "./window.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = repoRoot(here);
 const env = process.env;
-// The flavor sealed in this bundle's Info.plist (prod from a checkout): the app's name, default data
-// dir, URL scheme, MCP server names and whether it has an update feed all come from its table row.
+// The flavor sealed in this bundle's Info.plist (Windows: resources\app-identity.json; prod from a
+// checkout): the app's name, default data dir, URL scheme, MCP server names and whether it has an
+// update feed all come from its table row.
 const flavor = processFlavor();
+/** The packaged build this process runs from (`<x>.app`, or the Windows install dir); path shape only. */
+const bundlePath = () => runningBundle(process.execPath, process.platform);
+/** This install, as the update rules see it. */
+const installed = { platform: process.platform, isPackaged: app.isPackaged, flavor };
 // A sealed test build (package-macos.mjs --test-build) is honored only from the verified bundle; it
 // runs on its marker's data dir (also when the updater relaunches it without any environment). A
 // release has no marker and takes none of the test paths in this file.
@@ -152,7 +165,7 @@ let testBuild: TestBuildMarker | null = null;
 let testBuildUnverified = false;
 if (app.isPackaged) {
   try {
-    testBuild = readTestBuildMarker(dirname(dirname(dirname(process.execPath))));
+    testBuild = readTestBuildMarker(bundlePath());
   } catch {
     testBuildUnverified = true;
   }
@@ -194,6 +207,10 @@ const admissionRoots = legacySourceRoots(
 // ---- log (owner-only, rotated at 1 MB, the token is never written) -----------------------------
 
 const logDir = ensurePrivateDir(join(ensurePrivateDir(dataDir), "logs"));
+// Windows starts the app in its install folder (the shortcuts' working directory). Nothing may write
+// there (the whole install folder is hashed into the build id) or hold it open (the uninstaller
+// replaces it), and the detached host inherits this directory: work from the data dir instead.
+if (process.platform === "win32") process.chdir(dataDir);
 const logFile = join(logDir, LOG_FILE);
 
 function log(line: string): void {
@@ -212,6 +229,10 @@ function log(line: string): void {
 // ---- Electron profile inside the data dir: the single instance lock is per data dir ------------
 
 app.setName(flavor.productName);
+// Windows groups the window with its Start menu and taskbar shortcuts by this ID (electron-builder
+// writes the bundle ID into them); it must be set before any window exists.
+const userModelId = appUserModelId(process.platform, flavor.bundleId);
+if (userModelId !== null) app.setAppUserModelId(userModelId);
 // Overlay scrollbars that take no layout width, as the Python app's WKWebView draws them on a trackpad
 // Mac: macOS "Automatic" turns Chromium's scrollbars into 15px classic ones whenever a mouse is
 // connected. A registration default (in memory, lowest NSUserDefaults priority) applies only while the
@@ -294,9 +315,22 @@ const desktop = new DesktopApp({
   },
   createTray(items, onAction) {
     if (env[ENV.noTray] === "1") return null;
-    let image = nativeImage.createFromPath(iconPath);
-    image = image.isEmpty() ? image : image.resize({ width: 18, height: 18 });
+    const source = trayIconSource(process.platform, existsSync(iconPath));
+    let image =
+      source.kind === "png" ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+    if (source.kind === "png" && !image.isEmpty())
+      image = image.resize({ width: source.size, height: source.size });
     const tray = new Tray(image);
+    if (source.kind === "executable") {
+      // The 16 px icon electron-builder embedded in cashU.exe: a packaged Windows app ships no PNG.
+      app
+        .getFileIcon(process.execPath, { size: "small" })
+        .then((icon) => {
+          if (!tray.isDestroyed()) tray.setImage(icon);
+        })
+        .catch(() => log("could not read the app icon for the tray"));
+    }
+    if (trayOpensOnClick(process.platform)) tray.on("click", () => onAction("open"));
     tray.setToolTip(t(lang, "trayTooltip"));
     tray.setContextMenu(
       Menu.buildFromTemplate(
@@ -440,6 +474,15 @@ function oldAppData(): OldAppData {
   };
 }
 
+// How this install gets new versions, for Settings > App: a Windows install points to the releases
+// page (the URL is pinned here, never chosen by the page); elsewhere the updater status decides.
+ipcMain.handle("cashu:update-install-method", (event) => {
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) return { kind: "in_app" };
+  return installsUpdatesByHand(installed)
+    ? { kind: "manual", version: app.getVersion(), releasesUrl: RELEASES_PAGE_URL }
+    : { kind: "in_app" };
+});
+
 ipcMain.handle("cashu:recovery-report", (event) =>
   desktop.exposesBridgeTo(fromMainFrame(event)) ? recovery.report : null,
 );
@@ -489,7 +532,7 @@ ipcMain.handle("cashu:recovery-quit", (event) => {
 // demand by the verified service when available, otherwise detached. It exits when idle.
 const HOST_BUILD = app.isPackaged
   ? (() => {
-      const identity = readBundleIdentity(dirname(dirname(dirname(process.execPath))));
+      const identity = readBundleIdentity(bundlePath());
       if (identity.kind !== "present") throw new Error("packaged_bundle_identity_unavailable");
       return packagedBuildId(app.getVersion(), identity.contentDigest);
     })()
@@ -507,10 +550,11 @@ const recovery = new StartupRecovery({
   lang,
   hostLogPath: hostRunPaths(dataDir).logPath,
   command: () => {
-    const launcher = join(dataDir, "bin", "cashu");
+    const launcher = launcherPath(dataDir, process.platform);
     return recoveryCommand({
       home: homedir(),
       launcher: existsSync(launcher) ? launcher : null,
+      platform: process.platform,
       isPackaged: app.isPackaged,
       binary: process.execPath,
       shim: join(process.resourcesPath, "shim.mjs"),
@@ -603,7 +647,7 @@ async function drainForUpdate(targetVersion: string): Promise<
   | { kind: "refused" | "unknown" }
 > {
   if (!hostAdmissionOpen) return { kind: "refused" };
-  const identity = readBundleIdentity(dirname(dirname(dirname(process.execPath))));
+  const identity = readBundleIdentity(bundlePath());
   if (identity.kind !== "present") return { kind: "refused" };
   hostAdmissionOpen = false;
   relays.closeAll();
@@ -1038,19 +1082,17 @@ process.on("uncaughtException", (error) => {
   desktop.requestQuit();
 });
 
-// Only a packaged app registers the URL scheme with the system, and only when asked to.
-if (shouldRegisterProtocol({ isPackaged: app.isPackaged, env })) {
+// Only a packaged app registers the URL scheme with the system (deeplink.ts: macOS only when asked
+// to, Windows always, as its installer registers none). Windows: Electron's default command for the
+// running cashU.exe, `"<exe>" "%1"`.
+if (shouldRegisterProtocol({ isPackaged: app.isPackaged, env, platform: process.platform })) {
   app.setAsDefaultProtocolClient(flavor.urlScheme);
 }
 
-function applicationMenu(): Menu {
-  const debug = env.CASHU_DESKTOP_DEBUG === "1";
-  return Menu.buildFromTemplate([
-    { role: "appMenu" },
-    { role: "editMenu" },
-    ...(debug ? [{ role: "viewMenu" as const }] : []),
-    { role: "windowMenu" },
-  ]);
+/** The platform's application menu (platformShell.ts), null for none (Windows outside debug runs). */
+function applicationMenu(): Menu | null {
+  const roles = applicationMenuRoles(process.platform, env.CASHU_DESKTOP_DEBUG === "1");
+  return roles === null ? null : Menu.buildFromTemplate(roles.map((role) => ({ role })));
 }
 
 if (!hasLock) {
@@ -1064,11 +1106,14 @@ if (!hasLock) {
         app.isPackaged ? process.resourcesPath : join(root, "apps", "desktop", "dist"),
       ),
     );
-    if (app.isPackaged) {
-      const bundle = dirname(dirname(dirname(process.execPath)));
-      const identity = readBundleIdentity(bundle);
+    // The in-app updater exists only where an installed release can verify one (macOS). A Windows
+    // install is updated by hand (installsUpdatesByHand): no updater, preferences, bridge or update
+    // barrier is created there, and Settings points to the releases page.
+    if (app.isPackaged && !installsUpdatesByHand(installed)) {
+      const identity = readBundleIdentity(bundlePath());
       const authority = releaseAuthority(
         {
+          platform: process.platform,
           isPackaged: true,
           execPath: process.execPath,
           resourcesPath: process.resourcesPath,
