@@ -22,6 +22,7 @@ import type { SyncResult } from "@cashu/sync";
 import { handleAdmin } from "./admin.js";
 import { defaultProfileSlug } from "./cli/defaultProfile.js";
 import { serveCliSession } from "./cli/runner.js";
+import { nativeSessions } from "./cli/syncGate.js";
 import { connectorSettingsServed } from "./connectorSettings.js";
 import { deviceListSource } from "./devices/listSource.js";
 import { createDeviceService } from "./devices/service.js";
@@ -405,6 +406,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
             dataDir: server.paths.dataDir,
             ported,
             defaultProfile: () => defaultProfileSlug(stores),
+            syncing: () => nativeSessions(stores),
             log,
             pinned: () => pinnedLanguage(stores),
           });

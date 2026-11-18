@@ -91,12 +91,17 @@ function leaf(program: Command, name: string): Command {
     .argument("[args...]");
 }
 
-/** Routes `argv` (after the program name) through the tree. */
+/**
+ * Routes `argv` (after the program name) through the tree. `gate` (cli/syncGate.ts) is awaited until
+ * it answers undefined right before a ported command starts (and before its default profile is read),
+ * so the command begins in the same turn as the last check.
+ */
 export async function runTree(
   argv: readonly string[],
   io: CommandIo,
   ported: readonly PortedCommand[],
   defaultProfile?: () => string | undefined,
+  gate?: () => Promise<void> | undefined,
 ): Promise<TreeOutcome> {
   const at = commandIndex(argv);
   const name = argv[at];
@@ -153,6 +158,7 @@ export async function runTree(
     });
   for (const command of ported) {
     leaf(program, command.name).action(async () => {
+      for (let wait = gate?.(); wait !== undefined; wait = gate?.()) await wait;
       const profile = program.opts<{ profile?: string }>().profile;
       const fallback = profile || io.env.CASHU_PROFILE ? undefined : defaultProfile?.();
       const commandIo =

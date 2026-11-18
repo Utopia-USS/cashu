@@ -170,13 +170,26 @@ function openVault(
   };
 }
 
+/**
+ * A read of a native vault while its session is not current: a sync pass is applying to it, or the
+ * session failed closed and waits for a reopen. Typed so a caller can answer with a clear refusal
+ * instead of an unexpected failure; the message is the code.
+ */
+export class NativeSessionUnavailableError extends Error {
+  readonly code = "native_session_unavailable";
+  constructor() {
+    super("native_session_unavailable");
+    this.name = "NativeSessionUnavailableError";
+  }
+}
+
 /** Public reads pause while authenticated inbound sync is applying to the raw session Store. */
 function guardedNativeStore(session: NativeVaultSession): Store {
   return new Proxy(session.store, {
     get(target, property) {
       if (property === "read")
         return (...args: Parameters<Store["read"]>) => {
-          if (!session.isCurrent()) throw new Error("native_session_unavailable");
+          if (!session.isCurrent()) throw new NativeSessionUnavailableError();
           return target.read(...args);
         };
       const value = Reflect.get(target, property, target);

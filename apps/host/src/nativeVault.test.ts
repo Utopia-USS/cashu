@@ -39,6 +39,7 @@ import { SqlAttemptJournal } from "./attemptJournal.js";
 import { startLocalHost } from "./host.js";
 import { takeWriterLease } from "./lease.js";
 import { openNativeVault } from "./nativeVault.js";
+import { NativeSessionUnavailableError } from "./stores.js";
 import { loadDeviceAuthority } from "./sync/keys/deviceAuthority.js";
 import { storeClient } from "./testing/harness.js";
 import { createProductionWorkspaceProvider } from "./workspace/production.js";
@@ -361,8 +362,16 @@ describe("native vault session", () => {
     await expect.poll(() => host.stores.vaults.get(entry.vaultId)?.native?.isSyncing()).toBe(true);
     expect(() =>
       host.stores.vaults.get(entry.vaultId)?.store.read("SELECT name FROM profiles"),
-    ).toThrow("native_session_unavailable");
+    ).toThrow(NativeSessionUnavailableError);
+    // A command that arrives during the pass waits for it instead of failing on the refused read.
+    let statsDone = false;
+    const statsDuringSync = cliExec(["-p", "synthetic", "stats"]).finally(() => {
+      statsDone = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(statsDone).toBe(false);
     releasePeerRead();
+    expect(await statsDuringSync).toEqual({ kind: "exit", code: 0 });
     const inbound = await pendingSync;
     expect(inbound.rolledBack).toBe(false);
     expect(inbound.applied).toBeGreaterThan(0);

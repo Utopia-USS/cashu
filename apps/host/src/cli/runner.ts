@@ -1,7 +1,9 @@
 // The host side of a `cli` session (S56d): one `cli.exec` at a time. The argv goes through the hosted
 // command tree; a ported command runs here with a `CommandIo` whose output, prompts and stdin travel
-// as session frames. Ctrl-C (`cancel`) aborts the command's signal. Unexpected errors end the
-// command with exit 70 and the error's class name only (messages may quote data); logs carry codes.
+// as session frames. Ctrl-C (`cancel`) aborts the command's signal. A command starts only between
+// sync passes of the open vaults (syncGate.ts); one that still meets a vault whose session is not
+// current ends with exit 75 and a "try again" refusal. Unexpected errors end the command with exit 70
+// and the error's class name and short code only (messages may quote data); logs carry the same.
 import {
   CLI_INTERRUPTED_EXIT,
   type CliExecParams,
@@ -13,11 +15,15 @@ import {
 } from "@cashu/host-protocol";
 import { createBackendI18n, createTranslator, type Lang, type Translator } from "@cashu/i18n";
 import { type HostSession, nodeLanguageSource } from "@cashu/node-host";
-import { errorName, type HostLog } from "../log.js";
+import { errorName, errorShortCode, type HostLog, type LogField } from "../log.js";
+import { NativeSessionUnavailableError } from "../stores.js";
 import { S } from "./strings.js";
+import { type SyncingSession, syncGate } from "./syncGate.js";
 import { type CommandIo, type PortedCommand, runTree } from "./tree.js";
 
 const FAILURE_EXIT = 70;
+/** A vault was not readable (a sync pass, a session waiting for a reopen): try again (EX_TEMPFAIL). */
+const UNAVAILABLE_EXIT = 75;
 /** The shim runs on this machine: its cwd follows this platform's path rules. */
 const cliExecParamsSchema = cliExecParamsSchemaFor(pathFlavor(process.platform));
 
@@ -28,6 +34,33 @@ export interface CliRunnerDeps {
   readonly log: HostLog;
   /** The app language pinned on this device (`cashu language`, Settings), null for the system one. */
   readonly pinned?: () => Lang | null;
+  /** The native sessions of the open vaults: a command starts only while none runs a sync pass. */
+  readonly syncing?: () => Iterable<SyncingSession>;
+  /** The wait budget of one command for running passes (15 s by default, syncGate.ts). */
+  readonly syncWaitMs?: number;
+}
+
+/**
+ * The value-free fields of a failed command for host.log: the error's class name, its short code
+ * (log.ts `errorShortCode`; "?" when it has none), SQLite's numeric result code when the
+ * error came from node:sqlite (its `code` is the generic ERR_SQLITE_ERROR), and which ported command
+ * ran (a name from the host's own list, never an argument).
+ */
+function execFailureFields(error: unknown, command: string | null): Record<string, LogField> {
+  const sqlite =
+    typeof error === "object" &&
+    error !== null &&
+    "errcode" in error &&
+    Number.isSafeInteger(error.errcode)
+      ? (error.errcode as number)
+      : null;
+  return { error: errorName(error), code: errorShortCode(error), sqlite, command };
+}
+
+/** The ported command `argv` names (its first token that is one), or null. */
+function commandName(argv: readonly string[], ported: readonly PortedCommand[]): string | null {
+  const names = new Set(ported.map((command) => command.name));
+  return argv.find((arg) => names.has(arg)) ?? null;
 }
 
 /**
@@ -123,7 +156,10 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
         return stdin.read();
       },
     };
-    const outcome = await runTree(params.argv, io, deps.ported, deps.defaultProfile);
+    const gate = syncGate(deps.syncing ?? (() => []), abort.signal, {
+      ...(deps.syncWaitMs === undefined ? {} : { timeoutMs: deps.syncWaitMs }),
+    });
+    const outcome = await runTree(params.argv, io, deps.ported, deps.defaultProfile, gate);
     return { kind: "exit", code: abort.signal.aborted ? CLI_INTERRUPTED_EXIT : outcome.code };
   };
 
@@ -150,11 +186,22 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
             reply(frame.id, result);
           },
           (error: unknown) => {
-            deps.log.error("cli.exec-failed", { error: errorName(error) });
+            const fields = execFailureFields(error, commandName(params.data.argv, deps.ported));
             running = undefined;
+            if (error instanceof NativeSessionUnavailableError) {
+              deps.log.warn("cli.exec-refused", fields);
+              note(frame.id, "cli.out", {
+                stream: "stderr",
+                data: `${translatorFor(params.data, deps).tr(S.vaultUnavailable)}\n`,
+              });
+              reply(frame.id, { kind: "exit", code: UNAVAILABLE_EXIT });
+              return;
+            }
+            deps.log.error("cli.exec-failed", fields);
+            const code = fields.code === "?" ? "" : ` (${fields.code})`;
             note(frame.id, "cli.out", {
               stream: "stderr",
-              data: `cashu: unexpected ${errorName(error)}\n`,
+              data: `cashu: unexpected ${errorName(error)}${code}\n`,
             });
             reply(frame.id, { kind: "exit", code: FAILURE_EXIT });
           },

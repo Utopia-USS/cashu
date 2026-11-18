@@ -91,4 +91,9 @@ export const S = {
     pl: "W tej sesji trwa już inne polecenie.",
     en: "This session is already running a command.",
   } satisfies TranslationVariants<string>,
+  // A command met a vault that was syncing or waits for a reopen (exit 75).
+  vaultUnavailable: {
+    pl: "cashu: profil jest teraz niedostępny (trwa synchronizacja albo usługa w tle musi go ponownie otworzyć). Spróbuj ponownie za chwilę; jeśli to się powtarza, uruchom `cashu host stop`, a potem polecenie jeszcze raz.",
+    en: "cashu: a profile is not available right now (it is syncing, or the background service must reopen it). Try again in a moment; if this keeps happening, run `cashu host stop` and then the command again.",
+  } satisfies TranslationVariants<string>,
 } as const;

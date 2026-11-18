@@ -5,6 +5,7 @@
 // a message may quote a value. The file rotates once it passes 5 MB (one old copy, host.log.1).
 import { appendFileSync, chmodSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { errorCode } from "@cashu/host-protocol/startup-failure";
 import { ensurePrivateDir } from "@cashu/node-host";
 
 export type LogLevel = "info" | "warn" | "error";
@@ -29,6 +30,25 @@ function safe(value: LogField): LogField {
 /** The class name of a thrown value, for a log field. */
 export function errorName(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
+}
+
+/** A Node.js or system error code (`EBUSY`, `ERR_SQLITE_ERROR`): fixed names, never data. */
+const NODE_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+/**
+ * The short code of a thrown value, for a log field: a Node.js / system `code`, else cashU's own short
+ * code (a typed `code` or a snake_case message, startup-failure `errorCode`), else "?".
+ */
+export function errorShortCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    NODE_CODE.test(error.code)
+  )
+    return error.code;
+  return errorCode(error);
 }
 
 /** One log line (exported for tests). */

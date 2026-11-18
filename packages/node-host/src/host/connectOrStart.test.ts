@@ -58,7 +58,11 @@ describe("connect-or-start", () => {
       expect(spawned.filter((s) => s.child.pid !== undefined && isAlive(s.child.pid))).toHaveLength(
         1,
       );
-      expect(clients.at(-1)?.status.sessions.admin).toBe(8);
+      // Each client's own status may predate later connections (the array order is not the connect
+      // order), so the count comes from a status asked after all 8 are connected: none was dropped.
+      const after = (await clients[0]?.connection.call("admin.status")) as AdminStatus;
+      expect(after.pid).toBe(winner);
+      expect(after.sessions.admin).toBe(8);
       const log = readFileSync(hostRunPaths(dir).logPath, "utf8");
       expect(log.match(/^ready /gm)).toHaveLength(1);
       for (const c of clients) c.connection.close();
