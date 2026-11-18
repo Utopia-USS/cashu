@@ -19,6 +19,30 @@ const bar = (close = "10"): market.CachedBar => ({
   fetchedAt: null,
 });
 describe("device-local SQL market cache", () => {
+  it("reads a history once per version and never serves rows of a rolled back or foreign write", () => {
+    const driver = memoryDriver();
+    const cache = new SqlPriceCache(driver);
+    const key = market.marketSymbol("yahoo", "MEMO.DE");
+    cache.upsertBars(key, [bar("10")], now);
+    const first = cache.bars(key);
+    expect(cache.bars(key)).toBe(first);
+    expect(() =>
+      cache.batch(() => {
+        cache.upsertBars(key, [bar("99")], now);
+        expect(cache.bars(key)[0]?.close.toString()).toBe("99");
+        throw new Error("rolled back");
+      }),
+    ).toThrow("rolled back");
+    expect(cache.bars(key)[0]?.close.toString()).toBe("10");
+    // Another cache over the same database moves the version: the next read sees its rows.
+    new SqlPriceCache(driver).upsertBars(key, [bar("12")], now);
+    expect(cache.bars(key)[0]?.close.toString()).toBe("12");
+    cache.upsertRates("nbp", Currencies.EUR, [{ date: AS_OF, rate: D("4"), fetchedAt: null }], now);
+    expect(cache.rates("nbp", Currencies.EUR)).toBe(cache.rates("nbp", Currencies.EUR));
+    cache.upsertRates("nbp", Currencies.EUR, [{ date: AS_OF, rate: D("5"), fetchedAt: null }], now);
+    expect(cache.rates("nbp", Currencies.EUR)[0]?.rate.toString()).toBe("5");
+  });
+
   it("persists monotonic versions across reopen, including empty writes and deletes, and isolates provider keys", () => {
     const driver = memoryDriver();
     const cache = new SqlPriceCache(driver);

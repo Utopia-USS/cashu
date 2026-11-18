@@ -55,6 +55,15 @@ export class SqlPriceCache implements TransactionalPriceCache {
   private readonly driver: SqlDriver;
   private batchDepth = 0;
   private readonly listeners = new Set<() => void>();
+  /**
+   * Parsed bars and rates as of `readsAt` (the cache version they were read at). Every query of a screen
+   * values the portfolio from the same price histories, and re-reading and re-parsing them per query
+   * made the investments screen take seconds. Any write here drops them (also a rolled back one, whose
+   * rows a read inside it may have seen); a version that moved underneath (another cache over the same
+   * database) drops them on the next read.
+   */
+  private reads = new Map<string, readonly unknown[]>();
+  private readsAt = -1;
   constructor(driver: SqlDriver) {
     this.driver = driver;
     driver.transaction(() =>
@@ -107,18 +116,41 @@ export class SqlPriceCache implements TransactionalPriceCache {
       committed = true;
       return result;
     } finally {
+      this.dropReads();
       this.batchDepth--;
       if (committed && this.batchDepth === 0 && this.version() !== before) this.notify();
     }
   }
   private write(fn: () => void): void {
-    this.driver.transaction(() => {
-      fn();
-      if (this.version() >= Number.MAX_SAFE_INTEGER)
-        throw new Error("market cache version exhausted");
-      this.driver.prepare("UPDATE local_market_meta SET version=version+1 WHERE id=1").run();
-    });
+    this.dropReads();
+    try {
+      this.driver.transaction(() => {
+        fn();
+        if (this.version() >= Number.MAX_SAFE_INTEGER)
+          throw new Error("market cache version exhausted");
+        this.driver.prepare("UPDATE local_market_meta SET version=version+1 WHERE id=1").run();
+      });
+    } finally {
+      this.dropReads();
+    }
     if (this.batchDepth === 0) this.notify();
+  }
+  private dropReads(): void {
+    this.reads = new Map();
+    this.readsAt = -1;
+  }
+  /** `read()` once per cache version and key (see `reads`). */
+  private remembered<T>(key: string, read: () => readonly T[]): readonly T[] {
+    const version = this.version();
+    if (version !== this.readsAt) {
+      this.reads = new Map();
+      this.readsAt = version;
+    }
+    const held = this.reads.get(key) as readonly T[] | undefined;
+    if (held !== undefined) return held;
+    const fresh = read();
+    this.reads.set(key, fresh);
+    return fresh;
   }
   private notify(): void {
     for (const listener of this.listeners) {
@@ -130,10 +162,12 @@ export class SqlPriceCache implements TransactionalPriceCache {
     }
   }
   bars(key: market.MarketSymbol): readonly market.CachedBar[] {
-    return this.driver
-      .prepare("SELECT * FROM local_market_bars WHERE provider=? AND symbol=? ORDER BY date")
-      .all<BarRow>(key.provider, key.symbol)
-      .map(cachedBar);
+    return this.remembered(JSON.stringify(["bars", key.provider, key.symbol]), () =>
+      this.driver
+        .prepare("SELECT * FROM local_market_bars WHERE provider=? AND symbol=? ORDER BY date")
+        .all<BarRow>(key.provider, key.symbol)
+        .map(cachedBar),
+    );
   }
 
   upsertBars(key: market.MarketSymbol, bars: readonly market.CachedBar[], now: DateTime): void {
@@ -167,16 +201,18 @@ export class SqlPriceCache implements TransactionalPriceCache {
     });
   }
   rates(provider: string, quote: Currency): readonly market.CachedRate[] {
-    return this.driver
-      .prepare(
-        "SELECT date,rate,fetched_at FROM local_market_rates WHERE provider=? AND base='PLN' AND quote=? ORDER BY date",
-      )
-      .all<RateRow>(provider, quote)
-      .map((r) => ({
-        date: r.date as CalendarDate,
-        rate: D(r.rate),
-        fetchedAt: r.fetched_at === null ? null : parseDateTime(r.fetched_at),
-      }));
+    return this.remembered(JSON.stringify(["rates", provider, quote]), () =>
+      this.driver
+        .prepare(
+          "SELECT date,rate,fetched_at FROM local_market_rates WHERE provider=? AND base='PLN' AND quote=? ORDER BY date",
+        )
+        .all<RateRow>(provider, quote)
+        .map((r) => ({
+          date: r.date as CalendarDate,
+          rate: D(r.rate),
+          fetchedAt: r.fetched_at === null ? null : parseDateTime(r.fetched_at),
+        })),
+    );
   }
   upsertRates(
     provider: string,
