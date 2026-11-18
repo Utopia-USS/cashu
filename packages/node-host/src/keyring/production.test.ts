@@ -29,7 +29,7 @@ afterEach(() => {
 const sodium = await crypto.loadNodeSodium();
 const ON_WINDOWS = process.platform === "win32";
 function fixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "t44-test-"));
+  const root = mkdtempSync(join(realpathSync.native(tmpdir()), "t44-test-"));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });

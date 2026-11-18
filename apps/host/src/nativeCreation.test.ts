@@ -91,7 +91,7 @@ const input = {
 };
 
 async function fixture() {
-  const outer = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "t44-test-")));
+  const outer = realpathSync.native(mkdtempSync(join(realpathSync.native(tmpdir()), "t44-test-")));
   roots.push(outer);
   const dataDir = join(outer, "data");
   mkdirSync(dataDir, { mode: 0o700 });

@@ -18,7 +18,7 @@ import { expect, it } from "vitest";
 import { NativeBlobPublication } from "./nativeBlobs.js";
 
 it("publishes a vault-bound encrypted import blob and reads it after reopening", async () => {
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "t44-test-")));
+  const dataDir = realpathSync.native(mkdtempSync(join(tmpdir(), "t44-test-")));
   const sodium = await crypto.loadNodeSodium();
   const recovery = crypto.createRecoveryKey(sodium);
   const ring = crypto.createKeyring(sodium, recovery.publicKeys);

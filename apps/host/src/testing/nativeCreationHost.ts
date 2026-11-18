@@ -8,14 +8,14 @@ import { startLocalHost } from "../host.js";
 import { ProductionVaultSourceFactory } from "../productionVaultSource.js";
 
 const [dataDir, service] = process.argv.slice(2);
-const tempRoot = realpathSync(tmpdir());
+const tempRoot = realpathSync.native(tmpdir());
 /** `t44-test-<name>/data` under the temp root, with the platform separator (Windows too). */
 const relative = dataDir?.slice(tempRoot.length + 1) ?? "";
 if (
   !dataDir ||
   !service ||
   resolve(dataDir) !== dataDir ||
-  realpathSync(dataDir) !== dataDir ||
+  realpathSync.native(dataDir) !== dataDir ||
   !dataDir.startsWith(`${tempRoot}${sep}`) ||
   basename(relative) !== "data" ||
   !/^t44-test-[^/\\]+$/.test(dirname(relative)) ||
