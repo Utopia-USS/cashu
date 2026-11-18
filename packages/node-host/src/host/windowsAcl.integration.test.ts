@@ -75,44 +75,48 @@ const PARENTS: readonly (readonly [string, string])[] = [
 ];
 
 describe.skipIf(process.platform !== "win32")("owner-only data dir DACL (Windows)", () => {
-  it.each(PARENTS)("leaves only this user and SYSTEM on a dir in %s and below it", (_, parent) => {
-    const sid = userSid();
-    const dir = trackDir(realpathSync.native(mkdtempSync(join(parent, "cashu-acl-it-"))));
-    const token = join(dir, "run", "host.token");
-    mkdirSync(join(dir, "run"));
-    writeFileSync(token, "synthetic");
-    // Another account's explicit entries, which /inheritance:r and /grant:r alone leave in place.
-    icacls([dir, "/grant", `*${USERS_SID}:(OI)(CI)R`]);
-    icacls([token, "/grant", `*${USERS_SID}:R`]);
-    expect(othersIn(daclOf(dir), sid)).toContain(USERS_SID);
-    makeOwnerOnly(dir);
-    const own = daclOf(dir);
-    expect(daclProblems(own, sid)).toEqual([]);
-    expect(own.control).toContain("P");
-    expect(othersIn(own, sid)).toEqual([]);
-    for (const child of [join(dir, "run"), token]) expect(othersIn(daclOf(child), sid)).toEqual([]);
-    // Idempotent: a second start finds it private and leaves it as it is.
-    makeOwnerOnly(dir);
-    expect(daclOf(dir)).toEqual(own);
-  });
+  it.each(PARENTS)(
+    "leaves only this user and SYSTEM on a dir in %s and below it",
+    async (_, parent) => {
+      const sid = userSid();
+      const dir = trackDir(realpathSync.native(mkdtempSync(join(parent, "cashu-acl-it-"))));
+      const token = join(dir, "run", "host.token");
+      mkdirSync(join(dir, "run"));
+      writeFileSync(token, "synthetic");
+      // Another account's explicit entries, which /inheritance:r and /grant:r alone leave in place.
+      icacls([dir, "/grant", `*${USERS_SID}:(OI)(CI)R`]);
+      icacls([token, "/grant", `*${USERS_SID}:R`]);
+      expect(othersIn(daclOf(dir), sid)).toContain(USERS_SID);
+      await makeOwnerOnly(dir);
+      const own = daclOf(dir);
+      expect(daclProblems(own, sid)).toEqual([]);
+      expect(own.control).toContain("P");
+      expect(othersIn(own, sid)).toEqual([]);
+      for (const child of [join(dir, "run"), token])
+        expect(othersIn(daclOf(child), sid)).toEqual([]);
+      // Idempotent: a second start finds it private and leaves it as it is.
+      await makeOwnerOnly(dir);
+      expect(daclOf(dir)).toEqual(own);
+    },
+  );
 
-  it("reads the owner of a dir whose name holds PowerShell quotes and specials", () => {
+  it("reads the owner of a dir whose name holds PowerShell quotes and specials", async () => {
     const dir = join(trackDir(tempDir()), "O'Brien\u2019s [1] $(x) `y`");
     mkdirSync(dir);
-    makeOwnerOnly(dir);
+    await makeOwnerOnly(dir);
     expect(isOwnerOnlyDacl(daclOf(dir), userSid())).toBe(true);
   });
 
   // Giving the dir to another owner (SYSTEM) needs the restore privilege of an elevated shell; without
   // it the test skips itself.
-  it("refuses a data dir another account owns and leaves its DACL alone", ({ skip }) => {
+  it("refuses a data dir another account owns and leaves its DACL alone", async ({ skip }) => {
     const dir = join(trackDir(tempDir()), "data");
     mkdirSync(dir);
     const icacls = join(system32(), "icacls.exe");
     const given = spawnSync(icacls, [dir, "/setowner", `*${SYSTEM_SID}`, "/q"]);
     if (given.status !== 0) skip("setting another owner needs an elevated shell");
     const before = daclOf(dir);
-    expect(() => makeOwnerOnly(dir)).toThrow(
+    await expect(makeOwnerOnly(dir)).rejects.toThrow(
       new HostPathError(
         `${dir} could not be made private to this user: it is owned by another account (${SYSTEM_SID}); take ownership as this user, then start again`,
       ),

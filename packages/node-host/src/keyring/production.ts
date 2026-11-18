@@ -1,9 +1,9 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, sep } from "node:path";
 import { crypto } from "@cashu/sync";
 import { keychainService, processFlavor } from "../flavor.js";
+import { existingRealPath } from "../guard.js";
 import type { HostLock } from "../host/lock.js";
 import { hostRunPaths } from "../host/paths.js";
 import { PrivateBlobFiles } from "./files.js";
@@ -42,7 +42,7 @@ function snapshot(input: ProductionKeyStoreInput): {
 } {
   let canonical: string;
   try {
-    canonical = realpathSync(input.dataDir);
+    canonical = existingRealPath(input.dataDir);
   } catch {
     throw new crypto.CryptoError("keystore_unavailable");
   }
@@ -84,7 +84,7 @@ function make(
   const assertState = () => {
     let canonical: string;
     try {
-      canonical = realpathSync(dataDir);
+      canonical = existingRealPath(dataDir);
     } catch {
       throw new crypto.CryptoError("keystore_unavailable");
     }
@@ -242,11 +242,11 @@ function make(
     },
   };
 }
-/** A canonical absolute directory (its realpath), else keystore_unavailable. */
+/** A canonical absolute directory (`existingRealPath`: native on Windows), else keystore_unavailable. */
 function canonicalDir(path: string): string {
   let canonical: string;
   try {
-    canonical = realpathSync(path);
+    canonical = existingRealPath(path);
   } catch {
     throw new crypto.CryptoError("keystore_unavailable");
   }
@@ -267,7 +267,9 @@ export function createProductionKeyStore(input: ProductionKeyStoreInput): crypto
 /** Synthetic-only constructor. Tests must use a fresh temp root and exact test namespace. */
 function assertTestNamespace(dir: string, service: string): void {
   const buildRoot = resolve(process.cwd(), "build");
-  const tempRoot = realpathSync(tmpdir());
+  // The temp root in the spelling the data dir has (Windows: long names, where TEMP is often an 8.3
+  // one such as C:\Users\RUNNER~1\...), as the other keyrings compare it.
+  const tempRoot = existingRealPath(tmpdir());
   // `<root>/t44-test-<anything without a separator>/data` (the platform's separator).
   const underTestRoot = (root: string) => {
     if (!dir.startsWith(`${root}${sep}`)) return false;

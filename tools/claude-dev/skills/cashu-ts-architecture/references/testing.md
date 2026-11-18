@@ -30,7 +30,9 @@ Rules:
 
 Two tiers, one per-test timeout: vitest's default 5 s in both. A third, the emulator tier, needs the
 Firebase emulators running and is outside `pnpm test`. A test that needs more time is split,
-never given a longer budget.
+never given a longer budget. The one exception is per platform, never per test: on Windows
+`vitest.tiers.ts` makes the default 30 s, because a host start there runs the data dir's ACL step
+(whoami, PowerShell, icacls) and the CI runner is many times slower than a Mac.
 
 | Tier | Files | Command | Runs |
 |---|---|---|---|

@@ -53,10 +53,22 @@
 // (`icacls /save` lists the DACL only; the Sddl property needs no .NET type literal, so it also works
 // in PowerShell's ConstrainedLanguage mode). A DACL that is already exactly owner-only is left alone
 // (no rewrite, no walk, no propagation), so the step is idempotent and cheap on every later start.
+// The three reads (SID, owner, DACL) are independent and run at once, so a start waits for the slowest
+// of them (PowerShell, about a quarter of a second) rather than for all three in turn; nothing is
+// decided or changed before every one has answered, and the checks keep their order.
+//
+// Why the owner is read at every start and never cached, nor skipped when the DACL is already exact:
+// an exact DACL says nothing about the owner. Another account can create the dir, give it this exact
+// DACL and keep its owner's implicit right to rewrite it; and an owner can change between two starts
+// (anyone this user's DACL once let in with take-ownership rights can make themselves owner, then put
+// the exact DACL back). A cached "verified" record keyed by the dir's file id and DACL would trust
+// both, so only reading the owner catches them, and of the system tools used here only PowerShell
+// reports it by SID (`icacls /save` lists the DACL alone).
+//
 // Fail closed: when the owner is unreadable or another account, when an entry cannot be named, reset
 // or removed, or the DACL read back afterwards is not exactly owner-only, the host does not run on the
 // data dir (`HostPathError` naming it and every SID or alias left over, never file contents).
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { lstatSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
@@ -78,7 +90,7 @@ export interface AclCommandResult {
 }
 
 /** Runs `file` (an absolute path) with `args`, without a shell. Injected in tests. */
-export type AclCommandRunner = (file: string, args: readonly string[]) => AclCommandResult;
+export type AclCommandRunner = (file: string, args: readonly string[]) => Promise<AclCommandResult>;
 
 /** One entry of a directory listing: a link (symlink or junction) is never followed. */
 export interface AclDirEntry {
@@ -101,15 +113,22 @@ export interface OwnerOnlyOptions {
 
 const COMMAND_TIMEOUT_MS = 30_000;
 
-const runSystemCommand: AclCommandRunner = (file, args) => {
-  const result = spawnSync(file, [...args], {
-    shell: false,
-    windowsHide: true,
-    timeout: COMMAND_TIMEOUT_MS,
-    stdio: ["ignore", "pipe", "ignore"],
+/** A command that cannot be started, or is killed at the timeout, has status null. */
+const runSystemCommand: AclCommandRunner = (file, args) =>
+  new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    const child = spawn(file, [...args], {
+      shell: false,
+      windowsHide: true,
+      timeout: COMMAND_TIMEOUT_MS,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.once("error", () => resolve({ status: null, stdout: "" }));
+    child.once("close", (status) =>
+      resolve({ status, stdout: Buffer.concat(chunks).toString("latin1") }),
+    );
   });
-  return { status: result.status, stdout: result.stdout?.toString("latin1") ?? "" };
-};
 
 /** lstat per entry: Node reports a Windows symlink and a junction alike as a symbolic link. */
 const listDirectory: AclDirLister = (dir) =>
@@ -358,14 +377,18 @@ function system32(env: Readonly<Record<string, string | undefined>>): string | u
 }
 
 /** This process's user SID (`whoami`), locale-independent; undefined when it cannot be read. */
-function currentUserSid(run: AclCommandRunner, sys32: string): string | undefined {
-  const result = run(win32.join(sys32, "whoami.exe"), ["/user", "/fo", "csv", "/nh"]);
+async function currentUserSid(run: AclCommandRunner, sys32: string): Promise<string | undefined> {
+  const result = await run(win32.join(sys32, "whoami.exe"), ["/user", "/fo", "csv", "/nh"]);
   return result.status === 0 ? parseWhoamiSid(result.stdout) : undefined;
 }
 
 /** The owner SID of `dir` (PowerShell `Get-Acl`, see the header), undefined when it is unreadable. */
-function ownerOf(dir: string, run: AclCommandRunner, sys32: string): string | undefined {
-  const result = run(win32.join(sys32, "WindowsPowerShell", "v1.0", "powershell.exe"), [
+async function ownerOf(
+  dir: string,
+  run: AclCommandRunner,
+  sys32: string,
+): Promise<string | undefined> {
+  const result = await run(win32.join(sys32, "WindowsPowerShell", "v1.0", "powershell.exe"), [
     "-NoProfile",
     "-NonInteractive",
     "-Command",
@@ -375,24 +398,24 @@ function ownerOf(dir: string, run: AclCommandRunner, sys32: string): string | un
 }
 
 /** Whether this process runs elevated (high integrity or above, `whoami /groups`). */
-function isElevated(run: AclCommandRunner, sys32: string): boolean {
-  const result = run(win32.join(sys32, "whoami.exe"), ["/groups", "/fo", "csv", "/nh"]);
+async function isElevated(run: AclCommandRunner, sys32: string): Promise<boolean> {
+  const result = await run(win32.join(sys32, "whoami.exe"), ["/groups", "/fo", "csv", "/nh"]);
   const level = result.status === 0 ? parseIntegrityLevel(result.stdout) : undefined;
   return level !== undefined && level >= HIGH_INTEGRITY_RID;
 }
 
 /** The DACL of `dir` (`icacls /save` into a fresh temp folder), undefined when it is unreadable. */
-function readDacl(
+async function readDacl(
   dir: string,
   icacls: string,
   run: AclCommandRunner,
   tempDir: string,
-): Dacl | undefined {
+): Promise<Dacl | undefined> {
   let work: string | undefined;
   try {
     work = mkdtempSync(join(tempDir, "cashu-acl-"));
     const listing = join(work, "acl");
-    if (run(icacls, [dir, "/save", listing, "/q"]).status !== 0) return undefined;
+    if ((await run(icacls, [dir, "/save", listing, "/q"])).status !== 0) return undefined;
     return parseSavedDacl(readFileSync(listing));
   } catch {
     return undefined;
@@ -435,7 +458,7 @@ function entriesBelow(
  * the header). Throws `HostPathError` naming `dir` when it is a drive or share root, owned by another
  * account, or cannot be made private.
  */
-export function makeOwnerOnly(dir: string, options: OwnerOnlyOptions = {}): void {
+export async function makeOwnerOnly(dir: string, options: OwnerOnlyOptions = {}): Promise<void> {
   const run = options.run ?? runSystemCommand;
   const tempDir = options.tempDir ?? tmpdir();
   const list = options.list ?? listDirectory;
@@ -446,16 +469,21 @@ export function makeOwnerOnly(dir: string, options: OwnerOnlyOptions = {}): void
     refuse("a drive or share root is never a data dir");
   }
   const sys32 = system32(options.env ?? process.env) ?? refuse("SystemRoot is not set");
-  const sid = currentUserSid(run, sys32) ?? refuse("the user's SID is unreadable (whoami)");
-  const owner = ownerOf(dir, run, sys32) ?? refuse("its owner is unreadable (Get-Acl)");
+  const icacls = win32.join(sys32, "icacls.exe");
+  // Read-only and independent: all three at once (see the header), then checked in order.
+  const [userSid, dirOwner, before] = await Promise.all([
+    currentUserSid(run, sys32),
+    ownerOf(dir, run, sys32),
+    readDacl(dir, icacls, run, tempDir),
+  ]);
+  const sid = userSid ?? refuse("the user's SID is unreadable (whoami)");
+  const owner = dirOwner ?? refuse("its owner is unreadable (Get-Acl)");
   const ownOwner =
-    isTrustee(owner, sid) || (owner === ADMINISTRATORS_SID && isElevated(run, sys32));
+    isTrustee(owner, sid) || (owner === ADMINISTRATORS_SID && (await isElevated(run, sys32)));
   if (!ownOwner)
     refuse(
       `it is owned by another account (${owner}); take ownership as this user, then start again`,
     );
-  const icacls = win32.join(sys32, "icacls.exe");
-  const before = readDacl(dir, icacls, run, tempDir);
   if (before !== undefined && isOwnerOnlyDacl(before, sid)) return;
 
   const leftovers = leftoversOf(before, sid);
@@ -470,10 +498,10 @@ export function makeOwnerOnly(dir: string, options: OwnerOnlyOptions = {}): void
       ? [[win32.join(dir, "*"), "/reset", "/t", "/q"]]
       : [];
   for (const args of resets) {
-    if (run(icacls, args).status !== 0)
+    if ((await run(icacls, args)).status !== 0)
       refuse("icacls could not reset the access lists of the entries inside it");
   }
-  const applied = run(icacls, [
+  const applied = await run(icacls, [
     dir,
     "/inheritance:r",
     "/grant:r",
@@ -487,10 +515,11 @@ export function makeOwnerOnly(dir: string, options: OwnerOnlyOptions = {}): void
     ...(leftovers.ownDenies.length > 0 ? [["/remove:d", leftovers.ownDenies] as const] : []),
   ];
   for (const [verb, sids] of removals) {
-    if (run(icacls, [dir, verb, ...sids.map((s) => `*${s}`), "/q"]).status !== 0)
+    if ((await run(icacls, [dir, verb, ...sids.map((s) => `*${s}`), "/q"])).status !== 0)
       refuse(`icacls could not remove the entries of ${sids.join(", ")}`);
   }
-  const after = readDacl(dir, icacls, run, tempDir) ?? refuse("its access list is unreadable");
+  const after =
+    (await readDacl(dir, icacls, run, tempDir)) ?? refuse("its access list is unreadable");
   const problems = daclProblems(after, sid);
   if (problems.length > 0)
     refuse(`its access list is still not private after the change: ${problems.join("; ")}`);

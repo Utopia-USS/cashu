@@ -47,16 +47,17 @@ export function resolveReal(path: string, platform: NodeJS.Platform = process.pl
     tail.unshift(basename(head));
     head = parent;
   }
-  return join(realPrefix(head, platform), ...tail);
+  return join(existingRealPath(head, platform), ...tail);
 }
 
 /**
- * The real path of an existing `path`. Windows uses the native realpath: the letter case stored on
- * disk and long names instead of 8.3 short ones, the form the keyring's private-dir checks and the
- * bundle identity compare, so every process derives one data dir id (`hostRunPaths`) from any spelling
- * of the same directory. macOS and Linux keep the JS realpath (the given letter case).
+ * The real path of an existing `path` (throws when it does not exist). Windows uses the native
+ * realpath: the letter case stored on disk and long names instead of 8.3 short ones, the form the
+ * keyring's private-dir checks and the bundle identity compare, so every process derives one data dir
+ * id (`hostRunPaths`) and one vault keychain service from any spelling of the same directory. macOS
+ * and Linux keep the JS realpath (the given letter case). `platform` as in `resolveReal`.
  */
-const realPrefix = (path: string, platform: NodeJS.Platform) =>
+export const existingRealPath = (path: string, platform: NodeJS.Platform = process.platform) =>
   platform === "win32" ? realpathSync.native(path) : realpathSync(path);
 
 type PathFlavor = Pick<typeof nodePath, "relative" | "sep" | "isAbsolute">;

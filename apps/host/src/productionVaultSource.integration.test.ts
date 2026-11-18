@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireHostLock, hostRunPaths, resolveReal } from "@cashu/node-host";
 import { createTestKeyStore, type OsKeyringPort } from "@cashu/node-host/testing";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import { crypto } from "@cashu/sync";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "./host.js";
@@ -22,7 +23,7 @@ import { nativeVaultFixture } from "./testing/nativeVaultFixture.js";
 
 const roots: string[] = [];
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) removeTempDir(root);
 });
 
 it("opens an enrolled encrypted vault through the sealed-file test KeyStore, appends and reopens", async () => {

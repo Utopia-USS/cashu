@@ -133,7 +133,7 @@ export async function startHost(options: StartHostOptions): Promise<RunningHost>
   assertSocketPath(paths);
   // Windows has no 0700: the data dir gets its owner-only DACL before the run dir, the token or
   // anything else is written into it, once per start (`windowsAcl.ts`; idempotent, fails closed).
-  if (!unixSocket) makeOwnerOnly(paths.dataDir);
+  if (!unixSocket) await makeOwnerOnly(paths.dataDir);
   ensurePrivateDir(paths.runDir);
   const lock = acquireHostLock(paths.lockPath);
   if (lock === undefined) throw new HostBusyError();

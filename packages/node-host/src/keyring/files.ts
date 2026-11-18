@@ -17,13 +17,13 @@ import {
   openSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   renameSync,
   unlinkSync,
   writeSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { crypto } from "@cashu/sync";
+import { existingRealPath } from "../guard.js";
 import {
   hasPrivateMode,
   O_NOFOLLOW,
@@ -101,7 +101,7 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
   constructor(dataDir: string, create: boolean, root: PrivateBlobRoot = "vault-secrets") {
     let canonical: string;
     try {
-      canonical = realpathSync(dataDir);
+      canonical = existingRealPath(dataDir);
     } catch {
       failure();
     }
@@ -115,7 +115,7 @@ export class PrivateBlobFiles implements crypto.BlobFiles {
   #checkRoot(create = false): boolean {
     let canonical: string;
     try {
-      canonical = realpathSync(this.#dataDir);
+      canonical = existingRealPath(this.#dataDir);
     } catch {
       failure();
     }

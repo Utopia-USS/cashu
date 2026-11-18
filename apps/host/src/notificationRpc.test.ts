@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,6 +12,7 @@ import {
 import { connectHost, resolveReal } from "@cashu/node-host";
 import type { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { createTestKeyStore, type OsKeyringPort } from "@cashu/node-host/testing";
+import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import { afterEach, expect, it } from "vitest";
 import { startLocalHost } from "./host.js";
 import { privateNotificationIntents } from "./notifications/intentLedger.js";
@@ -21,7 +22,7 @@ import { cleanup, tempDir } from "./testing/harness.js";
 const roots: string[] = [];
 afterEach(() => {
   cleanup();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) removeTempDir(root);
 });
 
 it("resolves the exact genuinely created native vault after host restart and consumes once", async () => {

@@ -118,7 +118,7 @@ function fakeWindows(options: {
   const calls: Call[] = [];
   const listed: string[] = [];
   let dacl = options.dacl;
-  const run: AclCommandRunner = (file, args) => {
+  const run: AclCommandRunner = async (file, args) => {
     calls.push({ file, args: [...args] });
     if (file === WHOAMI && args[0] === "/groups")
       return options.groups ?? { status: 0, stdout: groups(8192) };
@@ -165,9 +165,9 @@ const on = (win: ReturnType<typeof fakeWindows>, temp = tempDir()) => ({
   tempDir: temp,
 });
 
-const failure = (fn: () => void) => {
+const failure = async (fn: () => Promise<void>) => {
   try {
-    fn();
+    await fn();
   } catch (error) {
     return error instanceof HostPathError ? error.message : `other: ${String(error)}`;
   }
@@ -203,18 +203,35 @@ const TREE: Readonly<Record<string, readonly AclDirEntry[]>> = {
 };
 
 describe("owner-only data dir DACL", () => {
-  it("leaves a DACL that is already owner-only alone (no rewrite, no walk on later starts)", () => {
+  it("leaves a DACL that is already owner-only alone (no rewrite, no walk on later starts)", async () => {
     const temp = tempDir();
     const win = fakeWindows({ dacl: `D:PAI(A;CIOI;FA;;;${SID})(A;OICI;FA;;;SY)`, below: TREE });
-    makeOwnerOnly(DIR, on(win, temp));
+    await makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL, saveCall(temp)]);
     expect(win.listed).toEqual([]);
   });
 
-  it("protects a fresh, inheriting dir for the user and SYSTEM, by absolute tool paths", () => {
+  it("runs the SID, owner and DACL reads at once, so a start waits only for the slowest", async () => {
+    const temp = tempDir();
+    const win = fakeWindows({ dacl: OWNER_ONLY });
+    let inFlight = 0;
+    let most = 0;
+    const run: AclCommandRunner = async (file, args) => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return win.run(file, args);
+    };
+    await makeOwnerOnly(DIR, { ...on(win, temp), run });
+    expect(most).toBe(3);
+    expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL, saveCall(temp)]);
+  });
+
+  it("protects a fresh, inheriting dir for the user and SYSTEM, by absolute tool paths", async () => {
     const temp = tempDir();
     const win = fakeWindows({ dacl: INHERITED });
-    makeOwnerOnly(DIR, on(win, temp));
+    await makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([
       WHOAMI_CALL,
       OWNER_CALL,
@@ -227,10 +244,10 @@ describe("owner-only data dir DACL", () => {
     expect(readdirSync(temp)).toEqual([]);
   });
 
-  it("resets the entries below to inherit before it narrows the dir (one recursive reset)", () => {
+  it("resets the entries below to inherit before it narrows the dir (one recursive reset)", async () => {
     const temp = tempDir();
     const win = fakeWindows({ dacl: INHERITED, below: TREE });
-    makeOwnerOnly(DIR, on(win, temp));
+    await makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([
       WHOAMI_CALL,
       OWNER_CALL,
@@ -242,7 +259,7 @@ describe("owner-only data dir DACL", () => {
     expect(win.listed).toEqual([DIR, "C:\\cashu\\run"]);
   });
 
-  it("never resets through a link: with one below, each other entry is reset on its own", () => {
+  it("never resets through a link: with one below, each other entry is reset on its own", async () => {
     const temp = tempDir();
     const win = fakeWindows({
       dacl: INHERITED,
@@ -255,7 +272,7 @@ describe("owner-only data dir DACL", () => {
         "C:\\cashu\\elsewhere": [{ name: "not-ours", kind: "file" }],
       },
     });
-    makeOwnerOnly(DIR, on(win, temp));
+    await makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([
       WHOAMI_CALL,
       OWNER_CALL,
@@ -268,12 +285,12 @@ describe("owner-only data dir DACL", () => {
     expect(win.listed).toEqual([DIR, "C:\\cashu\\run"]);
   });
 
-  it("removes an explicit Administrators entry that /grant:r leaves (the CI runner's %TEMP%)", () => {
+  it("removes an explicit Administrators entry that /grant:r leaves (the CI runner's %TEMP%)", async () => {
     const temp = tempDir();
     const win = fakeWindows({
       dacl: `D:AI(A;OICI;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIID;FA;;;${SID})`,
     });
-    makeOwnerOnly(DIR, on(win, temp));
+    await makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([
       WHOAMI_CALL,
       OWNER_CALL,
@@ -285,10 +302,10 @@ describe("owner-only data dir DACL", () => {
     expect(win.dacl()).toBe(OWNER_ONLY);
   });
 
-  it("removes deny entries: another account's with all its entries, the user's own as denies", () => {
+  it("removes deny entries: another account's with all its entries, the user's own as denies", async () => {
     const temp = tempDir();
     const win = fakeWindows({ dacl: `${OWNER_ONLY}(D;OICI;FA;;;WD)(D;;WD;;;${SID})` });
-    makeOwnerOnly(DIR, on(win, temp));
+    await makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([
       WHOAMI_CALL,
       OWNER_CALL,
@@ -301,13 +318,13 @@ describe("owner-only data dir DACL", () => {
     expect(win.dacl()).toBe(OWNER_ONLY);
   });
 
-  it("names explicit entries given by SDDL aliases by their SIDs; inherited ones go with /inheritance:r", () => {
+  it("names explicit entries given by SDDL aliases by their SIDs; inherited ones go with /inheritance:r", async () => {
     const temp = tempDir();
     const logon = "S-1-5-5-0-4242";
     const win = fakeWindows({
       dacl: `D:AI(A;OICIIO;FA;;;CO)(A;;0x1301bf;;;OW)(A;OICI;0x1200a9;;;BU)(A;;FA;;;${logon})(A;OICIID;FA;;;AU)(A;OICIID;FA;;;SY)`,
     });
-    makeOwnerOnly(DIR, on(win, temp));
+    await makeOwnerOnly(DIR, on(win, temp));
     expect(win.calls).toEqual([
       WHOAMI_CALL,
       OWNER_CALL,
@@ -319,90 +336,94 @@ describe("owner-only data dir DACL", () => {
     expect(win.dacl()).toBe(OWNER_ONLY);
   });
 
-  it("refuses before any change when another account's entry has no SID to name it by", () => {
+  it("refuses before any change when another account's entry has no SID to name it by", async () => {
     const temp = tempDir();
     const win = fakeWindows({
       dacl: `D:AI(A;OICI;FA;;;DA)(A;OICI;FA;;;LA)(A;OICIID;FA;;;SY)`,
       below: TREE,
     });
-    expect(failure(() => makeOwnerOnly(DIR, on(win, temp)))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, on(win, temp)))).toBe(
       "C:\\cashu could not be made private to this user: other accounts hold entries icacls cannot be given by SID (DA, LA); remove them, then start again",
     );
     expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL, saveCall(temp)]);
   });
 
-  it("fails closed naming every SID left over after the change", () => {
+  it("fails closed naming every SID left over after the change", async () => {
     const win = fakeWindows({
       dacl: `D:AI(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;S-1-5-21-9-9-9-1002)(D;;FA;;;S-1-5-18)`,
       stubborn: true,
     });
-    expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
       "C:\\cashu could not be made private to this user: its access list is still not private after the change: other accounts keep access (S-1-5-32-544, S-1-5-21-9-9-9-1002); deny entries remain (S-1-5-18)",
     );
   });
 
-  it("fails closed, naming the dir, when icacls cannot reset, set or remove", () => {
+  it("fails closed, naming the dir, when icacls cannot reset, set or remove", async () => {
     const reset = fakeWindows({ dacl: INHERITED, below: TREE, resetStatus: 5 });
-    expect(failure(() => makeOwnerOnly(DIR, on(reset)))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, on(reset)))).toBe(
       "C:\\cashu could not be made private to this user: icacls could not reset the access lists of the entries inside it",
     );
     // The dir stays as it was, so the next start runs the whole step again.
     expect(reset.calls.at(-1)).toEqual(RESET_ALL_CALL);
     expect(reset.dacl()).toBe(INHERITED);
     const grant = fakeWindows({ dacl: INHERITED, grantStatus: 5 });
-    expect(failure(() => makeOwnerOnly(DIR, on(grant)))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, on(grant)))).toBe(
       "C:\\cashu could not be made private to this user: icacls could not set its access list",
     );
     const remove = fakeWindows({ dacl: `D:AI(A;OICI;FA;;;BA)`, removeStatus: 5 });
-    expect(failure(() => makeOwnerOnly(DIR, on(remove)))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, on(remove)))).toBe(
       "C:\\cashu could not be made private to this user: icacls could not remove the entries of S-1-5-32-544",
     );
   });
 
-  it("fails closed before any change when the entries below cannot be listed", () => {
+  it("fails closed before any change when the entries below cannot be listed", async () => {
     const win = fakeWindows({ dacl: INHERITED });
     const list = () => {
       throw new Error("EACCES");
     };
-    expect(failure(() => makeOwnerOnly(DIR, { ...on(win), list }))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, { ...on(win), list }))).toBe(
       "C:\\cashu could not be made private to this user: the entries inside it could not be listed",
     );
     expect(win.calls.some((call) => call.args[1] !== "/save" && call.file === ICACLS)).toBe(false);
   });
 
-  it("falls back to windir when SystemRoot is unset", () => {
+  it("falls back to windir when SystemRoot is unset", async () => {
     const win = fakeWindows({ dacl: OWNER_ONLY });
-    makeOwnerOnly(DIR, { ...on(win), env: { windir: "C:\\Windows" } });
+    await makeOwnerOnly(DIR, { ...on(win), env: { windir: "C:\\Windows" } });
     expect(win.calls[0]).toEqual(WHOAMI_CALL);
   });
 
-  it("fails closed without a SID, a SystemRoot, or for a drive or share root", () => {
+  it("fails closed without a SID, a SystemRoot, or for a drive or share root", async () => {
     const noSid = fakeWindows({ dacl: INHERITED, whoami: { status: 1, stdout: "" } });
-    expect(failure(() => makeOwnerOnly(DIR, on(noSid)))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, on(noSid)))).toBe(
       "C:\\cashu could not be made private to this user: the user's SID is unreadable (whoami)",
     );
     const noRoot = fakeWindows({ dacl: INHERITED });
-    expect(failure(() => makeOwnerOnly(DIR, { ...on(noRoot), env: {} }))).toBe(
+    expect(await failure(() => makeOwnerOnly(DIR, { ...on(noRoot), env: {} }))).toBe(
       "C:\\cashu could not be made private to this user: SystemRoot is not set",
     );
     expect(noRoot.calls).toEqual([]);
     for (const root of ["C:\\", "\\\\server\\share\\", "relative\\dir"]) {
       const win = fakeWindows({ dacl: INHERITED });
-      expect(failure(() => makeOwnerOnly(root, on(win)))).toBe(
+      expect(await failure(() => makeOwnerOnly(root, on(win)))).toBe(
         `${root} could not be made private to this user: a drive or share root is never a data dir`,
       );
       expect(win.calls).toEqual([]);
     }
   });
 
-  it("refuses a dir another account owns before touching its DACL, even an owner-only one", () => {
+  it("refuses a dir another account owns before touching its DACL, even an owner-only one", async () => {
     const other = "S-1-5-21-1111111111-2222222222-3333333333-1002";
     for (const dacl of [INHERITED, OWNER_ONLY]) {
-      const win = fakeWindows({ dacl, owner: other });
-      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
+      const temp = tempDir();
+      const win = fakeWindows({ dacl, owner: other, below: TREE });
+      expect(await failure(() => makeOwnerOnly(DIR, on(win, temp)))).toBe(
         `C:\\cashu could not be made private to this user: it is owned by another account (${other}); take ownership as this user, then start again`,
       );
-      expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL]);
+      // The three reads ran (at once); nothing was listed, reset, granted or removed.
+      expect(win.calls).toEqual([WHOAMI_CALL, OWNER_CALL, saveCall(temp)]);
+      expect(win.listed).toEqual([]);
+      expect(win.dacl()).toBe(dacl);
     }
     // SYSTEM, and the built-in Administrator (LA) for any other user, are other accounts too.
     for (const [owner, shown] of [
@@ -410,45 +431,45 @@ describe("owner-only data dir DACL", () => {
       ["LA", "LA"],
     ] as const) {
       const win = fakeWindows({ dacl: OWNER_ONLY, owner });
-      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toContain(
+      expect(await failure(() => makeOwnerOnly(DIR, on(win)))).toContain(
         `it is owned by another account (${shown})`,
       );
     }
   });
 
-  it("accepts the Administrators group as owner only while elevated", () => {
+  it("accepts the Administrators group as owner only while elevated", async () => {
     const temp = tempDir();
     const elevated = fakeWindows({
       dacl: OWNER_ONLY,
       owner: "BA",
       groups: { status: 0, stdout: groups(12288) },
     });
-    makeOwnerOnly(DIR, on(elevated, temp));
-    expect(elevated.calls).toEqual([WHOAMI_CALL, OWNER_CALL, GROUPS_CALL, saveCall(temp)]);
+    await makeOwnerOnly(DIR, on(elevated, temp));
+    expect(elevated.calls).toEqual([WHOAMI_CALL, OWNER_CALL, saveCall(temp), GROUPS_CALL]);
     for (const answer of [
       { status: 0, stdout: groups(8192) },
       { status: 0, stdout: "" },
       { status: 1, stdout: groups(12288) },
     ]) {
       const win = fakeWindows({ dacl: OWNER_ONLY, owner: "BA", groups: answer });
-      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
+      expect(await failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
         "C:\\cashu could not be made private to this user: it is owned by another account (S-1-5-32-544); take ownership as this user, then start again",
       );
     }
   });
 
-  it("accepts the built-in Administrator's own dir (owner LA in SDDL)", () => {
+  it("accepts the built-in Administrator's own dir (owner LA in SDDL)", async () => {
     const admin = "S-1-5-21-1-2-3-500";
     const win = fakeWindows({
       dacl: "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;LA)",
       owner: "LA",
       whoami: { status: 0, stdout: `"desktop-1\\administrator","${admin}"` },
     });
-    makeOwnerOnly(DIR, on(win));
+    await makeOwnerOnly(DIR, on(win));
     expect(win.calls).toHaveLength(3);
   });
 
-  it("fails closed when the owner cannot be read", () => {
+  it("fails closed when the owner cannot be read", async () => {
     for (const powershell of [
       { status: 1, stdout: "" },
       { status: 0, stdout: "" },
@@ -456,16 +477,16 @@ describe("owner-only data dir DACL", () => {
       { status: 0, stdout: "Get-Acl : Zugriff verweigert" },
     ]) {
       const win = fakeWindows({ dacl: OWNER_ONLY, powershell });
-      expect(failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
+      expect(await failure(() => makeOwnerOnly(DIR, on(win)))).toBe(
         "C:\\cashu could not be made private to this user: its owner is unreadable (Get-Acl)",
       );
     }
   });
 
-  it("quotes the dir for PowerShell, typographic single quotes included", () => {
+  it("quotes the dir for PowerShell, typographic single quotes included", async () => {
     const dir = "C:\\Users\\O'Brien\\it\u2019s $(calc) `x` [1]\\cashu";
     const win = fakeWindows({ dacl: OWNER_ONLY });
-    makeOwnerOnly(dir, on(win));
+    await makeOwnerOnly(dir, on(win));
     expect(win.calls[1]).toEqual({
       file: POWERSHELL,
       args: [
@@ -480,9 +501,9 @@ describe("owner-only data dir DACL", () => {
     );
   });
 
-  it("fails closed when the DACL cannot be read back", () => {
+  it("fails closed when the DACL cannot be read back", async () => {
     let saves = 0;
-    const run: AclCommandRunner = (file, args) => {
+    const run: AclCommandRunner = async (file, args) => {
       if (file === WHOAMI) return { status: 0, stdout: `"d\\a","${SID}"` };
       if (file === POWERSHELL) return { status: 0, stdout: `O:${SID}G:${SID}${INHERITED}` };
       if (args[1] === "/save") {
@@ -493,7 +514,9 @@ describe("owner-only data dir DACL", () => {
       return { status: 0, stdout: "" };
     };
     expect(
-      failure(() => makeOwnerOnly(DIR, { env: ENV, run, list: () => [], tempDir: tempDir() })),
+      await failure(() =>
+        makeOwnerOnly(DIR, { env: ENV, run, list: () => [], tempDir: tempDir() }),
+      ),
     ).toBe("C:\\cashu could not be made private to this user: its access list is unreadable");
   });
 });
