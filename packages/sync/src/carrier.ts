@@ -170,6 +170,15 @@ export interface HostYield {
   readonly sliceMs?: number;
 }
 
+/** One own batch an attempt journal expects in the log: its exact event ids and batch digest. */
+export interface OwnBatchExpectation {
+  readonly eids: readonly string[];
+  readonly digest: string;
+}
+
+/** Whether the authenticated own log holds that exact batch as one frame. */
+export type OwnBatchVerdict = "committed" | "absent" | "unknown";
+
 /** `recoverLocal` progress: frames opened and verified so far of those it has to verify. */
 export interface RecoveryProgress {
   readonly done: number;
@@ -575,10 +584,12 @@ export interface SyncEngine {
   /** Stamp, append to the own segment as one atomic batch (frame or frame group), apply locally. */
   write(events: readonly UnstampedEvent[], options?: WriteOptions): Promise<WriteResult>;
   /** Authenticated exact own one-frame batch proof for a private prepared-attempt journal. */
-  inspectOwnBatch(expected: {
-    readonly eids: readonly string[];
-    readonly digest: string;
-  }): Promise<"committed" | "absent" | "unknown">;
+  inspectOwnBatch(expected: OwnBatchExpectation): Promise<OwnBatchVerdict>;
+  /**
+   * `inspectOwnBatch` for many batches at once, one verdict each in the same order: one local recovery
+   * and one pass over the own log for all of them (a host proves every journalled attempt at open).
+   */
+  inspectOwnBatches(expected: readonly OwnBatchExpectation[]): Promise<OwnBatchVerdict[]>;
   /** Audit and replay the held local log without network access or a destructive view reset. */
   recoverLocal(): Promise<LocalRecoveryResult>;
   /** Push own bytes, pull and verify foreign frames, apply everything new. */

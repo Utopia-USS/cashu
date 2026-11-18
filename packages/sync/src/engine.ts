@@ -50,6 +50,8 @@ import type {
   LeaseTransport,
   LocalRecoveryResult,
   LocalStreamRecovery,
+  OwnBatchExpectation,
+  OwnBatchVerdict,
   PullHistory,
   PullStatus,
   RecoveryCheckpointOptions,
@@ -1358,36 +1360,47 @@ class OwnLogEngine implements SyncEngine {
     }
   }
 
-  inspectOwnBatch(expected: {
-    readonly eids: readonly string[];
-    readonly digest: string;
-  }): Promise<"committed" | "absent" | "unknown"> {
+  inspectOwnBatch(expected: OwnBatchExpectation): Promise<OwnBatchVerdict> {
+    return this.inspectOwnBatches([expected]).then(([verdict]) => verdict ?? "unknown");
+  }
+
+  inspectOwnBatches(expected: readonly OwnBatchExpectation[]): Promise<OwnBatchVerdict[]> {
     return this.#run(async () => {
-      if (
-        expected.eids.length === 0 ||
-        new Set(expected.eids).size !== expected.eids.length ||
-        !/^[0-9a-f]{64}$/.test(expected.digest)
-      ) {
-        return "unknown";
+      const unknown = (): OwnBatchVerdict[] => expected.map(() => "unknown");
+      const checks = expected.map((e) => ({
+        eids: e.eids,
+        digest: e.digest,
+        valid:
+          e.eids.length > 0 &&
+          new Set(e.eids).size === e.eids.length &&
+          /^[0-9a-f]{64}$/.test(e.digest),
+        sawAny: false,
+        matched: false,
+        failed: false,
+      }));
+      if (!checks.some((c) => c.valid)) return unknown();
+      // Each event id names the checks it belongs to, so one pass serves every expected batch.
+      const byEid = new Map<string, (typeof checks)[number][]>();
+      for (const check of checks) {
+        if (!check.valid) continue;
+        for (const eid of check.eids) byEid.set(eid, [...(byEid.get(eid) ?? []), check]);
       }
       const recovered = await this.#recoverLocalInQueue();
-      if (!recovered.complete) return "unknown";
+      if (!recovered.complete) return unknown();
       const ownReport = recovered.streams.find((s) => s.device === this.device);
-      if (ownReport && ownReport.disposition !== "authenticated_accepted") return "unknown";
+      if (ownReport && ownReport.disposition !== "authenticated_accepted") return unknown();
       const applied = (await this.#sink.cursors()).get(this.device) ?? START_CURSOR;
       const own = [...(await this.#local.list(this.vault))]
         .filter((s) => s.device === this.device && s.seg >= 1)
         .sort(bySegment);
       let prev = this.#codec.genesis(this.vault, this.device, 1);
-      let sawAny = false;
-      let matched = false;
       let position = 1;
       for (const segment of own) {
-        if (segment.seg !== position) return "unknown";
+        if (segment.seg !== position) return unknown();
         const bytes = await this.#local.read(this.vault, this.device, segment.seg, 0);
-        if (bytes.length !== segment.size) return "unknown";
+        if (bytes.length !== segment.size) return unknown();
         const scan = scanFrames(bytes, 0);
-        if (scan.tail !== "none") return "unknown";
+        if (scan.tail !== "none") return unknown();
         for (const frame of scan.frames) {
           const at = {
             vault: this.vault,
@@ -1399,33 +1412,52 @@ class OwnLogEngine implements SyncEngine {
           try {
             opened = await this.#codec.open(frame.sealed, at, prev);
           } catch {
-            return "unknown";
+            return unknown();
           }
           prev = opened.head.chain;
           const decoded = decodePayload(opened.plain, this.device);
           if (!decoded.ok || !this.#gate.authenticate(opened.head, decoded.payload.events).ok)
-            return "unknown";
+            return unknown();
           const events = decoded.payload.events;
-          if (!events.some((e) => expected.eids.includes(e.i))) continue;
-          sawAny = true;
+          const touched = new Set(events.flatMap((e) => byEid.get(e.i) ?? []));
+          if (touched.size === 0) continue;
           const end = { seg: segment.seg, offset: frame.end };
-          if (decoded.payload.part || comparePositions(end, applied) > 0) return "unknown";
-          if (
-            events.length !== expected.eids.length ||
-            events.some((e, i) => e.i !== expected.eids[i])
-          )
-            return "unknown";
-          try {
-            if (ownBatchDigest(events) !== expected.digest) return "unknown";
-          } catch {
-            return "unknown";
+          let digest: string | undefined;
+          for (const check of touched) {
+            if (check.failed) continue;
+            check.sawAny = true;
+            if (
+              check.matched ||
+              decoded.payload.part ||
+              comparePositions(end, applied) > 0 ||
+              events.length !== check.eids.length ||
+              events.some((e, i) => e.i !== check.eids[i])
+            ) {
+              check.failed = true;
+              continue;
+            }
+            try {
+              digest ??= ownBatchDigest(events);
+            } catch {
+              check.failed = true;
+              continue;
+            }
+            if (digest !== check.digest) check.failed = true;
+            else check.matched = true;
           }
-          if (matched) return "unknown";
-          matched = true;
         }
         position += 1;
       }
-      return matched ? "committed" : sawAny ? "unknown" : "absent";
+      return checks.map(
+        (c): OwnBatchVerdict =>
+          !c.valid || c.failed
+            ? "unknown"
+            : c.matched
+              ? "committed"
+              : c.sawAny
+                ? "unknown"
+                : "absent",
+      );
     });
   }
 

@@ -332,6 +332,31 @@ describe("SyncEngine", () => {
     expect(await e.inspectOwnBatch({ eids: ["different"], digest: proof.digest })).toBe("absent");
   });
 
+  it("proves many own batches in one pass with the same verdicts as one at a time", async () => {
+    const e = await engine(A, new MemoryTransport());
+    const first = [ev("many-1"), ev("many-2")];
+    const second = [ev("many-3")];
+    const proofOf = (events: ReturnType<typeof ev>[]) => ({
+      eids: events.map((item) => item.i),
+      digest: ownBatchDigest(events),
+    });
+    await e.write(first);
+    await e.write(second);
+    const asked = [
+      proofOf(first),
+      { eids: ["never-written"], digest: proofOf(first).digest },
+      { ...proofOf(second), digest: "0".repeat(64) },
+      proofOf(second),
+      { eids: [], digest: proofOf(second).digest },
+      { eids: ["many-1"], digest: ownBatchDigest([ev("many-1")]) },
+    ];
+    const expected = ["committed", "absent", "unknown", "committed", "unknown", "unknown"];
+    expect(await e.inspectOwnBatches(asked)).toEqual(expected);
+    for (const [i, proof] of asked.entries())
+      expect(await e.inspectOwnBatch(proof)).toBe(expected[i]);
+    expect(await e.inspectOwnBatches([])).toEqual([]);
+  });
+
   it("refuses same-EID wrong payload, split frames, foreign writer, and incomplete own history as batch proof", async () => {
     const remote = new MemoryTransport();
     const aLocal = new MemoryTransport();
