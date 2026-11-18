@@ -265,42 +265,45 @@ async function phone(paired: Paired, qr: string, authStore = new MemoryAuthStore
       const keyStore = new InMemoryKeyStore();
       await crypto.saveDeviceIdentity(keyStore, identity);
       await crypto.saveKeyring(keyStore, welcome.ring);
-      const provenance = SqlProvenanceStore.open(
-        openNodeSqlite(join(fixture.home, `phone-${device}.db`)),
-        welcome.ring,
-        "new",
-      );
-      devices.recordPairingProvenance(provenance, welcome.ring, welcome.inviter, now());
-      // The inviter's chain from the welcome's device.added events, this phone's certificate last.
-      const chain = welcome.registryEvents.flatMap((event) =>
-        event.type === devices.DEVICE_ADDED && typeof event.data.certificate === "string"
-          ? [Buffer.from(event.data.certificate, "hex")]
-          : [],
-      );
-      const candidate = await loadDeviceAuthority({
-        vaultId: vault,
-        deviceId: device,
-        keyStore,
-        sodium,
-        provenance,
-        clock: now,
-        bootstrapCertificates: [...chain, welcome.certificate],
-      });
-      candidate.devices.ingest(welcome.registryEvents);
-      const engine = await createSyncEngine({
-        vault,
-        device,
-        local: new MemoryTransport(),
-        remotes: [new FirestoreTransport({ rest, uid: () => auth.uid(), now })],
-        codec: createOwnLogCodec({ sodium, ring: candidate.ring, signer: candidate.identity }),
-        gate: candidate.gate,
-        sink: new MemorySink(),
-        clockStore: new MemoryClockStore(),
-        physicalClock: { now },
-        gossipEid: () => mintUlid(now()),
-      });
-      const pass = await engine.sync();
-      if (pass.offlineRemotes > 0) throw new Error("phone pass offline");
+      // Closed after the pass: Windows cannot delete the fixture dir while this file is open.
+      const db = openNodeSqlite(join(fixture.home, `phone-${device}.db`));
+      try {
+        const provenance = SqlProvenanceStore.open(db, welcome.ring, "new");
+        devices.recordPairingProvenance(provenance, welcome.ring, welcome.inviter, now());
+        // The inviter's chain from the welcome's device.added events, this phone's certificate last.
+        const chain = welcome.registryEvents.flatMap((event) =>
+          event.type === devices.DEVICE_ADDED && typeof event.data.certificate === "string"
+            ? [Buffer.from(event.data.certificate, "hex")]
+            : [],
+        );
+        const candidate = await loadDeviceAuthority({
+          vaultId: vault,
+          deviceId: device,
+          keyStore,
+          sodium,
+          provenance,
+          clock: now,
+          bootstrapCertificates: [...chain, welcome.certificate],
+        });
+        candidate.devices.ingest(welcome.registryEvents);
+        const engine = await createSyncEngine({
+          vault,
+          device,
+          local: new MemoryTransport(),
+          remotes: [new FirestoreTransport({ rest, uid: () => auth.uid(), now })],
+          codec: createOwnLogCodec({ sodium, ring: candidate.ring, signer: candidate.identity }),
+          gate: candidate.gate,
+          sink: new MemorySink(),
+          clockStore: new MemoryClockStore(),
+          physicalClock: { now },
+          gossipEid: () => mintUlid(now()),
+        });
+        const pass = await engine.sync();
+        if (pass.offlineRemotes > 0) throw new Error("phone pass offline");
+        await engine.close();
+      } finally {
+        db.close();
+      }
     },
     /** Claims the session and runs the protocol; `onSas` sees the six digits. */
     async run(onSas: (sas: string) => void) {

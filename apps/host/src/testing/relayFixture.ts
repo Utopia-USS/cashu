@@ -3,10 +3,10 @@
 // hosts of one synthetic vault against one fake, and a second native data dir for the synthetic peer
 // device of a `nativeVaultFixture` (its own keys, log copy, stores), so two hosts can converge through
 // one fake relay.
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { connectHost, type HostConnection } from "@cashu/node-host";
+import { connectHost, type HostConnection, resolveReal } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { builtinModules, renameProfile, Store, vaultSalt } from "@cashu/store";
 import { DeviceStore, type RelaySetting, setRelaySetting } from "@cashu/store/device";
@@ -334,7 +334,9 @@ export async function peerDataDir(fixture: NativeVaultFixture): Promise<PeerData
   if (creator === undefined) throw new Error("the fixture has no vault");
   const ring = await crypto.loadKeyring(provider.keyStore, provider.sodium, fixture.vaultId);
   if (ring === null) throw new Error("synthetic keyring absent");
-  const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-native-peer-")));
+  // The host's canonical spelling (resolveReal: on Windows long names, not 8.3 ones), as the
+  // creator's fixture: the host refuses inventory roots spelled another way.
+  const dataDir = resolveReal(mkdtempSync(join(tmpdir(), "cashu-native-peer-")));
   const home = join(dataDir, "test-home");
   mkdirSync(home);
   const vaultRoot = join(dataDir, "vaults", fixture.vaultId);

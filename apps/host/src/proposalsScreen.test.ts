@@ -231,49 +231,54 @@ it("surfaces the strategy refusal code of a failed preparation, not preparation_
     ...testHostOptions(tempDir()),
     launcher: false,
   });
-  const vault = [...host.stores.vaults.values()][0];
-  if (!vault) throw new Error("missing synthetic vault");
-  let thrown: Error = new Error("synthetic");
-  const provider: ProposalApprovalProvider = {
-    bind: (id) =>
-      id === vault.id
-        ? {
-            generation: "synthetic-current",
-            dailyLock: { tryAcquire: () => () => {} },
-            isCurrent: () => true,
-            isHolder: () => true,
-            async prepare() {
-              throw thrown;
-            },
-          }
-        : null,
-  };
-  const action = proposalScreen(undefined, provider);
-  const created = await vault.queue.run(() =>
-    runCommand(
-      vault.store,
-      vault.writer,
-      createProposal,
-      {
-        kind: "custom_rule",
-        summary: "Synthetic rule proposal",
-        reason: null,
-        payload: { rule: { id: "synthetic" } },
-        source: "synthetic",
-      },
-      vault.env,
-    ),
-  );
-  if (!created.ok) throw new Error(created.reason);
-  const approve = () =>
-    action.run(host.stores, vault.id, { gid: created.value.proposalGid, decision: "approve" });
-  for (const code of ["rule_exists", "base_changed", "strategy_missing", "rule_invalid"]) {
-    thrown = new StrategyProposalError(code, "synthetic refusal");
-    expect(await approve()).toEqual({ status: "refused", reason: code, preparation: "none" });
+  // Stopped at the end: Windows cannot delete the temp dir while the host holds its files open.
+  try {
+    const vault = [...host.stores.vaults.values()][0];
+    if (!vault) throw new Error("missing synthetic vault");
+    let thrown: Error = new Error("synthetic");
+    const provider: ProposalApprovalProvider = {
+      bind: (id) =>
+        id === vault.id
+          ? {
+              generation: "synthetic-current",
+              dailyLock: { tryAcquire: () => () => {} },
+              isCurrent: () => true,
+              isHolder: () => true,
+              async prepare() {
+                throw thrown;
+              },
+            }
+          : null,
+    };
+    const action = proposalScreen(undefined, provider);
+    const created = await vault.queue.run(() =>
+      runCommand(
+        vault.store,
+        vault.writer,
+        createProposal,
+        {
+          kind: "custom_rule",
+          summary: "Synthetic rule proposal",
+          reason: null,
+          payload: { rule: { id: "synthetic" } },
+          source: "synthetic",
+        },
+        vault.env,
+      ),
+    );
+    if (!created.ok) throw new Error(created.reason);
+    const approve = () =>
+      action.run(host.stores, vault.id, { gid: created.value.proposalGid, decision: "approve" });
+    for (const code of ["rule_exists", "base_changed", "strategy_missing", "rule_invalid"]) {
+      thrown = new StrategyProposalError(code, "synthetic refusal");
+      expect(await approve()).toEqual({ status: "refused", reason: code, preparation: "none" });
+    }
+    // Internal failures keep the generic reason.
+    thrown = new StrategyProposalError("unavailable", "synthetic refusal");
+    expect(await approve()).toMatchObject({ status: "refused", reason: "preparation_failed" });
+    thrown = new Error("synthetic crash");
+    expect(await approve()).toMatchObject({ status: "refused", reason: "preparation_failed" });
+  } finally {
+    await host.stop();
   }
-  // Internal failures keep the generic reason.
-  thrown = new StrategyProposalError("unavailable", "synthetic refusal");
-  expect(await approve()).toMatchObject({ status: "refused", reason: "preparation_failed" });
-  thrown = new Error("synthetic crash");
-  expect(await approve()).toMatchObject({ status: "refused", reason: "preparation_failed" });
 });

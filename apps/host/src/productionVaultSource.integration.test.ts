@@ -6,13 +6,12 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireHostLock, hostRunPaths } from "@cashu/node-host";
+import { acquireHostLock, hostRunPaths, resolveReal } from "@cashu/node-host";
 import { createTestKeyStore, type OsKeyringPort } from "@cashu/node-host/testing";
 import { crypto } from "@cashu/sync";
 import { afterEach, expect, it } from "vitest";
@@ -29,7 +28,8 @@ afterEach(() => {
 it("opens an enrolled encrypted vault through the sealed-file test KeyStore, appends and reopens", async () => {
   const original = await nativeVaultFixture();
   try {
-    const root = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "t44-test-")));
+    // The host's canonical spelling (resolveReal: on Windows long names, not 8.3 ones).
+    const root = resolveReal(mkdtempSync(join(tmpdir(), "t44-test-")));
     roots.push(root);
     const dataDir = join(root, "data");
     const home = join(root, "home");

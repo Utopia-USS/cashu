@@ -30,7 +30,7 @@ function commandIo(cwd: string): CommandIo {
     },
   };
 }
-it("refuses unsupported selection, later-file representation and abort before any append", async () => {
+it("refuses unsupported selection and abort before any append", async () => {
   const host = await startLocalHost({
     ...testHostOptions(tempDir()),
     launcher: false,
@@ -41,8 +41,6 @@ it("refuses unsupported selection, later-file representation and abort before an
     join(ROOT, "connectors/mbank-csv/fixtures/mbank-zestawienie.csv"),
     join(cwd, "in/a.csv"),
   );
-  // Native output is literal (6491e44): only control characters remain unrepresentable.
-  writeFileSync(join(cwd, "in/z\u0007.csv"), "bad\n");
   const io = commandIo(cwd);
   const deps = { stores: host.stores, now: Date.now };
   const unhandled = { kind: "unhandled" };
@@ -59,7 +57,6 @@ it("refuses unsupported selection, later-file representation and abort before an
       ["in/a.csv", "--unknown"],
     ])
       expect(await runImportCommand(false, args, io, { profile: "demo" }, deps)).toEqual(unhandled);
-    expect(await runImportCommand(true, ["in"], io, { profile: "demo" }, deps)).toEqual(unhandled);
     const controller = new AbortController();
     controller.abort();
     expect(
@@ -79,6 +76,37 @@ it("refuses unsupported selection, later-file representation and abort before an
     await host.stop();
   }
 });
+
+// NTFS forbids control characters in file names, so this file cannot exist on Windows.
+it.skipIf(process.platform === "win32")(
+  "refuses a directory whose later file name is unrepresentable before any append",
+  async () => {
+    const host = await startLocalHost({
+      ...testHostOptions(tempDir()),
+      launcher: false,
+    });
+    try {
+      const cwd = tempDir();
+      mkdirSync(join(cwd, "in"));
+      copyFileSync(
+        join(ROOT, "connectors/mbank-csv/fixtures/mbank-zestawienie.csv"),
+        join(cwd, "in/a.csv"),
+      );
+      // Native output is literal (6491e44): only control characters remain unrepresentable.
+      writeFileSync(join(cwd, "in/z\u0007.csv"), "bad\n");
+      const deps = { stores: host.stores, now: Date.now };
+      expect(
+        await runImportCommand(true, ["in"], commandIo(cwd), { profile: "demo" }, deps),
+      ).toEqual({ kind: "unhandled" });
+      const vault = [...host.stores.vaults.values()][0];
+      if (!vault) throw new Error("missing synthetic vault");
+      expect(budgetBook(vault.store.read.bind(vault.store)).transactions).toHaveLength(0);
+      expect(vault.store.read("SELECT * FROM import_batches")).toHaveLength(0);
+    } finally {
+      await host.stop();
+    }
+  },
+);
 
 it("executes root and budget aliases over the native host socket", async () => {
   const dir = tempDir();

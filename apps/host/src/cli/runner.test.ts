@@ -2,6 +2,7 @@
 // (native exit for every command), output notes in order, prompts answered by
 // the client (hidden flag passed on), stdin on demand, Ctrl-C (cancel -> 130), one exec per session,
 // and refusals of malformed requests.
+import { tmpdir } from "node:os";
 import { CLI_INTERRUPTED_EXIT, type CliExecParams, type HostFrame } from "@cashu/host-protocol";
 import { connectHost, type HostConnection } from "@cashu/node-host";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,10 +12,11 @@ import type { PortedCommand } from "./tree.js";
 
 afterEach(cleanup);
 
+// The cwd must be absolute for the host's platform (a drive path on Windows), so it is a real one.
 const params = (argv: string[], env: Record<string, string> = {}): CliExecParams => ({
   argv,
-  cwd: "/tmp",
-  paths: { home: "/tmp" },
+  cwd: tmpdir(),
+  paths: { home: tmpdir() },
   env,
   tty: { stdin: false, stdout: false, stderr: false },
 });

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { builtinRegistry } from "@cashu/domain/core";
 import type { CliExecParams, HostFrame } from "@cashu/host-protocol";
-import { acquireHostLock, connectHost, NodeFolderFs } from "@cashu/node-host";
+import { acquireHostLock, connectHost, NodeFolderFs, resolveReal } from "@cashu/node-host";
 import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import { removeTempDir } from "@cashu/node-host/testing/temp-dirs";
 import {
@@ -125,7 +125,9 @@ describe("native vault session", () => {
   });
 
   it("reopens one encrypted creator log and keeps the native profile stable", async () => {
-    const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "cashu-native-vault-test-")));
+    // The host canonicalizes its data dir (resolveReal: on Windows long names, not 8.3 ones) and
+    // refuses vault roots spelled another way, so this test spells it the same.
+    const dataDir = resolveReal(mkdtempSync(join(tmpdir(), "cashu-native-vault-test-")));
     roots.push(dataDir);
     const identity = crypto.createDeviceIdentity(sodium);
     const recovery = crypto.recoveryIdentity(sodium, crypto.createRecoveryKey(sodium).phrase);

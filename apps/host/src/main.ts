@@ -18,6 +18,7 @@ import {
   HostConnectError,
   HostStartError,
   RefusalError,
+  resolveReal,
   samePath,
 } from "@cashu/node-host";
 import {
@@ -135,7 +136,11 @@ function parse(argv: readonly string[], env: MainEnv["env"]): Args | string {
   }
   return {
     command,
-    dataDir,
+    // Windows: the canonical spelling (resolveReal: on-disk letter case, long names instead of 8.3
+    // ones), the one `hostRunPaths` gives the server. The vault inventory's roots are built from this
+    // path and checked against the server's, so another spelling of the same directory
+    // (CASHU_DATA_DIR=C:\Users\RUNNER~1\...) would refuse every vault. macOS and Linux keep it as given.
+    dataDir: process.platform === "win32" ? resolveReal(dataDir) : dataDir,
     ...(lingerMs === undefined ? {} : { lingerMs }),
     ...(bundle === undefined ? {} : { bundle }),
   };

@@ -217,12 +217,24 @@ export function spawnHost(
   return { child, exit, ready };
 }
 
-/** Kills every spawned host still running and removes the temp dirs. */
+/**
+ * Kills every spawned host still running and removes the temp dirs. Every dir is tried and then
+ * forgotten, and the first failure is thrown after that: a dir a test left locked (Windows keeps the
+ * files of a host that was never stopped) fails that test only, never every later test of the file.
+ */
 export function cleanup(): void {
   for (const child of children) {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
   }
   children.clear();
-  for (const dir of dirs) removeTempDir(dir);
+  const failures: unknown[] = [];
+  for (const dir of dirs) {
+    try {
+      removeTempDir(dir);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
   dirs.clear();
+  if (failures.length > 0) throw failures[0];
 }

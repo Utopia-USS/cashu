@@ -86,16 +86,16 @@ describe("cashu shim: host admin and failures", () => {
       const run = await runShim(["stats"], e, { cwd: tempDir() });
       expect(run.code).toBe(69);
       expect(run.stdout).toBe("");
-      // The text names what failed: the data dir cannot hold the host's run dir (Windows reports a
-      // path through a regular file as not found).
-      const notDir =
+      // The text names what failed: the data dir cannot hold the host's files. On POSIX reading the
+      // run dir's token fails first (ENOTDIR). Windows reports a read through a regular file as
+      // ENOENT, which means "no host is running", so the shim goes on to start one and the first
+      // failure is creating the host's log dir.
+      const failed =
         process.platform === "win32"
-          ? "(?:ENOTDIR: not a directory|ENOENT: no such file or directory)"
-          : "ENOTDIR: not a directory";
+          ? "ENOTDIR: not a directory, mkdir '.*logs'"
+          : "ENOTDIR: not a directory, .*host\\.token'";
       expect(run.stderr).toMatch(
-        new RegExp(
-          `^cashU could not reach its background service \\(Error: ${notDir}, .*host\\.token'\\)\\.`,
-        ),
+        new RegExp(`^cashU could not reach its background service \\(Error: ${failed}\\)\\.`),
       );
     },
     SLOW,

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,7 +9,7 @@ import {
   nativeCreationCommitResultSchema,
   nativeCreationPrepareResultSchema,
 } from "@cashu/host-protocol";
-import { connectHost } from "@cashu/node-host";
+import { connectHost, resolveReal } from "@cashu/node-host";
 import type { createProductionKeyStore } from "@cashu/node-host/keyring";
 import { createTestKeyStore, type OsKeyringPort } from "@cashu/node-host/testing";
 import { afterEach, expect, it } from "vitest";
@@ -25,7 +25,8 @@ afterEach(() => {
 });
 
 it("resolves the exact genuinely created native vault after host restart and consumes once", async () => {
-  const root = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "t44-test-")));
+  // The host's canonical spelling (resolveReal: on Windows long names, not 8.3 ones).
+  const root = resolveReal(mkdtempSync(join(tmpdir(), "t44-test-")));
   roots.push(root);
   const dataDir = join(root, "data");
   mkdirSync(dataDir, { mode: 0o700 });
