@@ -6,7 +6,7 @@
 import type { ReviewDecideItem } from "@cashu/store/investments/review-screen";
 import { isShownSignal } from "@cashu/ui-logic/investments/buckets";
 import { type SignalTextRow, safeText, signalText } from "../investments/signalText";
-import type { DisplayEnv } from "../today/display";
+import type { DayEnv } from "../today/display";
 import { S } from "./Review.strings";
 
 /** A signal row as the review reads it (the store's signal row fits it). */
@@ -27,7 +27,7 @@ export interface DecideTextContext {
   /** Every signal row the phone has (the rules item names its rows by gid). */
   readonly signals: readonly DecideSignalRow[];
   readonly baseCurrency: string | null;
-  readonly env: DisplayEnv;
+  readonly env: DayEnv;
 }
 
 /** A signal row as a sentence with the instrument's display name. */

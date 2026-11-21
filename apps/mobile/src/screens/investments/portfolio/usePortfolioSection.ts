@@ -287,7 +287,9 @@ function portfolioProps(
       weekPct: week === null ? null : ratio(week.pct),
       incl: [...incl].map(([currency, amount]) => new Money(amount, currency)),
       rateDate:
-        incl.size === 0 || rateDate === null ? null : weekdayDayMonth(rateDate as IsoDate, locale),
+        incl.size === 0 || rateDate === null
+          ? null
+          : weekdayDayMonth(rateDate as IsoDate, today, locale),
     },
     chart: {
       label: S.chart,

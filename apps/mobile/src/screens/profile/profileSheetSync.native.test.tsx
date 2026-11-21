@@ -19,6 +19,10 @@ import { ProfileSheetView } from "./ProfileSheetView";
 import { useProfileSheet } from "./useProfileSheet";
 
 jest.mock("@expo/ui", () => require("../testing/expoUiMock").default);
+// The device's day, so a date of this year reads without its year whatever day the suite runs.
+jest.mock("../../shell/useNow", () => ({
+  useNow: () => ({ today: "2026-11-21", now: "2026-11-21T09:00:00.000Z" }),
+}));
 
 const closers: (() => void)[] = [];
 let restoreAppState: () => void = () => {};
@@ -143,7 +147,7 @@ it("shows the sync-off notice after a pass the relay refused", async () => {
   expect(screen.getByRole("button", { name: "Remove this copy" })).toBeOnTheScreen();
 });
 
-it("writes the day this phone was added like the desktop, on a US English phone", async () => {
+it("writes the day this phone was added day first, without the current year, on a US English phone", async () => {
   const services = setup({
     ...base,
     names: {
@@ -156,5 +160,5 @@ it("writes the day this phone was added like the desktop, on a US English phone"
       <Sheet />
     </Frame>,
   );
-  expect(screen.getByText("added 14 Nov 2026 by Synthetic Mac")).toBeOnTheScreen();
+  expect(screen.getByText("added 14 Nov by Synthetic Mac")).toBeOnTheScreen();
 });

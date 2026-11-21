@@ -31,9 +31,8 @@ const WEEKDAY_DAYS = 6;
 function asOfWhen(bankDataAt: string, now: string, locale: string): When {
   const at = new Date(bankDataAt);
   const day = localToday(at);
-  return daysBetween(day, localToday(new Date(now))) <= WEEKDAY_DAYS
-    ? at.getDay()
-    : dayMonth(day, locale);
+  const today = localToday(new Date(now));
+  return daysBetween(day, today) <= WEEKDAY_DAYS ? at.getDay() : dayMonth(day, today, locale);
 }
 
 /** What Today's uncategorized line counts: one month of one currency. */
@@ -111,7 +110,7 @@ export function useTodayScreen(args: {
       : null;
 
   const subLine = [
-    S.byMonthEnd(dayMonth(month.monthEnd, ui.locale)),
+    S.byMonthEnd(dayMonth(month.monthEnd, args.today, ui.locale)),
     ...(projection.incomeStillExpected.gt(D("0")) && month.usualPayDay !== null
       ? [S.inclUsualPay(month.usualPayDay)]
       : []),
@@ -182,7 +181,7 @@ export function useTodayScreen(args: {
       attentionRowOf(
         item,
         currency,
-        env,
+        { ...env, today: args.today },
         {
           openTriage,
           ...(args.openAlert === undefined ? {} : { openAlert: args.openAlert }),

@@ -4,11 +4,11 @@ import { D } from "@cashu/domain";
 import type { BananaScale } from "@cashu/domain/core";
 import type { AttentionItem } from "@cashu/domain/core/attention";
 import { setLanguageForTests } from "@cashu/i18n";
-import { type DisplayEnv, monthName } from "./display";
+import { type DayEnv, monthName } from "./display";
 import { attentionRowOf, showsClosed } from "./todayRules";
 
-const EN: DisplayEnv = { locale: "en-US", privacy: false };
-const PL: DisplayEnv = { locale: "pl-PL", privacy: false };
+const EN: DayEnv = { locale: "en-US", privacy: false, today: "2026-11-12" };
+const PL: DayEnv = { locale: "pl-PL", privacy: false, today: "2026-11-12" };
 
 afterEach(() => setLanguageForTests("en"));
 

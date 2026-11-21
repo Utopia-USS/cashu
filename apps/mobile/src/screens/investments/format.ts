@@ -6,6 +6,7 @@
 import { daysBetween, type IsoDate } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
 import { appClockLocale, formatClockTime } from "@cashu/i18n/values";
+import { dateLabel } from "../../format/calendar";
 import { localToday } from "../screenContext";
 
 /** The store's UI language for a device locale. */
@@ -27,14 +28,14 @@ function format(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateT
 
 const noon = (date: IsoDate) => new Date(`${date}T12:00:00Z`);
 
-/** "7 Nov" / "7 lis". */
-export function dayMonth(date: IsoDate, locale: string): string {
-  return format(locale, { day: "numeric", month: "short" }).format(noon(date));
+/** "7 Nov" / "7 lis", with the year outside the year of `today` (`dateLabel`). */
+export function dayMonth(date: IsoDate, today: IsoDate, locale: string): string {
+  return dateLabel(date, today, locale);
 }
 
-/** "Sat 7 Nov" / "sob., 7 lis". */
-export function weekdayDayMonth(date: IsoDate, locale: string): string {
-  return format(locale, { weekday: "short", day: "numeric", month: "short" }).format(noon(date));
+/** "Sat 7 Nov" / "sob., 7 lis", with the year outside the year of `today` (`dateLabel`). */
+export function weekdayDayMonth(date: IsoDate, today: IsoDate, locale: string): string {
+  return dateLabel(date, today, locale, { weekday: true });
 }
 
 /** "Sunday" / "niedziela". */
@@ -42,9 +43,15 @@ export function weekdayName(date: IsoDate, locale: string): string {
   return format(locale, { weekday: "long" }).format(noon(date));
 }
 
-/** "9-15 Nov" / "9-15 lis" where the runtime formats ranges, else both ends; never a dash glyph. */
-export function dayRange(from: IsoDate, to: IsoDate, locale: string): string {
-  const f = format(locale, { day: "numeric", month: "short" });
+/** "9-15 Nov" / "9-15 lis" where the runtime formats ranges, else both ends; never a dash glyph. A
+ * range reaching outside the year of `today` carries the year ("29 Dec 2025 - 4 Jan 2026"). */
+export function dayRange(from: IsoDate, to: IsoDate, today: IsoDate, locale: string): string {
+  const year = today.slice(0, 4);
+  const f = format(locale, {
+    day: "numeric",
+    month: "short",
+    ...(from.slice(0, 4) === year && to.slice(0, 4) === year ? {} : { year: "numeric" }),
+  });
   const text =
     typeof f.formatRange === "function"
       ? f.formatRange(noon(from), noon(to))
@@ -61,10 +68,11 @@ export function instantOf(value: string): Date {
 /** When an instant happened, from the device's day: "07:31" today, "Wed 07:31" within the week, else
  * the calendar date ("2 Nov"). */
 export function whenLabel(at: Date, now: Date, locale: string): string {
-  const days = daysBetween(localToday(at), localToday(now));
+  const today = localToday(now);
+  const days = daysBetween(localToday(at), today);
   if (days === 0) return formatClockTime(at, appClockLocale(locale));
   if (days > 0 && days < 7) return formatClockTime(at, appClockLocale(locale), { weekday: true });
-  return dayMonth(localToday(at), locale);
+  return dayMonth(localToday(at), today, locale);
 }
 
 /** A chart axis month: "Nov 2025" / "lis 2025". */

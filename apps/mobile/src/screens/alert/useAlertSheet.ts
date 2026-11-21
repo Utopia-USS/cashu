@@ -27,7 +27,7 @@ import { useRef, useState } from "react";
 import { deviceTimeZone } from "../../services/investments";
 import { useServices } from "../../services/ServicesProvider";
 import { type SignalSubject, safeText, signalText } from "../investments/signalText";
-import type { DisplayEnv } from "../today/display";
+import type { DayEnv } from "../today/display";
 import { ACTION, RELATION, S } from "./Alert.strings";
 import {
   averageCostOf,
@@ -136,7 +136,7 @@ const num = (value: unknown): number | null =>
 export function signalTitle(
   signal: Pick<Signal, "messageCode" | "messageParams" | "message" | "kind" | "payload">,
   subject: SignalSubject,
-  env: DisplayEnv,
+  env: DayEnv,
 ): string {
   const { name, currency } = subject;
   const { locale } = env;
@@ -181,7 +181,12 @@ export function useAlertSheet(args: {
 }): AlertSheetState {
   const ui = useUiEnv();
   const { locale } = ui;
-  const env: DisplayEnv = { locale, privacy: ui.privacy, bananas: ui.bananas ?? null };
+  const env: DayEnv = {
+    locale,
+    privacy: ui.privacy,
+    bananas: ui.bananas ?? null,
+    today: args.today,
+  };
   const { moneyQueries, profiles } = useServices();
   const { today, lang } = args;
   const screen = useQuery(moneyQueries.investments.signals, {
@@ -250,7 +255,7 @@ export function useAlertSheet(args: {
       detail:
         position.price_date === today && fetched !== null && dayOf(fetched) === today
           ? S.priceFrom(momentText(fetched, today, locale).time)
-          : S.closeOn(dayText(position.price_date ?? today, locale)),
+          : S.closeOn(dayText(position.price_date ?? today, today, locale)),
     });
   }
   if (position?.value != null && baseCurrency !== null)
@@ -296,7 +301,7 @@ export function useAlertSheet(args: {
         ? S.laterNoted
         : S.noted(
             (ACTION as Record<string, string | undefined>)[latest.action] ?? latest.action,
-            dayText(dayOf(latest.createdAt), locale),
+            dayText(dayOf(latest.createdAt), today, locale),
           );
 
   const done = (outcome: { kind: string }) => {
@@ -349,7 +354,11 @@ export function useAlertSheet(args: {
                 ? null
                 : {
                     lead: S.researchOn(
-                      dayText(dayOf(verdict.observed_at ?? verdict.created_at ?? args.now), locale),
+                      dayText(
+                        dayOf(verdict.observed_at ?? verdict.created_at ?? args.now),
+                        today,
+                        locale,
+                      ),
                     ),
                     verdict: RELATION[verdict.thesis_relation as keyof typeof RELATION],
                     tone: relation,

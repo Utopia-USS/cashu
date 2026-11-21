@@ -4,7 +4,7 @@
 import type { Decimal, IsoDate } from "@cashu/domain";
 import { type BananaScale, toBananas } from "@cashu/domain/core";
 import { formatBananaValue, formatDecimalValue } from "@cashu/i18n/values";
-import { dateFormat, noon } from "../../format/calendar";
+import { dateLabel } from "../../format/calendar";
 
 export { dayMonth, monthName, shiftMonth } from "../../format/calendar";
 
@@ -13,6 +13,12 @@ export interface DisplayEnv {
   readonly locale: string;
   readonly privacy: boolean;
   readonly bananas?: BananaScale | null;
+}
+
+/** The UI environment plus the device's day, for text that names a date (`dateLabel`: the year only
+ * outside the year of `today`). */
+export interface DayEnv extends DisplayEnv {
+  readonly today: IsoDate;
 }
 
 /** The mask of a hidden amount without a banana scale (as `useNumberValue`); the one mask the
@@ -52,9 +58,7 @@ export function percentText(
   }).text;
 }
 
-/** "Tue 10 Nov" / "wt., 10 lis". */
-export function shortDay(date: IsoDate, locale: string): string {
-  return dateFormat(locale, { weekday: "short", day: "numeric", month: "short" }).format(
-    noon(date),
-  );
+/** "Tue 10 Nov" / "wt., 10 lis", with the year outside the year of `today`. */
+export function shortDay(date: IsoDate, today: IsoDate, locale: string): string {
+  return dateLabel(date, today, locale, { weekday: true });
 }

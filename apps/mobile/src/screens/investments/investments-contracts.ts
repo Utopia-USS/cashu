@@ -1,7 +1,7 @@
 // Props of the Investments tab's pure Views (the shell with the review slot and the top tabs, and the
 // Portfolio, Signals and Strategy sections). Money arrives as exact `Money`, shares and changes as
 // `Decimal` ratios (0.061 = 6.1%) for the value components; texts are finished in the screen hooks.
-import type { Decimal, IsoDate, Money } from "@cashu/domain";
+import type { Decimal, Money } from "@cashu/domain";
 import type { LineChartProps, MarkdownBlock, TagTone } from "@cashu/ui/native";
 import type { ReactNode } from "react";
 import type { TabHeaderProps } from "../../shell/TabHeader";
@@ -174,7 +174,8 @@ export type SignalsViewProps =
 export interface StrategyViewProps {
   readonly document: {
     readonly blocks: readonly MarkdownBlock[];
-    readonly updated: IsoDate;
+    /** The day the Mac last saved it: "2 Oct" / "2 paź", the year only outside the current one. */
+    readonly updated: string;
   } | null;
   readonly rules: readonly {
     readonly id: string;

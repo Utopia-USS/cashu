@@ -5,7 +5,7 @@ import { StrategyView } from "./StrategyView";
 
 const ready: StrategyViewProps = {
   document: {
-    updated: "2026-10-02",
+    updated: "2 Oct",
     blocks: [
       { t: "h", level: 1, c: ["Long-term, boring on purpose"] },
       { t: "h", level: 3, c: ["Goal"] },

@@ -122,7 +122,7 @@ export function useNoteScreen(args: {
   const subject =
     note.instrument?.name ?? note.instrument?.label ?? note.segment_label ?? note.theme ?? S.market;
   const kind = (KIND as Record<string, string | undefined>)[note.kind] ?? note.kind;
-  const day = dayText(dayOf(note.observed_at ?? note.created_at ?? args.now), locale);
+  const day = dayText(dayOf(note.observed_at ?? note.created_at ?? args.now), today, locale);
 
   return {
     kind: "ready",
@@ -138,7 +138,7 @@ export function useNoteScreen(args: {
       return {
         key: `${i}:${url || name}`,
         title: /^\d{4}-\d{2}-\d{2}$/.test(published)
-          ? S.source(name, dayText(published, locale))
+          ? S.source(name, dayText(published, today, locale))
           : name,
         onPress: href === null ? null : () => args.openLink(href),
       };

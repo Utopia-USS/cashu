@@ -10,7 +10,7 @@ import { budgetUncategorizedRows } from "@cashu/store/budget/companion";
 import { useCommand, useQuery } from "@cashu/store-react";
 import { type CategoryOption, type SwatchColor, useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
-import { dateFormat } from "../../format/calendar";
+import { dateLabel } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import { categoryOptionsOf, categorySwatch } from "../categories";
 import { S as Rule } from "../categories.strings";
@@ -85,13 +85,6 @@ export type TriageState =
       onSkip(): void;
       onClose(): void;
     };
-
-/** "Wed 11 Nov" / "śr., 11 lis". */
-function dayLabel(date: string, locale: string): string {
-  return dateFormat(locale, { weekday: "short", day: "numeric", month: "short" }).format(
-    new Date(`${date}T12:00:00Z`),
-  );
-}
 
 export function useTriageScreen(args: {
   /** The vault the modal was opened with (`usePinnedVault`): every write goes there, never to a later profile. */
@@ -184,7 +177,8 @@ export function useTriageScreen(args: {
       gid: row.gid,
       payee: row.payee,
       amount: new Money(row.amount, row.currency),
-      dateLabel: dayLabel(row.date, locale),
+      // "Wed 11 Nov" / "śr., 11 lis", with the year outside the current one.
+      dateLabel: dateLabel(row.date as IsoDate, args.today, locale, { weekday: true }),
       account: row.account.name,
       statement: row.title,
       suggestion:

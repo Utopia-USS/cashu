@@ -3,7 +3,7 @@
 // the bare ticker as a title. Synthetic rows only; the expected sentences are written out by hand.
 import { setLanguageForTests } from "@cashu/i18n";
 import type { ReviewDecideItem } from "@cashu/store/investments/review-screen";
-import type { DisplayEnv } from "../today/display";
+import type { DayEnv } from "../today/display";
 import {
   type DecideSignalRow,
   type DecideTextContext,
@@ -13,9 +13,9 @@ import {
 } from "./decideText";
 
 const CDR = "inst-0000000000000000000000000001";
-const enUS: DisplayEnv = { locale: "en-US", privacy: false };
+const enUS: DayEnv = { locale: "en-US", privacy: false, today: "2026-11-12" };
 
-function ctx(env: DisplayEnv, signals: DecideSignalRow[] = []): DecideTextContext {
+function ctx(env: DayEnv, signals: DecideSignalRow[] = []): DecideTextContext {
   return {
     instruments: [{ id: CDR, name: "CD Projekt", symbol: "CDR", currency: "PLN" }],
     signals,
@@ -101,7 +101,7 @@ describe("decide card text", () => {
 
   it("reads them in Polish", () => {
     setLanguageForTests("pl");
-    const c = ctx({ locale: "pl-PL", privacy: false });
+    const c = ctx({ ...enUS, locale: "pl-PL" });
     expect(decideWhy(thesis("weakened"), c)).toBe("Teza osłabiona");
     expect(decideWhy(thesis("invalidated"), c)).toBe("Teza podważona");
     expect(decideTitle(rules, c)).toBe("Z Twoich reguł");
@@ -133,7 +133,7 @@ describe("decide card text", () => {
 
   it("hides the owner's amounts in incognito", () => {
     setLanguageForTests("en");
-    const c = ctx({ locale: "en-US", privacy: true }, [heavy, gap]);
+    const c = ctx({ ...enUS, privacy: true }, [heavy, gap]);
     expect(decideFacts(rules, c)).toEqual([
       "CD Projekt is 7.5% of the portfolio (your limit 5%)",
       "No contribution for 41 days (last 2 Oct). Your plan expects ••• a month by the 10th.",

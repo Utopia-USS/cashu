@@ -2,7 +2,6 @@
 // the stale warning past the attention list's threshold. Dates are built in the device timezone, as
 // the line shows them.
 import { setLanguageForTests } from "@cashu/i18n";
-import { formatCalendarDate } from "@cashu/i18n/values";
 import { bankFresh, pricesFresh } from "./fresh";
 
 const local = (day: number, hour: number, minute = 0) =>
@@ -66,7 +65,7 @@ describe("bankFresh", () => {
     setLanguageForTests("en");
     expect(bankFresh(local(2, 8, 0), now, "en-GB")).toEqual({
       tone: "warn",
-      text: `Bank data from ${formatCalendarDate("2026-11-02", "en-GB")} · 10 days old`,
+      text: "Bank data from 2 Nov · 10 days old",
     });
     expect(bankFresh(null, now, "en-GB")).toEqual({ tone: "muted", text: "No bank data yet" });
   });

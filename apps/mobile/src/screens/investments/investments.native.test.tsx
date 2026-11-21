@@ -183,7 +183,7 @@ describe("the Investments shell", () => {
     // The range comes from the runtime's Intl.formatRange, whose spacing differs by ICU version
     // ("9-15 Nov" / "9 - 15 Nov"): expect what the same formatter gives here.
     expect(review.meta).toBe(
-      `${dayRange("2026-11-09", "2026-11-15", "en-GB")} · 6 cards · due Sunday`,
+      `${dayRange("2026-11-09", "2026-11-15", "2026-11-12", "en-GB")} · 6 cards · due Sunday`,
     );
     expect(review.teaser).toContain("one decision waiting");
     expect(review.teaser).toContain("one idea outside the portfolio");
@@ -521,7 +521,7 @@ describe("the Strategy view", () => {
     const seen = await show(kit, "strategy");
     const props = seen.strategy;
     expect(props?.document?.blocks.length).toBeGreaterThan(3);
-    expect(props?.document?.updated).toBe("2023-11-17");
+    expect(props?.document?.updated).toBe("17 Nov 2023");
     expect(props?.rules.map((r) => [r.name, r.tag.label])).toEqual([
       ["Buckets within their bands", "ok"],
       ["One position at most 5%", "fired"],

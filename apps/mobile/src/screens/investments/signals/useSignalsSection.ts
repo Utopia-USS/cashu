@@ -12,7 +12,7 @@ import { isShownSignal } from "@cashu/ui-logic/investments/buckets";
 import { useServices } from "../../../services/ServicesProvider";
 import { useNow } from "../../../shell/useNow";
 import { localToday } from "../../screenContext";
-import type { DisplayEnv } from "../../today/display";
+import type { DayEnv, DisplayEnv } from "../../today/display";
 import { dayMonth, instantOf, uiLang, weekdayDayMonth, whenLabel } from "../format";
 import type { ReadySignalsProps, SignalsViewProps } from "../investments-contracts";
 import { type SignalSubject, safeText, signalText } from "../signalText";
@@ -85,7 +85,8 @@ export function signalsProps(
     readonly marked: readonly string[];
   },
 ): ReadySignalsProps {
-  const { env, now, today } = input;
+  const { now, today } = input;
+  const env: DayEnv = { ...input.env, today };
   const { locale } = env;
   const names = new Map<string, string>(
     signals.instruments.map((i) => [i.id, i.name || i.symbol || i.id]),
@@ -107,7 +108,7 @@ export function signalsProps(
   const since =
     lastReview === null
       ? S.sinceLastWeek
-      : S.sinceReview(weekdayDayMonth(localToday(lastReview), locale));
+      : S.sinceReview(weekdayDayMonth(localToday(lastReview), today, locale));
   const fresh = (row: SignalRow) => instantOf(row.lastSeenAt).getTime() >= sinceMs;
 
   // Fired alerts: open ones, and the ones decided since the review.
@@ -238,7 +239,7 @@ export function signalsProps(
     .map((d) => ({
       gid: d.gid,
       title: `${nameOf(d.instrument, null)} - ${actionLabel(d.action)}`,
-      dateLabel: dayMonth(localToday(instantOf(d.createdAt)), locale),
+      dateLabel: dayMonth(localToday(instantOf(d.createdAt)), today, locale),
       reason: d.reason,
     }));
 
@@ -252,7 +253,7 @@ export function signalsProps(
     researchDay:
       newest?.observed_at == null
         ? null
-        : dayMonth(localToday(instantOf(newest.observed_at)), locale),
+        : dayMonth(localToday(instantOf(newest.observed_at)), today, locale),
     decisions,
     onAlertPressed: input.onAlertPressed,
     onNotePressed: input.onNotePressed,

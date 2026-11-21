@@ -1,11 +1,11 @@
 import { setLanguageForTests } from "@cashu/i18n";
 import { isShownSignal } from "@cashu/ui-logic/investments/buckets";
-import type { DisplayEnv } from "../today/display";
+import type { DayEnv } from "../today/display";
 import { type SignalSubject, safeText, signalText } from "./signalText";
 
 const cdr: SignalSubject = { name: "CD Projekt", currency: "PLN", baseCurrency: "PLN" };
-const enUS: DisplayEnv = { locale: "en-US", privacy: false };
-const plPL: DisplayEnv = { locale: "pl-PL", privacy: false };
+const enUS: DayEnv = { locale: "en-US", privacy: false, today: "2026-11-12" };
+const plPL: DayEnv = { locale: "pl-PL", privacy: false, today: "2026-11-12" };
 const drop = {
   kind: "alert:change_pct",
   message:
@@ -416,7 +416,7 @@ describe("signalText", () => {
 
   it("hides the owner's own amounts in incognito, never the prices or shares", () => {
     setLanguageForTests("en");
-    const hidden: DisplayEnv = { locale: "en-US", privacy: true };
+    const hidden: DayEnv = { ...enUS, privacy: true };
     expect(
       signalText({ kind: "contribution_gap", message: "raw", payload: gap }, portfolio, hidden),
     ).toBe("No contribution for 41 days (last 2 Oct). Your plan expects ••• a month by the 10th.");

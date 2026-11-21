@@ -3,7 +3,8 @@
 // attention list's stale threshold.
 import { daysBetween } from "@cashu/domain";
 import { ATTENTION_THRESHOLDS } from "@cashu/domain/core/attention";
-import { appClockLocale, formatCalendarDate, formatClockTime } from "@cashu/i18n/values";
+import { appClockLocale, formatClockTime } from "@cashu/i18n/values";
+import { dateLabel } from "../format/calendar";
 import { localToday } from "../screens/screenContext";
 import { S } from "./Shell.strings";
 import type { TabFresh } from "./TabHeader";
@@ -13,16 +14,17 @@ const HOUR_MS = 3_600_000;
 const WEEKDAY_DAYS = 6;
 
 /**
- * When the bank data is from, in the device timezone: "06:40", "Mon 07:30" or "3 Nov 2026", on 24 h and
- * day first in both languages (`appClockLocale`, the desktop's rule) whatever English region is set.
+ * When the bank data is from, in the device timezone: "06:40", "Mon 07:30" or "3 Nov" ("3 Nov 2025" in
+ * another year), on 24 h and day first in both languages (`appClockLocale`, the desktop's rule) whatever English region is set.
  */
 function whenLabel(at: Date, now: Date, uiLocale: string): string {
   const locale = appClockLocale(uiLocale);
   const day = localToday(at);
-  const days = daysBetween(day, localToday(now));
+  const today = localToday(now);
+  const days = daysBetween(day, today);
   if (days === 0) return formatClockTime(at, locale);
   if (days > 0 && days <= WEEKDAY_DAYS) return formatClockTime(at, locale, { weekday: true });
-  return formatCalendarDate(day, locale);
+  return dateLabel(day, today, uiLocale);
 }
 
 /** The prices line of the vault's `pricesFetchedAt` (when this phone last fetched its prices itself,

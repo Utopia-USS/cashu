@@ -26,7 +26,7 @@ import {
   ratioText,
 } from "../alert/display";
 import { isAcknowledgement, signalTitle } from "../alert/useAlertSheet";
-import { type DisplayEnv, MASK } from "../today/display";
+import { type DayEnv, MASK } from "../today/display";
 import { EXCHANGE, S } from "./Position.strings";
 
 type PositionRange = "1m" | "3m" | "1y" | "max";
@@ -134,7 +134,12 @@ export function usePositionScreen(args: {
 }): PositionState {
   const ui = useUiEnv();
   const { locale } = ui;
-  const env: DisplayEnv = { locale, privacy: ui.privacy, bananas: ui.bananas ?? null };
+  const env: DayEnv = {
+    locale,
+    privacy: ui.privacy,
+    bananas: ui.bananas ?? null,
+    today: args.today,
+  };
   const { moneyQueries } = useServices();
   const { today, lang } = args;
   const [range, setRange] = useState<PositionRange>("3m");
@@ -280,7 +285,7 @@ export function usePositionScreen(args: {
           values: series.map((p) => p.close.toFloat()),
           accessibleSummary:
             first && last
-              ? `${S.from} ${dayText(first.date, locale)} ${closeText(0)} ${S.to} ${dayText(last.date, locale)} ${closeText(series.length - 1)}`
+              ? `${S.from} ${dayText(first.date, today, locale)} ${closeText(0)} ${S.to} ${dayText(last.date, today, locale)} ${closeText(series.length - 1)}`
               : name,
         },
       ],
@@ -288,10 +293,10 @@ export function usePositionScreen(args: {
       markers,
       xLabels: [0, series.length - 1].map((i) => ({
         i,
-        text: axisDayText(series[i]?.date ?? today, locale),
+        text: axisDayText(series[i]?.date ?? today, today, locale),
       })),
       tooltip: (i) => ({
-        title: dayText(series[i]?.date ?? today, locale),
+        title: dayText(series[i]?.date ?? today, today, locale),
         rows: [{ name: S.close, value: closeText(i) }],
       }),
     };
@@ -332,7 +337,7 @@ export function usePositionScreen(args: {
       kind: "note",
       key: n.id,
       title: n.title,
-      sub: S.researchNote(dayText(dayOf(n.observed_at ?? n.created_at ?? args.now), locale)),
+      sub: S.researchNote(dayText(dayOf(n.observed_at ?? n.created_at ?? args.now), today, locale)),
       tag:
         tone === undefined
           ? { text: S.background, tone: "neutral" }
@@ -348,7 +353,7 @@ export function usePositionScreen(args: {
       kind: "decision",
       key: d.id,
       title: d.reason ? S.decisionWithReason(action, d.reason) : action,
-      sub: d.created_at === null ? S.decision : dayText(dayOf(d.created_at), locale),
+      sub: d.created_at === null ? S.decision : dayText(dayOf(d.created_at), today, locale),
     });
   }
 

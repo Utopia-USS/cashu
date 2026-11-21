@@ -62,7 +62,33 @@ export function monthName(month: string, locale: string): MonthName {
   return { title: name.charAt(0).toLocaleUpperCase(locale) + name.slice(1), of, name };
 }
 
-/** "30 November" / "30 listopada". */
-export function dayMonth(date: IsoDate, locale: string): string {
-  return dateFormat(locale, { day: "numeric", month: "long" }).format(noon(date));
+/** How `dateLabel` writes a day: with the short weekday ("Wed 12 Nov") and the month short or long. */
+export interface DateLabelOptions {
+  readonly weekday?: boolean;
+  readonly month?: "short" | "long";
+}
+
+/**
+ * Every calendar day the phone shows: within the year of `today` (the device's local day, from the
+ * screen's clock) without the year, "12 Nov" / "12 lis"; in another year with it, "12 Nov 2025" /
+ * "12 lis 2025". The weekday ("Wed 12 Nov" / "śr., 12 lis") and the long month ("30 November" /
+ * "30 listopada") where the screen asks for them.
+ */
+export function dateLabel(
+  date: IsoDate,
+  today: IsoDate,
+  locale: string,
+  options: DateLabelOptions = {},
+): string {
+  return dateFormat(locale, {
+    ...(options.weekday === true ? { weekday: "short" } : {}),
+    day: "numeric",
+    month: options.month ?? "short",
+    ...(date.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" }),
+  }).format(noon(date));
+}
+
+/** "30 November" / "30 listopada" ("30 November 2025" outside the year of `today`). */
+export function dayMonth(date: IsoDate, today: IsoDate, locale: string): string {
+  return dateLabel(date, today, locale, { month: "long" });
 }

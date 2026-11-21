@@ -13,7 +13,7 @@ import { enabledModules } from "@cashu/store/core/profile";
 import { useQuery } from "@cashu/store-react";
 import { type SwatchColor, useUiEnv } from "@cashu/ui/native";
 import { useDeferredValue, useState, useTransition } from "react";
-import { dateFormat, noon } from "../../format/calendar";
+import { dateFormat, dateLabel, noon } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import type { TabHeaderProps } from "../../shell/TabHeader";
 import { useTabChrome } from "../../shell/useTabChrome";
@@ -105,17 +105,8 @@ const BUDGET_TYPES: ReadonlySet<string> = new Set(
   core.BUDGET_MODULE.accountTypes.map((type) => type.id),
 );
 
-/** A day header: "Wed 11 Nov" / "śr., 11 lis", with the year outside the current one. */
-function dayLabel(date: IsoDate, locale: string, thisYear: string): string {
-  return dateFormat(locale, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    ...(date.slice(0, 4) === thisYear ? {} : { year: "numeric" }),
-  }).format(noon(date));
-}
-
-/** "14 Mar" / "14 mar". */
+/** "14 Mar" / "14 mar": a payment of the search summary, whose row shows its year in a column of its
+ * own, so the day never repeats it. */
 function dayMonth(date: IsoDate, locale: string): string {
   return dateFormat(locale, { day: "numeric", month: "short" }).format(noon(date));
 }
@@ -180,10 +171,10 @@ function groupDays(
     if (last !== undefined && last.date === row.date) last.rows.push(row);
     else days.push({ date: row.date, rows: [row] });
   }
-  const thisYear = args.today.slice(0, 4);
   return days.map((day) => ({
     date: day.date,
-    label: dayLabel(day.date, args.locale, thisYear),
+    // A day header: "Wed 11 Nov" / "śr., 11 lis", with the year outside the current one.
+    label: dateLabel(day.date, args.today, args.locale, { weekday: true }),
     spent: args.base === null ? null : daySpent(day.rows, args.base),
     rows: day.rows.map((row) => rowOf(row, args.categories, args.lang)),
   }));

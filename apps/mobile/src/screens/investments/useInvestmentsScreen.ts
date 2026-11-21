@@ -75,13 +75,17 @@ function reviewSlot(review: ReviewResult, today: IsoDate, locale: string): Revie
       next === today
         ? S.dueToday
         : next < today
-          ? S.dueSince(dayMonth(next, locale))
+          ? S.dueSince(dayMonth(next, today, locale))
           : S.dueOn(weekdayName(next, locale));
     const to = next < today ? today : next;
     return {
       kind: "due",
       title: review.name,
-      meta: S.reviewMeta(dayRange(addDays(to, -6), to, locale), deckCards(review).length, due),
+      meta: S.reviewMeta(
+        dayRange(addDays(to, -6), to, today, locale),
+        deckCards(review).length,
+        due,
+      ),
       teaser: teaser(review),
     };
   }
@@ -92,7 +96,7 @@ function reviewSlot(review: ReviewResult, today: IsoDate, locale: string): Revie
     sub:
       waiting > 0
         ? S.cardsWaitOnMac(waiting)
-        : S.nextOn(weekdayDayMonth(review.next as IsoDate, locale)),
+        : S.nextOn(weekdayDayMonth(review.next as IsoDate, today, locale)),
     canUndo: doneAt !== null && nowMs - doneAt < UNDO_MS,
   };
 }

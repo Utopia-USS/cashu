@@ -8,7 +8,7 @@ import { enabledModules } from "@cashu/store/core/profile";
 import { useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
-import { dateFormat, noon } from "../../format/calendar";
+import { dateFormat, dateLabel, noon } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import { useTabChrome } from "../../shell/useTabChrome";
 import type {
@@ -34,13 +34,6 @@ function sinceMonth(date: IsoDate, locale: string): string {
 /** A chart axis month: "Nov 2025" / "lis 2025". */
 function monthShort(date: IsoDate, locale: string): string {
   return dateFormat(locale, { month: "short", year: "numeric" }).format(noon(date));
-}
-
-/** The NBP table day: "Tue 10 Nov" / "wt., 10 lis". */
-function rateDay(date: IsoDate, locale: string): string {
-  return dateFormat(locale, { weekday: "short", day: "numeric", month: "short" }).format(
-    noon(date),
-  );
 }
 
 function assetKind(type: string, kind: "manual" | "vehicle"): NetWorthAssetRow["kind"] {
@@ -111,7 +104,10 @@ export function useNetWorthScreen(args: {
         )
       : [],
     rateDate:
-      isConverted && converted.rateDate !== null ? rateDay(converted.rateDate, locale) : null,
+      // The NBP table day: "Tue 10 Nov" / "wt., 10 lis", with the year outside the current one.
+      isConverted && converted.rateDate !== null
+        ? dateLabel(converted.rateDate, today, locale, { weekday: true })
+        : null,
     otherCurrencies:
       converted !== null && !isConverted
         ? converted.parts.map((p) => ({

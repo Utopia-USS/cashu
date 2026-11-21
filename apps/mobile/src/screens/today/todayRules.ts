@@ -2,7 +2,7 @@
 // ranked attention item becomes a "Worth a look" row (icon, tone, copy, magnitude, where it leads).
 import { D, type Decimal, type IsoDate, parseDate } from "@cashu/domain";
 import type { AttentionItem } from "@cashu/domain/core/attention";
-import { type DisplayEnv, dayMonth, moneyText, percentText, shiftMonth, shortDay } from "./display";
+import { type DayEnv, dayMonth, moneyText, percentText, shiftMonth, shortDay } from "./display";
 import { S } from "./Today.strings";
 import type { TodayAttentionRow } from "./today-contracts";
 
@@ -42,11 +42,12 @@ export interface AttentionPositionDetail {
   readonly week: number | null;
 }
 
-/** One ranked attention item as a "Worth a look" row; `currency` is the month's (the list's own). */
+/** One ranked attention item as a "Worth a look" row; `currency` is the month's (the list's own), dates
+ * carry their year only outside the year of `env.today`. */
 export function attentionRowOf(
   item: AttentionItem,
   currency: string,
-  env: DisplayEnv,
+  env: DayEnv,
   actions: AttentionActions,
   positions: Readonly<Record<string, AttentionPositionDetail>> = {},
 ): TodayAttentionRow {
@@ -68,7 +69,7 @@ export function attentionRowOf(
         sub:
           reason.largest === null
             ? S.projectionMayBeOff
-            : `${S.mostlyAt(reason.largest.payee, shortDay(reason.largest.date, env.locale))} · ${S.projectionMayBeOff}`,
+            : `${S.mostlyAt(reason.largest.payee, shortDay(reason.largest.date, env.today, env.locale))} · ${S.projectionMayBeOff}`,
         magnitude: shareText,
         magnitudeLabel: S.ofSpending,
         onPress: actions.openTriage,
@@ -79,7 +80,10 @@ export function attentionRowOf(
         icon: "calendar",
         tone: "neg",
         title: S.billNotCovered(reason.payee),
-        sub: S.dueFromAccount(dayMonth(reason.when, env.locale), reason.account?.name ?? null),
+        sub: S.dueFromAccount(
+          dayMonth(reason.when, env.today, env.locale),
+          reason.account?.name ?? null,
+        ),
         magnitude: money(reason.shortfall),
         magnitudeLabel: S.short,
         onPress: null,
@@ -128,7 +132,7 @@ export function attentionRowOf(
         sub: S.fromTo(
           money(reason.from, { fractionDigits: 2 }),
           money(reason.to, { fractionDigits: 2 }),
-          dayMonth(reason.nextDate, env.locale),
+          dayMonth(reason.nextDate, env.today, env.locale),
         ),
         magnitude: money(reason.yearlyEffect, { signed: true }),
         magnitudeLabel: S.aYear,

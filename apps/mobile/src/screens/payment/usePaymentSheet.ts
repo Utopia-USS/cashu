@@ -3,11 +3,11 @@
 // after it, so the last tap wins), the owner's pin of its payee to the confirmed category, its details
 // and the payee's earlier payments. Navigation stays in the route.
 import { budget, type core, D, type IsoDate, Money } from "@cashu/domain";
-import { appClockLocale, formatCalendarDate } from "@cashu/i18n/values";
 import { setMerchantCategory, setTransactionCategory } from "@cashu/store/budget/commands";
 import { type CommandOutcome, useCommand, useQuery } from "@cashu/store-react";
 import { type CategoryOption, useUiEnv } from "@cashu/ui/native";
 import { useRef, useState } from "react";
+import { dateLabel } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import { categoryOptionsOf } from "../categories";
 import { S as Rule } from "../categories.strings";
@@ -108,7 +108,7 @@ export function usePaymentSheet(args: {
   if (detail === null) return { kind: "missing", onClose: args.close };
 
   const { row } = detail;
-  const date = (value: IsoDate) => formatCalendarDate(value, appClockLocale(locale), "medium");
+  const date = (value: IsoDate) => dateLabel(value, today, locale);
   const labelOf = (key: string) =>
     options.find((o) => o.key === key)?.label ?? budget.categoryLabel(key, args.lang);
   const income = row.amount.gt(D("0")) && !row.internal;

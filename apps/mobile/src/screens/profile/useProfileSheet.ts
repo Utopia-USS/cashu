@@ -9,7 +9,6 @@
 // lock's switch checks the owner (Face ID / Touch ID / passcode) before it writes either way: the phone
 // must prove it can unlock before it locks, and only its owner turns the lock off.
 import type { ProfileRole } from "@cashu/domain/core/notifications";
-import { appClockLocale, formatCalendarDate } from "@cashu/i18n/values";
 import { pendingProposalsCount } from "@cashu/store/core/profile";
 import { setDeviceLock } from "@cashu/store/device";
 import { useCommand, useProfile, useQuery } from "@cashu/store-react";
@@ -17,6 +16,7 @@ import { useUiEnv } from "@cashu/ui/native";
 import Constants from "expo-constants";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Alert } from "react-native";
+import { dateLabel } from "../../format/calendar";
 import type { NotificationPermission } from "../../notifications/scheduler";
 import { relayConfig } from "../../platform/relayConfig";
 import { useServices } from "../../services/ServicesProvider";
@@ -26,6 +26,7 @@ import { useProfileNames } from "../../shell/profileNames";
 import { initialOf } from "../../shell/tabs";
 import { useIncognito } from "../../shell/useAppEnv";
 import { lockPrompt, useLockEnabled } from "../../shell/useAppLock";
+import { useNow } from "../../shell/useNow";
 import { confirmRemoveCopy } from "../../sync/confirmRemoveCopy";
 import { S as Sync } from "../../sync/Sync.strings";
 import { useVaultSyncStatus } from "../../sync/usePhoneSync";
@@ -115,6 +116,8 @@ export function useProfileSheet(args: {
 }): ProfileSheetState {
   const services = useServices();
   const { locale } = useUiEnv();
+  // The device's day: the paired date carries its year only outside the current one.
+  const { today } = useNow();
   const { profiles } = services;
   const current = useProfile();
   const status = useVaultSyncStatus(current);
@@ -168,10 +171,7 @@ export function useProfileSheet(args: {
       paired && self !== undefined
         ? {
             name: self.name,
-            sub: S.paired(
-              formatCalendarDate(localToday(new Date(self.addedAt)), appClockLocale(locale)),
-              by,
-            ),
+            sub: S.paired(dateLabel(localToday(new Date(self.addedAt)), today, locale), by),
           }
         : { name: args.deviceName ?? S.thisIphone, sub: paired ? "" : S.demoData },
     pairing:

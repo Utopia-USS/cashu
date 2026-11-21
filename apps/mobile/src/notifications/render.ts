@@ -19,10 +19,11 @@ const WEEKDAY_DAYS = 6;
 function since(ageHours: number, now: Date, locale: string): Since {
   const at = new Date(now.getTime() - ageHours * HOUR_MS);
   const day = localToday(at);
-  const days = daysBetween(day, localToday(now));
+  const today = localToday(now);
+  const days = daysBetween(day, today);
   if (days <= 1) return { kind: "yesterday" };
   if (days <= WEEKDAY_DAYS) return { kind: "weekday", day: at.getDay() };
-  return { kind: "date", label: dayMonth(day, locale) };
+  return { kind: "date", label: dayMonth(day, today, locale) };
 }
 
 function body(message: NotificationMessage, locale: string, now: Date): string {

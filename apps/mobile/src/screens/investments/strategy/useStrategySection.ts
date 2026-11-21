@@ -8,7 +8,9 @@ import { useUiEnv } from "@cashu/ui/native";
 import { parseMarkdown, stripFrontmatter } from "@cashu/ui-logic/core/markdown";
 import { isShownSignal, unnameBuckets } from "@cashu/ui-logic/investments/buckets";
 import { RULE_KIND } from "@cashu/ui-logic/investments/v2/logic.strings";
+import { dateLabel } from "../../../format/calendar";
 import { useServices } from "../../../services/ServicesProvider";
+import { useNow } from "../../../shell/useNow";
 import { localToday } from "../../screenContext";
 import { instantOf } from "../format";
 import type { StrategyViewProps } from "../investments-contracts";
@@ -78,6 +80,7 @@ function strategyProps(
   reader: Reader,
   signals: InvestmentSignals,
   locale: string,
+  today: IsoDate,
 ): StrategyViewProps {
   if (reader.status !== "current") return { document: null, rules: [], alertsCount: 0 };
   // A signal that never shows (a drift of the owner's own bucket) does not mark its rule as fired.
@@ -92,7 +95,7 @@ function strategyProps(
         ? null
         : {
             blocks: parseMarkdown(stripFrontmatter(md)),
-            updated: localToday(instantOf(reader.version.createdAt)) as IsoDate,
+            updated: dateLabel(localToday(instantOf(reader.version.createdAt)), today, locale),
           },
     rules: reader.rules.map((rule) => ({
       id: rule.id,
@@ -111,5 +114,6 @@ export function useStrategySection(): StrategyViewProps {
   const { moneyQueries } = useServices();
   const reader = useQuery(moneyQueries.investments.strategy, undefined);
   const signals = useInvestmentSignals();
-  return strategyProps(reader, signals, locale);
+  const { today } = useNow();
+  return strategyProps(reader, signals, locale, today);
 }

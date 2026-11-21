@@ -6,7 +6,7 @@
 // with a lead signal has a choice, and its choices are written when the card is left. The summary's
 // primary saves the review (`saveReview`, the flagged cards as its agenda); the close button saves
 // nothing. The deck state itself is the shared pure reducer (`@cashu/ui-logic`).
-import { D, type Decimal, Money } from "@cashu/domain";
+import { D, type Decimal, type IsoDate, Money } from "@cashu/domain";
 import type { UiLang } from "@cashu/domain/core";
 import { researchScreenCommands } from "@cashu/store/investments/research-screen";
 import {
@@ -37,7 +37,7 @@ import {
 import { useRef, useState } from "react";
 import { useServices } from "../../services/ServicesProvider";
 import { useInvestmentSignals } from "../investments/useInvestmentSignals";
-import type { DisplayEnv } from "../today/display";
+import type { DayEnv } from "../today/display";
 import { type DecideTextContext, decideFacts, decideTitle, decideWhy } from "./decideText";
 import { S } from "./Review.strings";
 
@@ -428,7 +428,12 @@ export function useReviewDeck(args: {
 }): ReviewDeckState {
   const { moneyQueries } = useServices();
   const ui = useUiEnv();
-  const env: DisplayEnv = { locale: ui.locale, privacy: ui.privacy, bananas: ui.bananas ?? null };
+  const env: DayEnv = {
+    locale: ui.locale,
+    privacy: ui.privacy,
+    bananas: ui.bananas ?? null,
+    today: args.today as IsoDate,
+  };
   const signals = useInvestmentSignals();
   const live = useQuery(moneyQueries.investments.review, {
     today: args.today,

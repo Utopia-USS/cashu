@@ -13,7 +13,7 @@ import { maskDigits } from "@cashu/ui-logic/core/incognito";
 import { unnameBuckets } from "@cashu/ui-logic/investments/buckets";
 import { bucketDisplayName } from "@cashu/ui-logic/investments/labels";
 import { RELATION_LABEL } from "@cashu/ui-logic/investments/v2/research/logic.strings";
-import { type DisplayEnv, MASK, moneyText } from "../today/display";
+import { type DayEnv, type DisplayEnv, MASK, moneyText } from "../today/display";
 import { dayMonth } from "./format";
 import { S } from "./signalText.strings";
 
@@ -153,12 +153,13 @@ function planText(row: SignalTextRow, subject: SignalSubject, env: DisplayEnv): 
 
 // ---- the sentence
 
-export function signalText(row: SignalTextRow, subject: SignalSubject, env: DisplayEnv): string {
+/** A signal as its catalog sentence; a date in it carries the year only outside the year of `env.today`. */
+export function signalText(row: SignalTextRow, subject: SignalSubject, env: DayEnv): string {
   return sentenceOf(row, subject, env) ?? safeText(row.message, env);
 }
 
 /** The catalog sentence of a signal, or null when its payload does not carry the facts. */
-function sentenceOf(row: SignalTextRow, subject: SignalSubject, env: DisplayEnv): string | null {
+function sentenceOf(row: SignalTextRow, subject: SignalSubject, env: DayEnv): string | null {
   const { locale } = env;
   const p = row.payload;
   const currency = str(p.currency) ?? subject.currency;
@@ -265,7 +266,7 @@ function sentenceOf(row: SignalTextRow, subject: SignalSubject, env: DisplayEnv)
       const days = num(p.days_since_last_deposit);
       const last = str(p.last_deposit);
       if (days === null || last === null) return S.noContributions(plan, day);
-      return S.contributionGap(days, dayMonth(last as IsoDate, locale), plan, day);
+      return S.contributionGap(days, dayMonth(last as IsoDate, env.today, locale), plan, day);
     }
     case "cash_level": {
       const weight = num(p.cash_weight);

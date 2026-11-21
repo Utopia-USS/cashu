@@ -2,14 +2,12 @@
 // document as written on the Mac with its "active" and "updated" tags, what watches it (each rule with
 // "ok" or "fired", and the live alerts), and the note that changes are approved on the Mac.
 
-import { appClockLocale, formatCalendarDate } from "@cashu/i18n/values";
-import { Markdown, NoteLine, Tag, Tile, useUiEnv } from "@cashu/ui/native";
+import { Markdown, NoteLine, Tag, Tile } from "@cashu/ui/native";
 import { Text, View } from "react-native";
 import type { StrategyViewProps } from "../investments-contracts";
 import { S } from "./Strategy.strings";
 
 export function StrategyView(props: StrategyViewProps) {
-  const { locale } = useUiEnv();
   return (
     <View className="gap-3">
       <Tile>
@@ -23,7 +21,7 @@ export function StrategyView(props: StrategyViewProps) {
             <View className="flex-row flex-wrap items-center gap-2">
               <Tag tone="info">{S.active}</Tag>
               <Text className="text-caption text-fg-muted">
-                {S.updated(formatCalendarDate(props.document.updated, appClockLocale(locale)))}
+                {S.updated(props.document.updated)}
               </Text>
             </View>
             <Markdown blocks={props.document.blocks} />
