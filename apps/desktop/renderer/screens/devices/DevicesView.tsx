@@ -1,11 +1,12 @@
-import { Button, Dialog, KeyValues, Spinner } from "@cashu/ui";
+import { Button, Dialog, KeyValues } from "@cashu/ui";
 import { type ReactNode, useState } from "react";
 import { T as P } from "../pairing/Pairing.strings.js";
 import { PairingView, type PairingViewState } from "../pairing/PairingView.js";
 import { DeviceRowItem } from "./DeviceRowItem.js";
 import { T } from "./Devices.strings.js";
-import { type DeviceRow, OFFLINE_BOUND_DAYS } from "./deviceRows.js";
-import { FetchDialog, KeepFetchingDialog } from "./FetchDialog.js";
+import type { DeviceRow } from "./deviceRows.js";
+import { FetchDialog } from "./FetchDialog.js";
+import { FetchPausedBanner } from "./FetchPausedBanner.js";
 import { RemoveDeviceDialog } from "./RemoveDeviceDialog.js";
 import { S } from "./Sync.strings.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
@@ -136,28 +137,11 @@ export function DevicesView({
           {pairButton}
         </div>
         {fetchPaused && (
-          <div role="alert" className="grid gap-2.5 rounded-lg bg-warning-bg p-4 text-warning">
-            <p>
-              {fetchPaused === "outage"
-                ? T.fetchPausedBanner(OFFLINE_BOUND_DAYS)
-                : S.fetchPausedSyncOff}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {onGoToSync && <Button onPress={onGoToSync}>{S.goToSync}</Button>}
-              {keepFetching && (
-                <Button variant="primary" disabled={keepFetching.busy} onPress={keepFetching.onAsk}>
-                  {T.keepFetching}
-                </Button>
-              )}
-            </div>
-            {keepFetching?.busy && (
-              <p role="status" className="flex items-center gap-1.5">
-                <Spinner />
-                {S.working}
-              </p>
-            )}
-            {keepFetching?.failed && <p>{S.actionFailed}</p>}
-          </div>
+          <FetchPausedBanner
+            fetchPaused={fetchPaused}
+            keepFetching={keepFetching}
+            secondary={onGoToSync ? { label: S.goToSync, onPress: onGoToSync } : null}
+          />
         )}
         <ul className="rounded-lg border border-border bg-surface">
           {rows.map((row) => (
@@ -184,7 +168,6 @@ export function DevicesView({
       </details>
       {state.dialogOpen && <RemoveDeviceDialog state={state} />}
       {leaderAction.dialogOpen && <FetchDialog state={leaderAction} />}
-      {keepFetching?.confirming && <KeepFetchingDialog state={keepFetching} />}
       {pairDialog}
     </div>
   );

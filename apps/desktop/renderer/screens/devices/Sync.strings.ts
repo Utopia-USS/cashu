@@ -1,5 +1,6 @@
 // Settings > Devices > Sync: the row's switch, details line and status lines, the purge disclosure, the
-// paused bank fetch and its override. Designer copy verbatim from dev-feedback #23.7, #25.1-3 and the
+// paused bank fetch with sync off and the banner's links (its sync-on text and override live in
+// Devices.strings.ts). Designer copy verbatim from dev-feedback #23.7, #25.1-3 and the
 // 2026-11-14 addenda (all accepted as written); entries marked "proposed" are this screen's wording and
 // wait for the designer's pass. The user never sees "relay". PL + EN.
 import { catalog } from "@cashu/i18n";
@@ -110,23 +111,14 @@ export const S = catalog({
     en: "That didn't work. Try again in a moment.",
   },
   working: { pl: "Trwa operacja…", en: "Working…" },
-  // Designer addendum (2026-11-14): the 7-day bound never refuses silently.
-  fetchPaused: {
-    pl: "Pobieranie z banku wstrzymane: ten Mac od 7 dni nie ma kontaktu z Twoim drugim Makiem. Połącz ponownie synchronizację albo ustaw ten Mac jako pobierający.",
-    en: "Bank fetch paused: this Mac hasn't heard from your other Mac for 7 days. Reconnect sync, or make this Mac the one that fetches.",
-  },
-  // Lead's wording, addendum 3a: two Macs with sync off.
+  // Lead's wording, addendum 3a: two Macs with sync off. The sync-on text is Devices.strings
+  // fetchPausedBanner (one entry for Devices and Banking, FetchPausedBanner.tsx).
   fetchPausedSyncOff: {
     pl: "Pobieranie z banku wstrzymane: synchronizacja jest wyłączona, więc ten Mac nie wie, czy pobiera Twój drugi Mac. Włącz synchronizację albo ustaw ten Mac jako pobierający.",
     en: "Bank fetch paused: sync is off, so this Mac can't tell whether your other Mac fetches. Turn sync on, or make this Mac the one that fetches.",
   },
   // The links under the paused state.
   goToSync: { pl: "Przejdź do synchronizacji", en: "Go to sync" },
-  goToRepin: { pl: "Ustaw ten Mac jako pobierający", en: "Make this Mac the one that fetches" },
-  // W3-7 item 1: the paused line on the Banking screen links to Devices, which keeps the detail.
+  // W3-7 item 1; designer (DV3): the Banking banner's secondary action goes to Settings > Devices.
   openDevices: { pl: "Otwórz Urządzenia", en: "Open Devices" },
-  // W3-7 item 2 (spec copy verbatim): the owner's override while this Mac is the one that fetches.
-  keepFetching: { pl: "Pobieraj dalej na tym Macu", en: "Keep fetching on this Mac" },
-  keepFetchingYes: { pl: "Pobieraj dalej", en: "Keep fetching" },
-  keepFetchingCancel: { pl: "Anuluj", en: "Cancel" },
 });

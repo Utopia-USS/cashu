@@ -1,5 +1,7 @@
 import { Button, Select, Spinner } from "@cashu/ui";
+import { FetchPausedBanner } from "../devices/FetchPausedBanner.js";
 import { S } from "../devices/Sync.strings.js";
+import type { KeepFetchingState } from "../devices/useKeepFetching.js";
 import { B } from "./Banking.strings.js";
 import type { useBankingScreen } from "./useBankingScreen.js";
 
@@ -30,12 +32,16 @@ export function BankingView({
   state,
   language,
   fetchPaused = null,
+  keepFetching = null,
   onOpenDevices,
 }: {
   readonly state: BankingScreenState;
   readonly language: "pl" | "en";
-  /** Bank fetches paused by the 7-day offline bound: which text (Devices keeps detail and actions). */
+  /** Bank fetches paused by the 7-day offline bound: which text (the same banner as Devices). */
   readonly fetchPaused?: "outage" | "sync_off" | null;
+  /** The "Keep fetching on this Mac" override, the same as on Devices (null: not offered). */
+  readonly keepFetching?: KeepFetchingState;
+  /** Settings > Devices, the secondary action of the paused banner. */
   readonly onOpenDevices?: () => void;
 }) {
   const { screen, appId, setAppId, setAspsp, callbackUrl, setCallbackUrl } = state;
@@ -175,16 +181,11 @@ export function BankingView({
               </div>
             ))}
             {fetchPaused && (
-              <div className="grid justify-items-start gap-1">
-                <p role="alert">
-                  {fetchPaused === "outage" ? S.fetchPaused : S.fetchPausedSyncOff}
-                </p>
-                {onOpenDevices && (
-                  <Button type="button" variant="link" onPress={onOpenDevices}>
-                    {S.openDevices}
-                  </Button>
-                )}
-              </div>
+              <FetchPausedBanner
+                fetchPaused={fetchPaused}
+                keepFetching={keepFetching}
+                secondary={onOpenDevices ? { label: S.openDevices, onPress: onOpenDevices } : null}
+              />
             )}
             <Button
               type="button"

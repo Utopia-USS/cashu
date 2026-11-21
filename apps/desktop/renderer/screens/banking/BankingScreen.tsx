@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { KeepFetchingState } from "../devices/useKeepFetching.js";
 import { BankingView } from "./BankingView.js";
 import { type BankingUiPort, useBankingScreen } from "./useBankingScreen.js";
 
@@ -8,6 +9,7 @@ export function BankingScreen(props: {
   readonly port: BankingUiPort | null;
   readonly language: "pl" | "en";
   readonly fetchPaused?: "outage" | "sync_off" | null;
+  readonly keepFetching?: KeepFetchingState;
   readonly onOpenDevices?: () => void;
 }) {
   return <ProfileBankingScreen key={props.vaultId} {...props} />;
@@ -18,12 +20,14 @@ function ProfileBankingScreen({
   port,
   language,
   fetchPaused = null,
+  keepFetching = null,
   onOpenDevices,
 }: {
   readonly vaultId: string;
   readonly port: BankingUiPort | null;
   readonly language: "pl" | "en";
   readonly fetchPaused?: "outage" | "sync_off" | null;
+  readonly keepFetching?: KeepFetchingState;
   readonly onOpenDevices?: () => void;
 }) {
   const screen = useBankingScreen(port, vaultId);
@@ -38,6 +42,7 @@ function ProfileBankingScreen({
     <BankingView
       language={language}
       fetchPaused={fetchPaused}
+      keepFetching={keepFetching}
       {...(onOpenDevices ? { onOpenDevices } : {})}
       state={{
         screen,

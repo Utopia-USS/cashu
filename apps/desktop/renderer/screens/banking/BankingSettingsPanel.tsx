@@ -64,7 +64,6 @@ function WriteChannel({ onRun }: { readonly onRun: (run: Run) => void }) {
   return null;
 }
 
-/** Store UI actions and native main-process chooser, scoped to the currently selected vault. */
 /** Settings > Devices: scrolls the section into view and moves focus to its first control. */
 function openDevices(): void {
   const section = document.getElementById("set-devices");
@@ -72,7 +71,16 @@ function openDevices(): void {
   section?.querySelector<HTMLElement>("button, select, input, summary")?.focus();
 }
 
+/**
+ * Store UI actions and native main-process chooser, scoped to the currently selected vault. Remounted
+ * per vault, so the paused-fetch override's state (dialog F, busy) never crosses profiles.
+ */
 export function BankingSettingsPanel() {
+  const vaultId = useProfile();
+  return <ScopedBankingSettingsPanel key={vaultId} />;
+}
+
+function ScopedBankingSettingsPanel() {
   const vaultId = useProfile();
   const fetchPaused = useFetchPaused();
   const read = useUiAction(bankingSettings);
@@ -127,7 +135,8 @@ export function BankingSettingsPanel() {
         vaultId={vaultId}
         port={bridge() ? port : null}
         language={lang()}
-        fetchPaused={fetchPaused}
+        fetchPaused={fetchPaused.line}
+        keepFetching={fetchPaused.keepFetching}
         onOpenDevices={openDevices}
       />
     </>

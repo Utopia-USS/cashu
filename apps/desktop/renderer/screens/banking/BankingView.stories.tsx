@@ -1,3 +1,4 @@
+import type { KeepFetchingState } from "../devices/useKeepFetching.js";
 import { BankingScreen } from "./BankingScreen.js";
 import type { BankingReply, BankingUiPort } from "./useBankingScreen.js";
 
@@ -109,7 +110,17 @@ export const NotConfigured = {
 export const Unavailable = {
   render: () => <BankingScreen vaultId="synthetic-profile" port={null} language="pl" />,
 };
-/** The 7-day offline bound pauses this Mac's bank fetch (sync on); Devices keeps the actions. */
+/** The owner's override, offered as on Devices (synthetic, no host). */
+const keepFetching: NonNullable<KeepFetchingState> = {
+  otherMac: "Studio Mac",
+  confirming: false,
+  busy: false,
+  failed: false,
+  onAsk: () => {},
+  onCancel: () => {},
+  onConfirm: () => {},
+};
+/** The 7-day offline bound pauses this Mac's bank fetch (sync on): the Devices banner and actions. */
 export const FetchPaused = {
   render: () => (
     <BankingScreen
@@ -117,6 +128,7 @@ export const FetchPaused = {
       port={port}
       language="en"
       fetchPaused="outage"
+      keepFetching={keepFetching}
       onOpenDevices={() => {}}
     />
   ),
@@ -129,6 +141,20 @@ export const FetchPausedSyncOff = {
       port={port}
       language="en"
       fetchPaused="sync_off"
+      keepFetching={keepFetching}
+      onOpenDevices={() => {}}
+    />
+  ),
+};
+/** "Keep fetching on this Mac" pressed: the same dialog F as on Devices (keep-fetching wording). */
+export const FetchPausedKeepFetchingDialog = {
+  render: () => (
+    <BankingScreen
+      vaultId="synthetic-profile"
+      port={port}
+      language="en"
+      fetchPaused="outage"
+      keepFetching={{ ...keepFetching, confirming: true }}
       onOpenDevices={() => {}}
     />
   ),
