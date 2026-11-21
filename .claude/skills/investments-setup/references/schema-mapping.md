@@ -15,7 +15,7 @@ keys are errors.
 - Weights, thresholds and bands are fractions (0.15 = 15%); only `absolute_band_pp` is in percentage
   points. Inside custom rule expressions `15%` is also accepted.
 - Amounts are in `base_currency` (PLN is the supported choice).
-- Comments in the YAML are English; `strategy.md` is Polish prose.
+- Comments in the YAML are English; `strategy.md` is prose in the owner's language.
 - Asset classes: `equity`, `etf`, `fund`, `bond`, `treasury_bond`, `cash`, `crypto`, `commodity`,
   `claim`, `other`.
 - Never put a specific fund in the YAML as a purchase choice. Tags (`global_equity`, `bonds`, `core`,

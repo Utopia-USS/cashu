@@ -1,0 +1,51 @@
+{
+  "name": "@cashu/ui-logic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./assets/logic": "./src/assets/logic.ts",
+    "./budget/logic": "./src/budget/logic.ts",
+    "./budget/types": "./src/budget/types.ts",
+    "./core/account": "./src/core/account.ts",
+    "./core/csv": "./src/core/csv.ts",
+    "./core/format": "./src/core/format.ts",
+    "./core/incognito": "./src/core/incognito.ts",
+    "./core/messages": "./src/core/messages.ts",
+    "./core/markdown": "./src/core/markdown.ts",
+    "./core/messages.strings": "./src/core/messages.strings.ts",
+    "./core/time": "./src/core/time.ts",
+    "./investments/buckets": "./src/investments/buckets.ts",
+    "./investments/labels": "./src/investments/labels.ts",
+    "./investments/logic": "./src/investments/logic.ts",
+    "./investments/types": "./src/investments/types.ts",
+    "./investments/v2/homeLogic": "./src/investments/v2/homeLogic.ts",
+    "./investments/v2/logic": "./src/investments/v2/logic.ts",
+    "./investments/v2/logic.strings": "./src/investments/v2/logic.strings.ts",
+    "./investments/v2/research/logic": "./src/investments/v2/research/logic.ts",
+    "./investments/v2/research/logic.strings": "./src/investments/v2/research/logic.strings.ts",
+    "./investments/v2/research/macro": "./src/investments/v2/research/macro.ts",
+    "./investments/v2/research/segments": "./src/investments/v2/research/segments.ts",
+    "./investments/v2/research/storyLogic": "./src/investments/v2/research/storyLogic.ts",
+    "./investments/v2/research/types": "./src/investments/v2/research/types.ts",
+    "./investments/v2/railLogic": "./src/investments/v2/railLogic.ts",
+    "./investments/v2/reviewDeckLogic": "./src/investments/v2/reviewDeckLogic.ts",
+    "./investments/v2/reviewDeckState": "./src/investments/v2/reviewDeckState.ts",
+    "./investments/v2/searchLogic": "./src/investments/v2/searchLogic.ts",
+    "./investments/v2/strategiesLogic": "./src/investments/v2/strategiesLogic.ts",
+    "./investments/v2/types": "./src/investments/v2/types.ts",
+    "./loans/logic": "./src/loans/logic.ts",
+    "./loans/logic.strings": "./src/loans/logic.strings.ts"
+  },
+  "dependencies": {
+    "@cashu/domain": "workspace:*",
+    "@cashu/i18n": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  }
+}

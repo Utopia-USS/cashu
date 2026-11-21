@@ -5,7 +5,7 @@ app, and how the interview is closed as the first recorded review.
 
 ## Phase 7: writing the strategy through the app
 
-1. Draft `strategy.md` (Polish prose) and `strategy.yaml` (schema v1) with `references/schema-mapping.md`
+1. Draft `strategy.md` (prose in the owner's language) and `strategy.yaml` (schema v1) with `references/schema-mapping.md`
    and the template reference `references/strategy-schema.md` (examples: `references/templates/passive_etf.yaml`,
    `references/templates/blank.yaml`; custom rules: `references/expressions.md`). The `strategy.md`
    section list is in `references/phases.md` (Phase 7).
@@ -30,7 +30,7 @@ After the strategy is approved: record theses the user dictated for the largest 
 `upsert_thesis` (entry type `sentiment_correction` | `trend` | `special_situation`, thesis,
 invalidation, exit plan, size plan, all in the user's words), then `mark_review_done(notes)` with the
 start-up checklist (accounts to open, transfers to set up, theses still to write, deadlines). Notes are
-shown in the app, so write them in Polish.
+shown in the app, so write them in the owner's language.
 
 Reminders: the app's worker sends notifications per the strategy's `notifications` and opens the weekly
 review on the digest weekday. One-off deadline reminders (wrapper deadline, a claim filing date) can be

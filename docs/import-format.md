@@ -12,7 +12,7 @@ the complete specification: a parser that follows it produces files that import 
   cannot be imported until it is fixed. Nothing is silently guessed or dropped.
 
 Other ways in: CSV exports can also be imported without code through a YAML column mapping (the generic
-CSV importer, see `src/cashu/modules/investments/importing/generic_csv_example.yaml`). This document is
+CSV importer, see `packages/domain/src/investments/importing/generic_csv_example.yaml`). This document is
 only about the canonical format.
 
 ## 1. Conventions
@@ -313,20 +313,16 @@ Notes:
 
 Validate before importing; validation needs no database and changes nothing:
 
-```python
-from cashu.modules.investments.importing import validate_import_file
+- Agent (MCP): `validate_import(path)` on the converted file: counts and errors by kind with row numbers.
+- Terminal: `cashu invest validate converted.csv` (or `.json`; `--mapping <file.yaml>` for a CSV
+  with a column mapping) prints counts, then every error and warning with row and field, and exits 0
+  when the file can be imported.
 
-report = validate_import_file("converted.csv")   # or .json
-print(report.summary())       # counts, then every error and warning with row and field
-assert report.ok               # True when the file can be imported
-```
-
-`report.errors` lists blocking problems (the import is refused), `report.warnings` lists suspicious but
-importable rows. Each entry has `row` (0-based record index, `None` for file-level problems), a message
+The report lists errors (blocking problems: the import is refused) and warnings (suspicious but
+importable rows). Each entry has a row (0-based record index, none for file-level problems), a message
 that starts with the field name (`quantity: must be greater than 0`) and a stable `kind` for grouping
 (`invalid_value`, `missing_value`, `unknown_field`, `unmapped_type`, `fx_missing`, `cash_sign`,
-`amount_mismatch`, `missing_instrument`, `missing_quantity`, `unknown_split_ratio`, `file_format`, ...). A CLI command (`cashu
-investments validate <file>`) comes with the persistence layer.
+`amount_mismatch`, `missing_instrument`, `missing_quantity`, `unknown_split_ratio`, `file_format`, ...).
 
 Checklist for converter authors:
 

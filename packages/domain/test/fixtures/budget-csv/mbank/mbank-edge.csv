@@ -1,0 +1,16 @@
+mBank S.A. Bankowoœæ Detaliczna;
+
+#Waluta;
+pln;
+
+#Numer rachunku;
+PL99 1140 0000 0000 0000 0000 0009;
+
+#Data ksiêgowania;#Data operacji;#Opis operacji;#Tytu³;#Nadawca/Odbiorca;#Numer konta;#Kwota;#Saldo po operacji;
+05.09.2026;04.09.2026;ZAKUP;"TYTU£  Z  SPACJAMI";" ANNA TESTOWA ";'';"1 234,56";"2 000,00";
+2026-09-06; 2026-9-5 ;PRZELEW;"";"";'99 1050 0000 0000 0000 0000 0555';+5,00;"2 005,00";
+2026-09-06;2026-02-30;OP£ATA;"OP£ATA, ""EKSPRES""";;'';-0,00;"2 005,00";
+2026-09-07;;;"D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ D£UGI TYTU£ ";"X";'';-1.234,50;770,50;
+2026-09-07;;KRÓTKI;
+niedata;;;;;;-1,00;;
+;;;;;;#Saldo koñcowe;770,50;

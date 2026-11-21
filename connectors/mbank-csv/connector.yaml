@@ -6,6 +6,7 @@ version: 1.0.0
 author: cashU core team
 maintainer: utopia-uss
 last_verified: 2026-10-30
+countries: [PL]
 description: Wyciąg CSV z mBanku (lista operacji / elektroniczne zestawienie operacji, także eKonto walutowe) jako import budżetu. Konto rozpoznawane po numerze rachunku z nagłówka pliku.
 module: budget
 kind: file

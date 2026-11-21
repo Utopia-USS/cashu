@@ -25,9 +25,11 @@ What this is: the procedure when the user names one instrument (symbol, ISIN or 
      after an explicit yes).
 5. At most 8 notes; in an interactive session at most 1 alert proposal for the instrument, only if
    the user accepts it (`references/alerts.md`); then `finish_research_run`.
-6. Save a recommendation for a held or watched instrument, then show the notes and recommendation in
-   the chat and where they are in the app. Follow-up questions keep facts and recommendation clearly
-   separated. An early-stage, hyper-growth or SPAC / de-SPAC instrument follows
+6. For a held or watched instrument save its assessment with `set_recommendation`: position strength,
+   basis and reason (step 8 of the weekly routine), plus a recommendation only if you are willing to
+   state one as a model opinion (omitting it clears an older one). Then show the notes and the
+   assessment in the chat and where they are in the app. Follow-up questions keep facts and
+   assessment clearly separated. An early-stage, hyper-growth or SPAC / de-SPAC instrument follows
    `references/candidate-evaluation-pattern.md`: two scores, entry conditions instead of a bare
    "obserwuj", shell vs pro forma values, and the facts checked against the owner's entry plan
    in the thesis (or a proposed wording when there is none).

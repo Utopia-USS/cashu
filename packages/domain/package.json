@@ -1,0 +1,38 @@
+{
+  "name": "@cashu/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./assets": "./src/assets/index.ts",
+    "./budget": "./src/budget/index.ts",
+    "./core": "./src/core/index.ts",
+    "./core/attention": "./src/core/attention/index.ts",
+    "./core/notifications": "./src/core/notifications/index.ts",
+    "./core/workspace": "./src/core/workspace/index.ts",
+    "./investments": "./src/investments/index.ts",
+    "./investments/review-deck": "./src/investments/views/reviewDeck.ts",
+    "./investments/alerts": "./src/investments/alerts/index.ts",
+    "./investments/importing": "./src/investments/importing/index.ts",
+    "./investments/importing/names": "./src/investments/importing/names.ts",
+    "./investments/macro": "./src/investments/macro/index.ts",
+    "./investments/performance": "./src/investments/performance/index.ts",
+    "./investments/plan": "./src/investments/plan/index.ts",
+    "./investments/research": "./src/investments/research/index.ts",
+    "./investments/research/contract": "./src/investments/research/contract.ts",
+    "./investments/rules": "./src/investments/rules/index.ts",
+    "./investments/strategy": "./src/investments/strategy/index.ts",
+    "./investments/views": "./src/investments/views/index.ts",
+    "./loans": "./src/loans/index.ts",
+    "./pyYaml": "./src/pyYaml/public.ts",
+    "./text": "./src/text.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  }
+}

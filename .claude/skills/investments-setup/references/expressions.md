@@ -3,8 +3,8 @@
 # Custom rule expressions
 
 `kind: custom` rules describe their condition in a small expression language. It is designed to be safe
-by construction: a hand-written tokenizer, parser, type checker and evaluator (no Python `eval`, `exec` or
-`compile`), no attribute access, no imports, no loops, no assignments, and only the metrics listed below
+by construction: a hand-written tokenizer, parser, type checker and evaluator (no `eval`, `new Function` or
+other dynamic code), no attribute access, no imports, no loops, no assignments, and only the metrics listed below
 can be read. Anything else is rejected when the strategy is loaded, with the column of the problem.
 
 ```yaml
@@ -21,8 +21,8 @@ rules:
 ```
 
 Quote the expression in YAML when it contains `:` or `#`, or starts with a quote (single quotes outside,
-double quotes inside work well). Code: `compile_expression(text, scope)` and `evaluate(compiled, resolver)`
-in `cashu.modules.investments.rules.expr`.
+double quotes inside work well). Code: `compileExpression(text, scope)` and `evaluateExpression(compiled, resolver)`
+(the `expr` namespace of `@cashu/domain/investments/rules`).
 
 ## Grammar
 

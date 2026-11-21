@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
+      "outputs": []
+    },
+    "lint": {
+      "inputs": ["$TURBO_DEFAULT$", "../../biome.json"],
+      "outputs": []
+    },
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "../../vitest.tiers.ts"],
+      "env": ["CASHU_TEST_TIER"],
+      "outputs": []
+    },
+    "test:exhaustive": {
+      "inputs": ["$TURBO_DEFAULT$", "../../vitest.tiers.ts"],
+      "env": ["CASHU_TEST_TIER"],
+      "outputs": []
+    }
+  }
+}

@@ -19,5 +19,5 @@ say so and go to the interview.
 5. Collect strategy change ideas; do not change the strategy mid-review. Changes follow the change
    rules in `strategy.md` (for example decided at the quarterly review), then go through
    `propose_strategy` with a changelog `reason` (see `references/strategy-proposal-workflow.md`).
-6. `mark_review_done(notes)`: a short Polish summary (signals seen, decisions, open questions, next
+6. `mark_review_done(notes)`: a short summary in the owner's language (signals seen, decisions, open questions, next
    review). The review counts only when recorded.

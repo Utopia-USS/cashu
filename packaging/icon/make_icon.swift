@@ -1,9 +1,13 @@
 // Turns a square logo into a macOS app icon canvas (1024 x 1024 PNG): the logo inside the
 // standard rounded square (824 x 824 at 100 px, corner radius 185) with a soft drop shadow,
-// transparent around it. One-off tool; the result is committed as cashu-1024.png and
-// scripts/build_macos.sh turns that PNG into the .icns with sips + iconutil.
+// transparent around it. One-off tool; the result is committed as cashu-1024.png (the desktop app's
+// window and dock icon) and, converted once, as cashU.icns (the electron-builder app icon):
 //
 //   swift packaging/icon/make_icon.swift <square logo (png/webp/...)> packaging/icon/cashu-1024.png
+//   mkdir cashU.iconset && for s in 16 32 128 256 512; do
+//     sips -z $s $s packaging/icon/cashu-1024.png --out cashU.iconset/icon_${s}x${s}.png
+//     sips -z $((s*2)) $((s*2)) packaging/icon/cashu-1024.png --out cashU.iconset/icon_${s}x${s}@2x.png
+//   done && iconutil -c icns cashU.iconset -o packaging/icon/cashU.icns
 import AppKit
 
 let args = CommandLine.arguments

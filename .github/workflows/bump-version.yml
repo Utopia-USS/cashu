@@ -1,7 +1,8 @@
-# Raise the app version after every push to main, so installed apps see the change through their
-# update check (src/cashu/core/updates.py reads project.version of pyproject.toml on main).
+# Raise the desktop app version (apps/desktop/package.json) after every push to main, so each build
+# from main carries a new version for the update check.
 # Patch by default; "[minor]" / "[major]" in a pushed commit message raises that part instead,
-# "[skip bump]" or a hand-made version change in the push skips the bump (scripts/bump_version.py).
+# "[skip bump]" or a hand-made version change in the push skips the bump
+# (apps/desktop/scripts/bump-version.mjs).
 name: Bump version
 
 on:
@@ -22,7 +23,7 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
@@ -31,7 +32,7 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
         run: |
-          version="$(python3 scripts/bump_version.py --since "$BEFORE")"
+          version="$(node apps/desktop/scripts/bump-version.mjs --since "$BEFORE")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push
@@ -42,7 +43,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "Bump version to $VERSION [skip ci]"
-          for attempt in 1 2 3; do
+          for _ in 1 2 3; do
             git push origin HEAD:main && exit 0
             git pull --rebase origin main
           done

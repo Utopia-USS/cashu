@@ -1,0 +1,64 @@
+diff --git a/ios/Libsodium.h b/ios/Libsodium.h
+index 53c0ab41b3a0dd3f9e70c4a6bf4bdce98c7ea407..b16a77d308326232edb647b8bde9e47b95a373d0 100644
+--- a/ios/Libsodium.h
++++ b/ios/Libsodium.h
+@@ -1,8 +1,13 @@
+ #import "react-native-libsodium.h"
+ #import <React/RCTBridgeModule.h>
++#import <ReactCommon/RCTTurboModule.h>
++#import <ReactCommon/RCTTurboModuleWithJSIBindings.h>
+ #import "sodium.h"
+ 
+-@interface Libsodium : NSObject <RCTBridgeModule>
++// TRANSITIONAL(react-native-libsodium-new-arch): cashU patch. React Native 0.88 removed RCTCxxBridge, which
++// `install` used to reach the JS runtime. The module is now a TurboModule that installs the JSI functions
++// through RCTTurboModuleWithJSIBindings (called by the TurboModule manager when JS first requires it).
++@interface Libsodium : NSObject <RCTBridgeModule, RCTTurboModule, RCTTurboModuleWithJSIBindings>
+ 
+ @property(nonatomic, assign) BOOL setBridgeOnMainQueue;
+ 
+diff --git a/ios/Libsodium.mm b/ios/Libsodium.mm
+index fbc745de0b351ca6193930a5682e5fa44589e8bf..4ab37c88b1f5b26a886f26b100a628e596314989 100644
+--- a/ios/Libsodium.mm
++++ b/ios/Libsodium.mm
+@@ -1,26 +1,27 @@
+ #import "Libsodium.h"
+-#import <React/RCTBridge+Private.h>
+-#import <React/RCTUtils.h>
+ #import <React/RCTLog.h>
+ #import "react-native-libsodium.h"
+ 
++// TRANSITIONAL(react-native-libsodium-new-arch): see Libsodium.h.
+ @implementation Libsodium
+ 
+-@synthesize bridge=_bridge;
+-
+ RCT_EXPORT_MODULE()
+ 
+-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
++- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
++    (const facebook::react::ObjCTurboModule::InitParams &)params
++{
++  return std::make_shared<facebook::react::ObjCTurboModule>(params);
++}
+ 
+-  RCTLogInfo(@"installing libsodium");
+-  RCTCxxBridge *cxxBridge = (RCTCxxBridge *)self.bridge;
+-  if (!cxxBridge.runtime) {
+-    RCTLogInfo(@"libsodium install failure: no cxx bridge runtime");
+-    return nil;
+-  }
++- (void)installJSIBindingsWithRuntime:(facebook::jsi::Runtime &)runtime
++                          callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker
++{
++  ReactNativeLibsodium::installLibsodium(runtime);
++}
+ 
+-  RCTLogInfo(@"calling installLibsodium with cxx bridge runtime");
+-  ReactNativeLibsodium::installLibsodium(*(facebook::jsi::Runtime *)cxxBridge.runtime);
++// Kept for the JS side, which calls it after requiring the module; the bindings are already installed.
++RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
++{
+   return nil;
+ }
+ 

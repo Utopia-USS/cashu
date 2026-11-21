@@ -1,0 +1,137 @@
+// Assets commands (S24 5). Python oracle: `assets/service.py` (add_manual_position, set_note,
+// set_depreciation) and `core/accounts.py` (set_balance). A manual position is a core account
+// (`manual:<name>` name key, ULID gid, no identity key) with manual balance snapshots.
+
+import { assets, D } from "@cashu/domain";
+import { z } from "zod";
+import { type CommandContext, defineCommand, ok, refuse } from "../command.js";
+import { decimalInput, emitBalance, ensureAccount, visibleAccount } from "../core/commands.js";
+import { profileOf } from "../core/queries.js";
+import { ASSET_NOTE_MAX } from "../events/v1/assets-loans.js";
+import { calendarDate, gid } from "../events/v1/primitives.js";
+
+/** Python `clean_note`: one line, whitespace folded, empty -> null, at most 500 characters. */
+export function cleanNote(note: string | null | undefined): string | null | "too_long" {
+  if (note === null || note === undefined) return null;
+  const text = note
+    .split(/\s+/u)
+    .filter((w) => w !== "")
+    .join(" ");
+  if (text === "") return null;
+  return Array.from(text).length > ASSET_NOTE_MAX ? "too_long" : text;
+}
+
+/** Dashboard API dates use the host's local calendar, unlike the event clock's UTC day. */
+export function assetUiToday(now: string): string {
+  const date = new Date(now);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** Emit the note of `account` (no event for a null note while it has no note row, D-24.9). */
+export function emitNote(ctx: CommandContext, account: string, note: string | null): void {
+  if (note === null) {
+    const row = ctx.read(
+      "SELECT 1 AS x FROM asset_details d JOIN accounts a ON a.id = d.account_id WHERE a.gid = ?",
+      account,
+    );
+    if (row.length === 0) return;
+  }
+  ctx.emit("assetDetails.noteSet", ctx.det("asset_details", [account]), { account, note });
+}
+
+/**
+ * A manually valued position (Python `add_manual_position`): the live account holding the name key,
+ * else a new one (a removed holder is never revived, D-24.7), and its value as a manual balance of
+ * `onDate` (today by default); `note` replaces the stored note when given.
+ */
+export const addManualPosition = defineCommand({
+  id: "assets.addManualPosition",
+  input: z.object({
+    name: z.string().min(1),
+    type: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    value: decimalInput,
+    currency: z
+      .string()
+      .regex(/^[A-Z]{3}$/)
+      .optional(),
+    onDate: calendarDate.optional(),
+    note: z.string().nullable().optional(),
+  }),
+  run(ctx, input) {
+    const note = cleanNote(input.note);
+    if (note === "too_long") return refuse("note_too_long");
+    const base = profileOf(ctx.read)?.baseCurrency ?? "PLN";
+    const a = ensureAccount(ctx, {
+      bank: "manual",
+      name: input.name,
+      externalId: `manual:${input.name}`,
+      type: input.type,
+      currency: input.currency ?? base,
+    });
+    emitBalance(ctx, a.gid, input.onDate ?? ctx.today(), "manual", input.value, a.currency);
+    if (input.note !== undefined && input.note !== null) emitNote(ctx, a.gid, note);
+    return ok({ account: a.gid, created: a.created });
+  },
+});
+
+/** One native asset edit, so a valuation and note change either append together or not at all. */
+export const updateAssetDetails = defineCommand({
+  id: "assets.updateDetails",
+  input: z.object({
+    account: gid,
+    value: decimalInput.optional(),
+    onDate: calendarDate.optional(),
+    depreciation: z
+      .object({
+        purchasePrice: decimalInput,
+        purchaseDate: calendarDate,
+        annualRate: decimalInput,
+        floor: decimalInput.nullable().optional(),
+      })
+      .optional(),
+    note: z.string().nullable().optional(),
+  }),
+  run(ctx, input) {
+    const account = visibleAccount(ctx, input.account);
+    if (account === undefined || !assets.isModuleAccount(account)) return refuse("no_asset");
+    if (assets.isVehicle(account) && input.value !== undefined) return refuse("invalid_valuation");
+    if (!assets.isVehicle(account) && input.depreciation !== undefined)
+      return refuse("invalid_valuation");
+    if (input.value !== undefined && D(input.value).lt(D("0"))) return refuse("invalid_valuation");
+    if (input.depreciation !== undefined) {
+      const curve = input.depreciation;
+      if (
+        D(curve.purchasePrice).lte(D("0")) ||
+        curve.purchaseDate > assetUiToday(ctx.now()) ||
+        D(curve.annualRate).lt(D("0")) ||
+        D(curve.annualRate).gt(D("100")) ||
+        (curve.floor !== undefined &&
+          curve.floor !== null &&
+          (D(curve.floor).lt(D("0")) || D(curve.floor).gt(D(curve.purchasePrice))))
+      )
+        return refuse("invalid_depreciation");
+    }
+    const note = cleanNote(input.note);
+    if (note === "too_long") return refuse("note_too_long");
+    if (input.depreciation !== undefined) {
+      ctx.emit("depreciation.set", ctx.det("depreciations", [account.gid]), {
+        account: account.gid,
+        purchasePrice: input.depreciation.purchasePrice,
+        purchaseDate: input.depreciation.purchaseDate,
+        annualRate: input.depreciation.annualRate,
+        floor: input.depreciation.floor ?? null,
+      });
+    }
+    if (input.value !== undefined)
+      emitBalance(
+        ctx,
+        account.gid,
+        input.onDate ?? ctx.today(),
+        "manual",
+        input.value,
+        account.currency,
+      );
+    if (input.note !== undefined) emitNote(ctx, account.gid, note);
+    return ok(null);
+  },
+});

@@ -1,0 +1,263 @@
+<!doctype html>
+<!--
+  design/desktop/devices/lab.html - Settings > Devices on the desktop, redesigned in plain language (2026-11-21).
+  Why: the shipped screen speaks the engine's words ("Fetch leader is current", "Current key origin", "Device
+  origins", a select "Choose a device to remove"). The owner needs three answers: which devices can open this
+  profile, which one fetches the bank data, and how to remove one safely.
+  Variants (keys): 1 = one device list, every fact on its device's row (PROPOSED); 2 = today's sections kept,
+  only renamed (conservative, for comparison).
+  States (keys): Q normal, L a phone removed its own copy, B changes still pending from a device, P bank fetch
+  paused (7 days without the other Mac), S sync off, R removal dialog, F "fetch on this Mac" dialog, A pair a phone.
+  URL: #1 / #2 and ?state=R etc., ?still. Data: synthetic (profile "Anna", devices "Demo Mac", "Studio Mac",
+  "iPhone 16 Pro", "Old iPhone").
+  Decisions baked in (variant 1):
+  - Device origins become each row's sub line ("Added 2 Nov by Demo Mac"); the separate section goes.
+  - The fetch leader becomes a badge on its row ("Fetches bank data") plus its last fetch; changing it is a row
+    action ("Fetch bank data on this Mac"), not a section with a target select.
+  - Key provenance moves into a closed "Security details" disclosure, worded as facts with dates.
+  - Removal starts from the device's row and opens one dialog: what happens, the pending-changes warning only
+    when it applies, the 24 recovery words, one red button. The local-observation checkbox and the capacity /
+    evidence texts stay as error states inside that dialog, never on the page.
+  - Forcing a fetch handover is a checkbox with the honest consequence; no type-to-confirm (the recovery words
+    already guard the dangerous action, removal).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cashU - Settings - Devices (lab)</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0b; --card: #0e0e10; --surface: #111113; --surface-2: #17171a; --surface-3: #1e1e22;
+  --line: rgba(255,255,255,.065); --line-2: rgba(255,255,255,.11); --line-3: rgba(255,255,255,.18);
+  --ink: #ededf0; --ink-2: #a3a3ab; --ink-3: #6e6e77; --ink-4: #4a4a52;
+  --accent: #8ea4ff; --accent-soft: rgba(142,164,255,.13);
+  --pos: #4cc38a; --neg: #ef6f6c; --neg-soft: rgba(239,111,108,.12); --warn: #e5a54a; --warn-soft: rgba(229,165,74,.12);
+  --font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 13px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.topbar { display: flex; align-items: center; gap: 20px; height: 56px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+.brand { font: 800 19px/1 var(--font); letter-spacing: -.03em; }
+.crumb { color: var(--ink-3); }
+.shell { display: grid; grid-template-columns: 200px minmax(0, 680px); gap: 40px; max-width: 1000px; margin: 28px auto 120px; padding: 0 28px; }
+.side a { display: block; padding: 7px 10px; border-radius: 8px; color: var(--ink-3); text-decoration: none; }
+.side a.on { color: var(--ink); background: var(--surface-2); }
+h1 { font: 650 22px/1.2 var(--font); letter-spacing: -.02em; margin: 0 0 4px; }
+.lead { color: var(--ink-2); margin: 0 0 22px; }
+.card { background: var(--card); border-radius: 16px; box-shadow: inset 0 0 0 1px var(--line); }
+.sec { margin-top: 26px; }
+.sec-h { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sec-h h2 { font: 600 14px/1 var(--font); margin: 0; }
+.sec-h .n { color: var(--ink-3); }
+.sec-h .r { margin-left: auto; display: flex; gap: 8px; }
+.btn { border: 0; border-radius: 9px; padding: 7px 12px; background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line-2); }
+.btn.primary { background: var(--ink); color: #0a0a0b; box-shadow: none; font-weight: 600; }
+.btn.danger { background: var(--neg); color: #160606; font-weight: 600; box-shadow: none; }
+.btn.ghost { background: transparent; box-shadow: none; color: var(--ink-2); }
+.btn:disabled { opacity: .4; cursor: default; }
+.muted { color: var(--ink-3); }
+/* sync row */
+.sync { display: flex; gap: 14px; padding: 16px 18px; align-items: flex-start; }
+.switch { width: 34px; height: 20px; border-radius: 999px; background: var(--accent); position: relative; flex: none; margin-top: 2px; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 16px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.switch.off { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line-2); }
+.switch.off::after { left: 2px; background: var(--ink-3); }
+.sync b { font-weight: 600; }
+.sync .d { color: var(--ink-3); font-size: 12px; }
+.disc { padding: 10px 18px 14px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12px; }
+/* device list */
+.row { display: grid; grid-template-columns: 32px 1fr auto; gap: 12px; align-items: center; padding: 14px 18px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.dev-ic { width: 32px; height: 32px; border-radius: 9px; background: var(--surface-2); display: grid; place-items: center; color: var(--ink-2); }
+.name { display: flex; align-items: center; gap: 8px; font-weight: 550; }
+.tag { font-size: 11px; color: var(--ink-2); background: var(--surface-3); border-radius: 999px; padding: 1px 8px; font-weight: 500; }
+.tag.fetch { color: var(--accent); background: var(--accent-soft); }
+.sub { color: var(--ink-3); font-size: 12px; }
+.sub .ok { color: var(--pos); }
+.row.gone .name, .row.gone .dev-ic { opacity: .45; }
+.note { grid-column: 2 / 4; font-size: 12px; border-radius: 10px; padding: 9px 12px; display: flex; gap: 10px; align-items: center; }
+.note.warn { background: var(--warn-soft); color: #f0c387; }
+.note.info { background: var(--surface-2); color: var(--ink-2); }
+.note .btn { margin-left: auto; padding: 5px 10px; }
+.more { background: none; border: 0; color: var(--ink-3); border-radius: 8px; padding: 6px; }
+.menu { position: absolute; right: 18px; top: 46px; z-index: 5; background: var(--surface-2); border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line-2), 0 14px 34px -12px #000; padding: 4px; min-width: 240px; }
+.menu div { padding: 7px 10px; border-radius: 7px; }
+.menu div:hover { background: var(--surface-3); }
+.menu .red { color: var(--neg); }
+.rel { position: relative; }
+.banner { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 14px; background: var(--warn-soft); color: #f0c387; margin-bottom: 12px; }
+.banner .acts { display: flex; gap: 8px; margin-top: 10px; }
+details.sd { margin-top: 26px; }
+details.sd summary { cursor: pointer; color: var(--ink-2); list-style: none; }
+details.sd summary::before { content: "▸ "; color: var(--ink-3); }
+details.sd[open] summary::before { content: "▾ "; }
+.facts { margin-top: 10px; padding: 6px 18px; }
+.fact { display: grid; grid-template-columns: 180px 1fr; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.fact:first-child { border-top: 0; }
+.fact span:first-child { color: var(--ink-3); }
+/* variant 2 */
+.plain h3 { font: 600 13px/1 var(--font); margin: 0 0 8px; }
+.plain .blk { padding: 14px 18px; border-top: 1px solid var(--line); }
+.plain .blk:first-child { border-top: 0; }
+select, input[type=text], textarea { width: 100%; background: var(--surface-2); color: var(--ink); border: 0; border-radius: 9px; padding: 8px 10px; box-shadow: inset 0 0 0 1px var(--line-2); font: inherit; }
+/* dialog */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 20; }
+.dlg { width: 520px; background: var(--surface); border-radius: 18px; box-shadow: inset 0 0 0 1px var(--line-2), 0 30px 80px -20px #000; padding: 22px; }
+.dlg h3 { font: 650 17px/1.3 var(--font); margin: 0 0 8px; }
+.dlg p { color: var(--ink-2); margin: 0 0 12px; }
+.dlg .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: #f0c387; margin: 12px 0; }
+.check input { margin-top: 3px; }
+label.f { display: block; color: var(--ink-2); margin: 12px 0 6px; }
+.help { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+.qr { width: 132px; height: 132px; border-radius: 10px; background:
+  repeating-conic-gradient(#ededf0 0 25%, #0e0e10 0 50%) 0 0 / 12px 12px; flex: none; }
+.legend { position: fixed; right: 12px; bottom: 12px; z-index: 30; background: rgba(22,22,25,.92); border: 1px solid var(--line-2); border-radius: 12px; padding: 8px 10px; font-size: 11px; color: var(--ink-3); max-width: 330px; }
+.legend b { color: var(--ink-2); font-weight: 600; }
+.legend kbd { display: inline-block; min-width: 16px; text-align: center; border-radius: 4px; background: var(--surface-3); color: var(--ink); padding: 0 4px; margin: 1px; cursor: pointer; }
+.legend kbd.on { background: var(--accent); color: #0a0a0b; }
+</style>
+</head>
+<body>
+<div class="designed-by" style="position:fixed;left:12px;bottom:12px;z-index:9999;pointer-events:none;font:600 10px/1 system-ui,-apple-system,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#8e8e94;background:rgba(22,22,25,.9);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:4px 10px;">designed by <span style="color:#8ea4ff;">jakob</span></div>
+
+<div class="topbar"><span class="brand">cashU</span><span class="crumb">Settings</span></div>
+<div class="shell">
+  <nav class="side">
+    <a>App</a><a>Profile</a><a class="on">Devices</a><a>Banks</a><a>AI agent (MCP)</a>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="layer"></div>
+<div class="legend" id="legend"></div>
+
+<script>
+const IC = {
+  mac: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>',
+  phone: '<svg class="ico" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>',
+  more: '<svg class="ico" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
+  warn: '<svg class="ico" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17h.01"/></svg>',
+};
+const S = { v: '1', st: 'Q' };
+const STATES = { Q: 'normal', L: 'removed its copy', B: 'pending changes', P: 'fetch paused', S: 'sync off', R: 'remove dialog', F: 'fetch dialog', A: 'pair a phone' };
+
+function syncCard() {
+  const off = S.st === 'S';
+  return `<div class="card"><div class="sync"><span class="switch ${off ? 'off' : ''}"></span><div>
+    <b>Sync</b><div class="d">Through Google Firebase, end-to-end encrypted: Google sees only scrambled data</div>
+    <div style="margin-top:4px">${off ? '<span class="muted">Off. Devices below keep their copies but get nothing new.</span>' : `Synced at 10:12 · ${S.st === 'L' ? 4 : 3} devices`}</div></div></div>
+    <div class="disc">▸ Remove this profile's data from sync</div></div>`;
+}
+
+function rowsV1() {
+  const left = S.st === 'L';
+  const behind = S.st === 'B';
+  const paused = S.st === 'P';
+  return `
+  <div class="row"><div class="dev-ic">${IC.mac}</div><div>
+      <div class="name">Demo Mac <span class="tag">This Mac</span>${paused ? '' : '<span class="tag fetch">Fetches bank data</span>'}</div>
+      <div class="sub">${paused ? 'Added 2 Nov' : 'Added 2 Nov · <span class="ok">●</span> last bank fetch today 07:31'}</div></div>
+    <button class="more">${IC.more}</button></div>
+  <div class="row rel"><div class="dev-ic">${IC.mac}</div><div>
+      <div class="name">Studio Mac ${paused ? '<span class="tag fetch">Fetches bank data</span>' : ''}</div>
+      <div class="sub">Added 4 Nov by Demo Mac · ${paused ? 'not heard from for 7 days' : 'last seen yesterday 22:40'}</div></div>
+    <button class="more">${IC.more}</button></div>
+  <div class="row"><div class="dev-ic">${IC.phone}</div><div>
+      <div class="name">iPhone 16 Pro</div>
+      <div class="sub">Added 14 Nov by Demo Mac · synced 10:12</div></div>
+    <button class="more">${IC.more}</button>
+    ${behind ? `<div class="note warn">${IC.warn} 3 changes from this phone haven't reached this Mac yet. Open cashU on the phone to send them.</div>` : ''}</div>
+  ${left ? `<div class="row gone"><div class="dev-ic">${IC.phone}</div><div>
+      <div class="name">Old iPhone</div>
+      <div class="sub">Added 9 Nov by Demo Mac · removed its copy on 15 Nov</div></div>
+    <button class="more">${IC.more}</button>
+    <div class="note info">Old iPhone removed its copy on 15 Nov. Remove it from this profile? <button class="btn">Remove from profile</button></div></div>` : ''}`;
+}
+
+function v1() {
+  const paused = S.st === 'P';
+  return `<h1>Devices</h1><p class="lead">Devices that can open Anna's profile. Each one keeps an encrypted copy.</p>
+  ${syncCard()}
+  <div class="sec"><div class="sec-h"><h2>Devices</h2><span class="n">${S.st === 'L' ? 4 : 3}</span>
+    <div class="r"><button class="btn">Pair a Mac</button><button class="btn primary">Pair a phone</button></div></div>
+    ${paused ? `<div class="banner">${IC.warn}<div><b>Bank fetch paused.</b> This Mac hasn't heard from Studio Mac for 7 days. Reconnect sync, or make this Mac the one that fetches.
+      <div class="acts"><button class="btn">Reconnect sync</button><button class="btn primary">Fetch bank data on this Mac</button></div></div></div>` : ''}
+    <div class="card">${rowsV1()}</div>
+    <p class="help">Row menu: "Fetch bank data on this Mac" (Macs) and "Remove from profile…" (every device but this Mac).</p>
+  </div>
+  <details class="sd"><summary>Security details</summary><div class="card facts">
+    <div class="fact"><span>Profile key</span><span>Created on this Mac on 2 Nov</span></div>
+    <div class="fact"><span>Last key change</span><span>15 Nov, when Old iPhone was removed</span></div>
+    <div class="fact"><span>Removing a device</span><span>Needs your 24 recovery words. Keep them off this computer.</span></div>
+  </div></details>`;
+}
+
+function v2() {
+  return `<h1>Devices</h1><p class="lead">Variant 2: today's sections, only renamed. Compare with 1.</p>
+  ${syncCard()}
+  <div class="sec card plain">
+    <div class="blk"><h3>Pair a phone</h3><button class="btn primary">Show the code</button></div>
+    <div class="blk"><h3>Who fetches the bank data</h3>Demo Mac · <span class="muted">last fetch today 07:31</span>
+      <div class="help">Change it after 36 hours without a fetch.</div></div>
+    <div class="blk"><h3>Where this profile's key comes from</h3>Created on this Mac</div>
+    <div class="blk"><h3>How each device was added</h3>
+      <div>Demo Mac: added 2 Nov</div><div>Studio Mac: added 4 Nov by Demo Mac</div><div>iPhone 16 Pro: added 14 Nov by Demo Mac</div></div>
+    <div class="blk"><h3>Remove a device</h3><select><option>Choose a device</option></select>
+      <div style="margin-top:8px"><button class="btn" disabled>Review removal</button></div></div>
+  </div>
+  <p class="help">Readable, but the owner still has to join four sections to answer "what is this phone and can I remove it?". Variant 1 answers it on one row.</p>`;
+}
+
+function dialog() {
+  if (S.st === 'R') return `<div class="scrim"><div class="dlg">
+    <h3>Remove iPhone 16 Pro from Anna's profile?</h3>
+    <p>It won't receive anything new. cashU changes the profile's key, so the phone can't read new data even if it is still out there. What is already on the phone stays there until it is wiped.</p>
+    <label class="check"><input type="checkbox"> <span>3 changes from this phone haven't reached this Mac and will be lost. Remove it anyway.</span></label>
+    <label class="f">Your 24 recovery words</label><textarea rows="3" placeholder="word word word ..."></textarea>
+    <div class="help">Type them only on a device you trust. cashU never stores them.</div>
+    <div class="foot"><button class="btn ghost">Cancel</button><button class="btn danger" disabled>Remove and change the key</button></div></div></div>`;
+  if (S.st === 'F') return `<div class="scrim"><div class="dlg">
+    <h3>Fetch bank data on this Mac?</h3>
+    <p>Studio Mac fetches today. It hands over the next time it syncs; until then neither Mac fetches, so nothing is fetched twice.</p>
+    <label class="check"><input type="checkbox"> <span>Studio Mac hasn't reported for 3 days. Switch now without waiting for it. If it is still running, both Macs may fetch once; duplicate transactions are filtered out.</span></label>
+    <div class="foot"><button class="btn ghost">Cancel</button><button class="btn primary">Fetch on this Mac</button></div></div></div>`;
+  if (S.st === 'A') return `<div class="scrim"><div class="dlg">
+    <h3>Pair a phone</h3>
+    <p>Open cashU on your phone and scan this code. The phone needs internet; the Mac does not have to stay on.</p>
+    <div style="display:flex;gap:16px;align-items:center"><div class="qr"></div>
+      <div><div class="muted">Code to paste on the phone</div><input type="text" value="cashu-pair:k3Jw9…Q2x" readonly>
+      <div style="margin-top:8px"><button class="btn">Copy code</button></div>
+      <div class="help">Expires at 10:20. Waiting for the phone to scan the code.</div></div></div>
+    <div class="foot"><button class="btn ghost">Cancel</button></div></div></div>`;
+  return '';
+}
+
+function render() {
+  document.getElementById('main').innerHTML = S.v === '2' ? v2() : v1();
+  document.getElementById('layer').innerHTML = dialog();
+  const keys = (o, cur, pre) => Object.entries(o).map(([k, t]) => `<kbd class="${k === cur ? 'on' : ''}" data-k="${pre}${k}" title="${t}">${k}</kbd>`).join('');
+  document.getElementById('legend').innerHTML =
+    `<b>Variant</b> ${keys({ 1: 'one list (proposed)', 2: 'sections renamed' }, S.v, 'v')}<br><b>State</b> ${keys(STATES, S.st, 's')}<br>${STATES[S.st]}`;
+  history.replaceState(null, '', `?state=${S.st}${location.search.includes('still') ? '&still' : ''}#${S.v}`);
+}
+document.addEventListener('keydown', (e) => {
+  const k = e.key.toUpperCase();
+  if (k === '1' || k === '2') S.v = k; else if (STATES[k]) S.st = k; else if (e.key === 'Escape') S.st = 'Q'; else return;
+  render();
+});
+document.getElementById('legend').addEventListener('click', (e) => {
+  const k = e.target.dataset?.k; if (!k) return;
+  if (k[0] === 'v') S.v = k.slice(1); else S.st = k.slice(1); render();
+});
+const qs = new URLSearchParams(location.search);
+if (STATES[qs.get('state')]) S.st = qs.get('state');
+if (location.hash === '#2') S.v = '2';
+render();
+</script>
+</body>
+</html>

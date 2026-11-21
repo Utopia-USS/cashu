@@ -7,6 +7,7 @@ version: 1.0.0
 author: cashU examples
 maintainer: cashU core team
 last_verified: 2026-10-29
+countries: [PL]
 description: PRZYKŁAD katalogu - wyciąg CSV zmyślonego Przykładowego Banku jako import budżetu. Nie dla prawdziwych danych.
 module: budget
 kind: file

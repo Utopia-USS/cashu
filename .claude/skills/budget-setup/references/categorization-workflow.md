@@ -9,10 +9,11 @@ The ~420 Polish rules always run after import. For the tail of unknown merchants
 
 - **Ollama (default, offline):** nothing leaves the machine. `ollama serve`, `ollama pull qwen2.5:3b`
   (or `:7b` for better coverage).
-- **Anthropic (cloud):** `CASHU_CATEGORIZE_LLM_BACKEND=anthropic` in `.env`, and the user stores the
-  key with `cashu secrets set anthropic` in their own terminal (hidden prompt). Sends only the
-  merchant-name string. Confirm explicitly that the user accepts sending merchant names to the cloud
-  before enabling it.
+- **Anthropic (cloud):** the user switches it on in the app (Ustawienia > Sekrety, categorization:
+  "Anthropic (chmura)"), accepts the consent text there and types the Anthropic API key into the app
+  themselves (you never see it). Sends only the merchant-name string. Confirm explicitly that the user
+  accepts sending merchant names to the cloud before they enable it; "Cofnij zgodę i używaj Ollama"
+  switches back.
 
 Then you may run `cashu --profile <slug> categorize` or `categorize --llm` (prints counts only).
 
@@ -23,11 +24,11 @@ Then you may run `cashu --profile <slug> categorize` or `categorize --llm` (prin
    proposed category"; let the user accept, change or skip each (question tool with options works
    well). A merchant the user does not recognize is skipped, never guessed.
    `payee:<hash>` entries are private persons: do not guess who it is and do not ask for the name.
-   Skip them, or let the user categorize them in the Wydatki tab where they see the real payee;
+   Skip them, or let the user categorize them in the app's budget page where they see the real payee;
    `set_merchant_category` accepts the reference only if the user tells you the category for it.
 3. For each confirmed one: `set_merchant_category(merchant, category)`. It creates a learned rule for
    this profile that wins over the built-in rules (same as `cashu set-category` or changing the
-   category in the Wydatki tab).
+   category in the app's budget page).
 4. Repeat until the user stops or the list is short. Re-check `setup_status("budget")`.
 
 ## Category keys

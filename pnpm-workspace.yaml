@@ -1,0 +1,45 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+  - "tools/arch"
+# Install scripts run only for packages listed here as true. electron (45+) ships none: its binary is
+# downloaded and checksum-verified on the first `require("electron")` (node_modules/electron/index.js),
+# so there is nothing to build; pnpm still asks, and the answer is no.
+allowBuilds:
+  electron: false
+  # Vite bundles esbuild, whose optional platform package already ships a binary.
+  esbuild: false
+  # apps/mobile: react-native-libsodium's postinstall only unpacks the prebuilt libsodium it ships
+  # (libsodium/build.tgz) for its iOS / Android build; without it the native module has no library.
+  react-native-libsodium: true
+  # @parcel/watcher (Expo CLI / Tailwind file watching) only compiles from source when no prebuilt
+  # @parcel/watcher-<platform> package matched; unrs-resolver (jest 30's resolver) only re-checks its
+  # prebuilt napi binary. Both ship binaries for every supported platform: nothing needs building.
+  "@parcel/watcher": false
+  unrs-resolver: false
+  # dbus-next's optional usocket is used for abstract Unix addresses and FD passing. cashU's
+  # Linux notifier accepts only unix:path session buses; dbus-next falls back to node:net there.
+  usocket: false
+  # Windows installer helper only selects a bundled 7z binary; the macOS S47 build never invokes it.
+  electron-winstaller: false
+# TRANSITIONAL(arch-tools): dependency-cruiser parses TypeScript with the classic compiler API, which
+# TS 7 (tsgo) no longer ships. Declaring the peer lets it resolve the TS 6 that tools/arch installs for
+# parsing only. Remove (with the TS 6 pin) once dependency-cruiser and typescript-eslint read TS 7.
+packageExtensions:
+  dependency-cruiser:
+    peerDependencies:
+      typescript: ">=5 <7"
+# TRANSITIONAL(xcode-27): Expo SDK 58 (apps/mobile) targets Xcode 27 / Swift 6.4; with Xcode 26 (Swift 6.2)
+# expo-modules-jsi fails to compile one isolated closure ("sending 'slot' risks causing data races"). The patch
+# passes the same pointer as a Sendable integer (same thread, synchronous). Drop it with Xcode 27 everywhere.
+patchedDependencies:
+  expo-modules-jsi@58.0.21: patches/expo-modules-jsi@58.0.21.patch
+  # TRANSITIONAL(react-native-libsodium-new-arch): react-native-libsodium 1.7.0 (latest) reaches the JS runtime
+  # through RCTCxxBridge, which React Native 0.88 removed; the patch installs its JSI functions through the
+  # public RCTTurboModuleWithJSIBindings protocol instead. Drop it when upstream ships new-architecture support.
+  react-native-libsodium@1.7.0: patches/react-native-libsodium@1.7.0.patch
+# One Mac builds both macOS release arches (apps/desktop/scripts/package-macos.mjs arm64 and x64, not
+# universal): install the optional darwin native packages (@napi-rs/keyring-darwin-*) for both CPUs.
+supportedArchitectures:
+  os: [current]
+  cpu: [current, arm64, x64]

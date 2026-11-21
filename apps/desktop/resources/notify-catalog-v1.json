@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "title": "cashU",
+  "pl": {
+    "signal": "Nowy sygnał w cashU.",
+    "signalsSummary": "Nowe sygnały w cashU.",
+    "reviewDigest": "Czas na przegląd w cashU.",
+    "generic": "Otwórz cashU, aby sprawdzić powiadomienie."
+  },
+  "en": {
+    "signal": "New signal in cashU.",
+    "signalsSummary": "New signals in cashU.",
+    "reviewDigest": "Time for a review in cashU.",
+    "generic": "Open cashU to check a notification."
+  }
+}
