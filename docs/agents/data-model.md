@@ -37,7 +37,8 @@ relative to those unless they start with `apps/` or `packages/`).
    account type registry (`core/accountTypes.ts`). A cash pool is worth the sum of its rows in its
    own currency; a row in another currency (only a foreign or malformed event writes one) counts in
    that currency's net worth as a part of the pool (`cashPoolPartId`), on the desktop and the phone
-   alike, and the cash drawer shows the pool's own currency only. Why: a raw sum across currencies is a
+   alike, and the cash drawer shows the pool's own currency only. No command writes such a row (the
+   store refuses it with `cash_currency_mismatch`, events.md 8.3); an existing one stays applied. Why: a raw sum across currencies is a
    meaningless number. The one exception, the owner's decision of 2026-11-09: the Overview converts
    every other currency into the headline one at the NBP mid rate (`core/converted.ts`: today's
    rate for the hero, each day's rate for the chart; rates from the device's price cache through

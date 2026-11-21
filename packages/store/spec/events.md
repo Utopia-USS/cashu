@@ -528,6 +528,14 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   `lease.fetched` reports carry its watermark.
 - `txn.cashExpenseAdded` (ULID) `{account@ (cash account), bookingDate, amount (< 0), currency, title,
   category}`. View: `source = manual`, `category_source = manual_txn`, `dedup_hash = "cashexp:" + gid`.
+  **Currency rule**: `currency` MUST equal the cash account's currency, and a cash account's rows
+  (expenses and derived mirror legs) are in its currency. Writers enforce it: a command that would book
+  another currency on a pool (a cash expense, or a `cash_withdrawal` claim whose leg would land on the
+  pool of the row's currency held in another one) is refused with `cash_currency_mismatch` and emits
+  nothing. Readers do not: an event that breaks the rule (a foreign or older writer) is still applied
+  unchanged, since the check depends on folded account state, not on the event alone (7.10), and
+  dropping it would lose data. Every reader values such a row in its own currency, as a part of the
+  pool (`cashPoolPartId`), never in the pool's currency (data-safety rule 5). No `v` change.
 - `txn.categorySet` `{category, source: manual_txn|llm_full|llm_fallback}`: a per-transaction claim
   (D8). GUARD: an `llm_*` claim is a no-op while the folded claim is `manual_txn`. A claim may target a
   derived cash leg (the owner recategorizes a leg, m2): the view shows the leg as

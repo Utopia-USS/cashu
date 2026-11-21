@@ -9,6 +9,11 @@ export const W = catalog({
     pl: "Nie udało się zmienić portfela gotówkowego.",
     en: "The cash wallet could not be changed.",
   },
+  /** `cash_currency_mismatch`: the wallet of this currency holds another one (malformed data). */
+  cashCurrencyMismatch: {
+    pl: "Portfel gotówkowy jest prowadzony w innej walucie, więc wydatku nie zapisano.",
+    en: "The cash wallet is kept in another currency, so the expense was not saved.",
+  },
   invalidAsset: { pl: "Sprawdź nazwę, kwotę i datę.", en: "Check the name, amount and date." },
   assetRefused: {
     pl: "Nie udało się zmienić pozycji majątku.",

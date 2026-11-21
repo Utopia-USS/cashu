@@ -320,6 +320,14 @@ function ensureCashPool(ctx: CommandContext, currency: string): { gid: string; c
 }
 
 /**
+ * Refusal of a booking on a cash pool whose currency is not the booked one (events.md 8.3: a cash
+ * pool's rows are in the pool's currency). The pool of `cash:<CUR>` is found by its key, so only a
+ * malformed account (a foreign or older writer's) can hold another currency; booking on it would file
+ * the amount under the wrong currency, so nothing is written. Value-free: the UIs render it.
+ */
+export const CASH_CURRENCY_MISMATCH = "cash_currency_mismatch";
+
+/**
  * Set one transaction's category by hand (Python `set_transaction_category` via
  * POST /transactions/{id}/category): a `manual_txn` claim on the row (a cash leg or a cash expense
  * included), which survives every recomputation. Marking a bank row `cash_withdrawal` derives its
@@ -332,7 +340,9 @@ export const setTransactionCategory = defineCommand({
     const t = transactionByGid(ctx.read, input.txn);
     if (t === undefined) return refuse("no_transaction");
     if (input.category === CASH_WITHDRAWAL && t.accountType !== CASH_ACCOUNT_TYPE) {
-      ensureCashPool(ctx, t.currency);
+      // the mirror leg books the row's currency on the pool (events.md 8.3)
+      if (ensureCashPool(ctx, t.currency).currency !== t.currency)
+        return refuse(CASH_CURRENCY_MISMATCH);
     }
     ctx.emit("txn.categorySet", t.gid, { category: input.category, source: "manual_txn" });
     return ok(null);
@@ -502,7 +512,8 @@ export const setLlmCategories = defineCommand({
  * pool of `currency` (default: the base currency) down by `-abs(amount)`, opened in the same batch
  * when missing. Refusals: `unknown_category`, `empty_title` (the title is stripped, as the API does),
  * `invalid_amount` (not a finite number: FIX(Q14), Python would store NaN), `zero_amount`,
- * `bad_currency`. The day defaults to today (the injected clock).
+ * `bad_currency`, `cash_currency_mismatch` (the pool of that currency holds another one). The day
+ * defaults to today (the injected clock).
  */
 const cashExpenseInput = z.object({
   amount: z.union([z.string(), z.number()]),
@@ -535,12 +546,14 @@ function cashExpenseRun(
     : budgetBaseCurrency(profileOf(ctx.read)?.baseCurrency);
   if (!ISO_CURRENCY.test(currency)) return refuse("bad_currency");
   const pool = ensureCashPool(ctx, currency);
+  // Never relabel the amount with the pool's currency (data-safety rule 5).
+  if (pool.currency !== currency) return refuse(CASH_CURRENCY_MISMATCH);
   const txn = ctx.newGid();
   ctx.emit("txn.cashExpenseAdded", txn, {
     account: pool.gid,
     bookingDate: input.onDate ?? ctx.today(),
     amount: plain(amount.amount),
-    currency: pool.currency,
+    currency,
     title,
     category: input.category,
   });

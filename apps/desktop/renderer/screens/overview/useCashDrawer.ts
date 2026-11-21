@@ -2,12 +2,23 @@ import { budget, D } from "@cashu/domain";
 import { lang } from "@cashu/i18n";
 import { S as K } from "@cashu/i18n/core/components/CashCard.strings";
 import { addCashExpense, deleteCashTransaction } from "@cashu/store";
+import { CASH_CURRENCY_MISMATCH } from "@cashu/store/budget/commands";
 import { overviewCashWallet } from "@cashu/store/overview";
 import { useCommand, useQuery } from "@cashu/store-react";
 import { cur } from "@cashu/ui-logic/core/format";
 import { useState } from "react";
-import { commandFailure, useDurableCommands } from "../useDurableCommand.js";
+import { commandFailure, type GuardedOutcome, useDurableCommands } from "../useDurableCommand.js";
 import { W } from "./OverviewWidgets.strings.js";
+
+/** The drawer's message for a cash command that did not complete (a refusal named by its code). */
+export function cashFailure(result: Exclude<GuardedOutcome<unknown>, { kind: "completed" }>) {
+  return commandFailure(
+    result,
+    result.kind === "refused" && result.reason === CASH_CURRENCY_MISMATCH
+      ? W.cashCurrencyMismatch
+      : W.cashRefused,
+  );
+}
 
 /** Native cash drawer actions stay on the authenticated vault captured by useCommand. */
 export function useCashDrawer() {
@@ -44,7 +55,7 @@ export function useCashDrawer() {
         currency: wallet.currency,
       });
       if (result.kind !== "completed") {
-        setError(commandFailure(result, W.cashRefused));
+        setError(cashFailure(result));
         return;
       }
       setAmount("");

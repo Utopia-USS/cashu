@@ -30,6 +30,11 @@ export const S = catalog({
   errorAmount: { pl: "Wpisz kwotę większą od zera.", en: "Enter an amount above zero." },
   errorTitle: { pl: "Wpisz, na co to było.", en: "Say what it was." },
   errorCategory: { pl: "Wybierz kategorię.", en: "Pick a category." },
+  /** `cash_currency_mismatch`: the wallet of this currency is kept in another one (malformed data). */
+  errorCurrency: {
+    pl: "Portfel z gotówką jest prowadzony w innej walucie, więc wydatku nie zapisano.",
+    en: "The cash wallet is kept in another currency, so the expense was not saved.",
+  },
   couldNotSave: {
     pl: "Nie udało się zapisać. Spróbuj jeszcze raz.",
     en: "Could not save. Try again.",

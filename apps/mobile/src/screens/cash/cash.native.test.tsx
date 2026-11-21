@@ -2,7 +2,7 @@
 // drives the amount, a save appends the cash expense on the chosen day to the cash wallet, refusals
 // map to the sheet's own messages. Its stories render through the native View. All values are invented.
 import { setLanguageForTests } from "@cashu/i18n";
-import { addCashExpense } from "@cashu/store";
+import { addCashExpense, openAccount } from "@cashu/store";
 import { overviewCashWallet } from "@cashu/store/overview/cash";
 import { ProfileProvider, StoreProvider, useProfile } from "@cashu/store-react";
 import { UiEnvProvider } from "@cashu/ui/native";
@@ -145,6 +145,46 @@ describe("cash expense sheet with the real synchronous store", () => {
     expect(sheet.state.error).toBe("Say what it was.");
     expect(screen.getByText("Say what it was.")).toBeOnTheScreen();
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it("books in the wallet's own currency and offers no other", async () => {
+    const fixture = setup();
+    const sheet = await open(fixture);
+    // no currency control: the only currency in the state is the wallet's
+    expect(Object.keys(sheet.state).filter((k) => /currenc/i.test(k))).toEqual([]);
+    expect(sheet.state.amount.money.currency).toBe("PLN");
+    for (const k of ["7", ".", "5"]) await key(k);
+    await fireEvent.changeText(screen.getByLabelText("What it was"), "Synthetic kiosk");
+    await key("Add -PLN 7.50");
+    expect(close).toHaveBeenCalled();
+    expect(
+      fixture.a.store.read(
+        `SELECT t.currency AS row, a.currency AS pool FROM transactions t
+         JOIN accounts a ON a.id = t.account_id WHERE a.type = 'cash'`,
+      ),
+    ).toEqual([{ row: "PLN", pool: "PLN" }]);
+  });
+
+  it("names a cash wallet kept in another currency and saves nothing", async () => {
+    const fixture = setup();
+    // a malformed pool: the base currency's key, opened in EUR (no command of the app makes one)
+    applyMoneyCommand(fixture.a, openAccount, {
+      bank: "manual",
+      name: "Synthetic pool",
+      type: "cash",
+      currency: "EUR",
+      externalId: "cash:PLN",
+    });
+    const sheet = await open(fixture);
+    await key("5");
+    await fireEvent.changeText(screen.getByLabelText("What it was"), "Synthetic kiosk");
+    await key("Add -PLN 5.00");
+    expect(sheet.state.error).toBe(
+      "The cash wallet is kept in another currency, so the expense was not saved.",
+    );
+    expect(screen.getByText(S.errorCurrency)).toBeOnTheScreen();
+    expect(close).not.toHaveBeenCalled();
+    expect(fixture.a.store.read("SELECT count(*) AS n FROM transactions")).toEqual([{ n: 0 }]);
   });
 
   it("shows the typed digits, not bananas, while amounts are hidden", async () => {

@@ -3,7 +3,7 @@
 // and the title start from the last cash expense; the sheet closes once the expense is saved.
 import { addDays, type core, D, type IsoDate, Money } from "@cashu/domain";
 import { formatDecimalValue } from "@cashu/i18n/values";
-import { addCashExpense } from "@cashu/store/budget/commands";
+import { addCashExpense, CASH_CURRENCY_MISMATCH } from "@cashu/store/budget/commands";
 import { useCommand, useQuery } from "@cashu/store-react";
 import { applyKeypadKey, type CategoryOption, type KeypadKey, useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
@@ -83,6 +83,7 @@ const REFUSALS: Readonly<Record<string, () => string>> = {
   zero_amount: () => S.errorAmount,
   empty_title: () => S.errorTitle,
   unknown_category: () => S.errorCategory,
+  [CASH_CURRENCY_MISMATCH]: () => S.errorCurrency,
 };
 
 export function useCashSheet(args: {
@@ -113,6 +114,7 @@ export function useCashSheet(args: {
   const [error, setError] = useState<string | null>(null);
   const add = useCommand(addCashExpense, { vault: args.vault });
 
+  // The wallet's own currency, never a choice: the sheet offers no other (a cash row is in its pool's).
   const currency = wallet.currency;
   const number = amountText(text);
   const money = new Money(D(number), currency);

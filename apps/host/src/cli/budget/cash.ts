@@ -1,10 +1,12 @@
 import { floatRepr, pyUpper } from "@cashu/domain";
 import { isCategoryKey } from "@cashu/domain/budget";
 import { addCashExpenseCli } from "@cashu/store";
+import { CASH_CURRENCY_MISMATCH } from "@cashu/store/budget/commands";
 import { cashCliSnapshot } from "@cashu/store/budget/queries";
 import { mcpProfile } from "@cashu/store/core";
 import { cliCommandKey, reportCliCommandFailure, runCliVaultCommand } from "../commandOutcome.js";
 import type { CommandIo, PortedCommand } from "../tree.js";
+import { S } from "./cash.strings.js";
 import { cashAddInput, cashReadInput } from "./cashInput.js";
 import { cashAddLine, cashNoPool, cashReadOutput } from "./cashOutput.js";
 import { type BudgetCliDeps, budgetVault } from "./context.js";
@@ -73,6 +75,10 @@ async function addCash(
       mcpProfile(vault.store.read.bind(vault.store))?.slug === slug,
   );
   if (result.kind === "refused" && result.reason === "cli_context_changed") return UNHANDLED;
+  if (result.kind === "refused" && result.reason === CASH_CURRENCY_MISMATCH) {
+    io.stderr(`${io.t.tr(S.currencyMismatch)}\n`);
+    return 1;
+  }
   if (result.kind !== "completed")
     return reportCliCommandFailure(io, result, key, addCashExpenseCli.id);
   cashAddLine(io, input.amount, input.title, input.category);
