@@ -5,7 +5,7 @@ const noop = () => {};
 /** Synthetic: a fixed 10:12 for the paused and synced lines, 22:40 on 12 Nov for older ones. */
 const PAUSED_AT = new Date(2026, 10, 14, 10, 12).getTime();
 const EVENING = new Date(2026, 10, 12, 22, 40).getTime();
-const today = { kind: "synced", at: PAUSED_AT, day: "today", devices: 3 } as const;
+const today = { kind: "synced", at: PAUSED_AT, day: "today" } as const;
 const row = (line: SyncStatusLine, overrides: Partial<SyncRowState & { kind: "ready" }> = {}) => (
   <SyncRowView
     state={{
@@ -29,12 +29,12 @@ const row = (line: SyncStatusLine, overrides: Partial<SyncRowState & { kind: "re
 export default { title: "Desktop/Settings/Sync", component: SyncRowView };
 export const Synced = { render: () => row(today) };
 export const SyncedYesterday = {
-  render: () => row({ kind: "synced", at: EVENING, day: "yesterday", devices: 3 }),
+  render: () => row({ kind: "synced", at: EVENING, day: "yesterday" }),
 };
 export const SyncedEarlier = {
-  render: () => row({ kind: "synced", at: EVENING, day: "earlier", devices: 3 }),
+  render: () => row({ kind: "synced", at: EVENING, day: "earlier" }),
 };
-export const FirstSync = { render: () => row({ kind: "first_sync", devices: 1 }) };
+export const FirstSync = { render: () => row({ kind: "first_sync" }) };
 export const Off = { render: () => row({ kind: "off" }) };
 export const Paused = { render: () => row({ kind: "paused", since: PAUSED_AT }) };
 export const Quota = { render: () => row({ kind: "quota" }) };

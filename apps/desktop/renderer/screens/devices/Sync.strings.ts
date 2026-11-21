@@ -2,7 +2,7 @@
 // paused bank fetch and its override. Designer copy verbatim from dev-feedback #23.7, #25.1-3 and the
 // 2026-11-14 addenda (all accepted as written); entries marked "proposed" are this screen's wording and
 // wait for the designer's pass. The user never sees "relay". PL + EN.
-import { catalog, enForm, plForm } from "@cashu/i18n";
+import { catalog } from "@cashu/i18n";
 import { clockTime, dayMonthShort } from "@cashu/ui-logic/core/time";
 
 const clockPl = (at: number) => clockTime(at, "pl");
@@ -15,12 +15,11 @@ export const S = catalog({
     pl: "Przez Google Firebase, szyfrowane end-to-end: Google widzi tylko zaszyfrowane dane",
     en: "Through Google Firebase, end-to-end encrypted: Google sees only scrambled data",
   },
-  // Clock time, no relative ages (2026-11-14): today with the device count, yesterday and older without.
+  // Clock time, no relative ages (2026-11-14); no device count (designer, 2026-11-21: the device
+  // list's header carries it).
   syncedToday: {
-    pl: (at: number, devices: number) =>
-      `Zsynchronizowano o ${clockPl(at)} · ${devices} ${plForm(devices, "urządzenie", "urządzenia", "urządzeń")}`,
-    en: (at: number, devices: number) =>
-      `Synced at ${clockEn(at)} · ${devices} ${enForm(devices, "device", "devices")}`,
+    pl: (at: number) => `Zsynchronizowano o ${clockPl(at)}`,
+    en: (at: number) => `Synced at ${clockEn(at)}`,
   },
   syncedYesterday: {
     pl: (at: number) => `Zsynchronizowano wczoraj o ${clockPl(at)}`,
@@ -31,12 +30,7 @@ export const S = catalog({
     en: (at: number) => `Synced ${dayMonthShort(new Date(at), "en-GB")} at ${clockEn(at)}`,
   },
   // Sync on, no pass reached it yet.
-  firstSync: {
-    pl: (devices: number) =>
-      `Czeka na pierwszą synchronizację · ${devices} ${plForm(devices, "urządzenie", "urządzenia", "urządzeń")}`,
-    en: (devices: number) =>
-      `Waiting for the first sync · ${devices} ${enForm(devices, "device", "devices")}`,
-  },
+  firstSync: { pl: "Czeka na pierwszą synchronizację", en: "Waiting for the first sync" },
   // #25.2.
   paused: {
     pl: (at: number) => `Synchronizacja wstrzymana od ${clockPl(at)} · cashU działa normalnie`,

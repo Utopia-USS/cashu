@@ -57,14 +57,14 @@ function StatusLine({ line }: { line: SyncStatusLine }) {
       return (
         <p role="status">
           {line.day === "today"
-            ? S.syncedToday(line.at, line.devices)
+            ? S.syncedToday(line.at)
             : line.day === "yesterday"
               ? S.syncedYesterday(line.at)
               : S.syncedOn(line.at)}
         </p>
       );
     case "first_sync":
-      return <p role="status">{S.firstSync(line.devices)}</p>;
+      return <p role="status">{S.firstSync}</p>;
   }
 }
 

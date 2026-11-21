@@ -1,106 +1,153 @@
-import { Button, DateText, Dialog, Spinner } from "@cashu/ui";
+import { Button, Dialog, KeyValues, Spinner } from "@cashu/ui";
+import { type ReactNode, useState } from "react";
+import { T as P } from "../pairing/Pairing.strings.js";
+import { PairingView, type PairingViewState } from "../pairing/PairingView.js";
+import { DeviceRowItem } from "./DeviceRowItem.js";
 import { T } from "./Devices.strings.js";
-import { LeaderAction } from "./LeaderAction.js";
+import type { DeviceRow } from "./deviceRows.js";
+import { FetchDialog, KeepFetchingDialog } from "./FetchDialog.js";
+import { RemoveDeviceDialog } from "./RemoveDeviceDialog.js";
 import { S } from "./Sync.strings.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
 import type { KeepFetchingState } from "./useKeepFetching.js";
 import type { LeaderActionState } from "./useLeaderAction.js";
 
-const control =
-  "rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent";
+/** Pairing states that start a new invitation when "Pair a phone" opens the dialog. */
+const STARTS = new Set([
+  "idle",
+  "completed",
+  "refused",
+  "already_added",
+  "phone_cancelled",
+  "expired",
+]);
 
+/**
+ * Settings > Devices (designer spec devices-v1, variant 1): the title, the Sync card, one list with a
+ * row per device (facts, row menu, notes), the closed security details and the dialogs.
+ */
 export function DevicesView({
   state,
+  rows,
   leaderAction,
   fetchPaused = null,
   keepFetching = null,
   onGoToSync,
+  syncRow,
+  pairing,
 }: {
   state: DevicesScreenState;
+  /** The list's rows (`deviceRows`), this Mac first. */
+  rows: readonly DeviceRow[];
   leaderAction: LeaderActionState;
   /** Bank fetches paused by the 7-day offline bound (`fetchPausedLine`): which text to show. */
   fetchPaused?: "outage" | "sync_off" | null;
-  /**
-   * The owner's override while paused. The pause means THIS Mac is the one that fetches, so it takes
-   * the place of the re-pin action there.
-   */
+  /** The owner's override while paused: this Mac is the one that fetches. */
   keepFetching?: KeepFetchingState;
   /** Moves focus to the Sync row (absent: no Sync row). */
   onGoToSync?: () => void;
+  /** The Sync card, between the lead line and the device list. */
+  syncRow?: ReactNode;
+  /** The phone pairing flow behind "Pair a phone" (absent: no pairing on this screen). */
+  pairing?: PairingViewState;
 }) {
+  const [pairOpen, setPairOpen] = useState(false);
   // Shown only once the list has been missing for 3 s (a CSS-delayed reveal, no timer): a host
   // handover after a pairing or a sync switch never flashes it.
   const unavailable = <p className="animate-[scrim-in_0.15s_ease-out_3s_both]">{T.unavailable}</p>;
-  if (state.list?.kind !== "ready") return unavailable;
+  // The Settings card carries the title ("Devices"); the page starts with the lead line.
+  const header = (
+    <p className="text-fg-secondary">
+      {state.profileName === null ? T.leadUnnamed : T.lead(state.profileName)}
+    </p>
+  );
+  function openPairing(): void {
+    setPairOpen(true);
+    if (pairing && "onCreate" in pairing && STARTS.has(pairing.kind)) void pairing.onCreate();
+  }
+  function closePairing(): void {
+    setPairOpen(false);
+    if (pairing?.kind === "invited") void pairing.onCancel();
+  }
+  const pairButton = pairing && (
+    <div className="ml-auto flex gap-2">
+      <Button variant="primary" onPress={openPairing}>
+        {P.title}
+      </Button>
+    </div>
+  );
+  const pairDialog = pairOpen && pairing && (
+    <Dialog size="narrow" title={P.title} label={P.title} onClose={closePairing}>
+      <PairingView
+        bare
+        state={pairing}
+        {...(onGoToSync
+          ? {
+              onGoToSync: () => {
+                setPairOpen(false);
+                onGoToSync();
+              },
+            }
+          : {})}
+      />
+    </Dialog>
+  );
+  // Without a list, pairing still works: the section keeps its header and button.
+  if (state.list?.kind !== "ready")
+    return (
+      <div className="grid gap-6">
+        {header}
+        {syncRow}
+        <section className="grid gap-2.5" aria-labelledby="devices-list-title">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h3 id="devices-list-title" className="font-strong">
+              {T.section}
+            </h3>
+            {pairButton}
+          </div>
+          {unavailable}
+        </section>
+        {pairDialog}
+      </div>
+    );
   const list = state.list;
-  const { stale, leftOn } = state;
-  const reviewBlocked =
-    stale ||
-    list.evidence.historyPending ||
-    list.evidence.overflow ||
-    list.evidence.authorityUncertain ||
-    list.evidence.writeAdmission !== "ready" ||
-    list.operations.some((operation) => operation.phase === "may_append");
-  const deviceName = (id: string | null) =>
-    id === null ? T.leaderNone : (list.devices.find((device) => device.id === id)?.name ?? id);
-  const issuerName = (id: string) => (id === "0".repeat(32) ? T.issuerRecovery : deviceName(id));
-  // Devices that removed their copy sit under the active ones, greyed out.
-  const origins = [...list.devices].sort(
-    (a, b) =>
-      Number(a.id in leftOn) - Number(b.id in leftOn) ||
-      a.pairedAt.seg - b.pairedAt.seg ||
-      a.pairedAt.offset - b.pairedAt.offset ||
-      a.id.localeCompare(b.id),
-  );
-  const orphanOrder = new Map(origins.map((device, index) => [device.id, index]));
-  const originsById = new Map(origins.map((device) => [device.id, device]));
-  const affected = [...(state.preview?.affected ?? [])].sort(
-    (a, b) =>
-      (orphanOrder.get(a.device) ?? Number.MAX_SAFE_INTEGER) -
-        (orphanOrder.get(b.device) ?? Number.MAX_SAFE_INTEGER) || a.device.localeCompare(b.device),
-  );
-  const leaderStatus =
-    list.leader.state === "auto"
-      ? T.leaderAuto
-      : list.leader.state === "leaderless"
-        ? T.leaderNone
-        : list.leader.state === "handover_pending"
-          ? T.leaderPending
-          : list.leader.state === "silent"
-            ? T.leaderSilent
-            : T.leaderOk;
-  const provenanceStatus =
+  const { stale } = state;
+  const busy = state.status === "busy" || leaderAction.status === "busy";
+  const sender =
+    list.keyProvenance.sender === null
+      ? undefined
+      : list.devices.find((device) => device.id === list.keyProvenance.sender)?.name;
+  const keyOrigin =
     list.keyProvenance.source === "own"
-      ? T.provenanceOwn
+      ? T.keyOwn
       : list.keyProvenance.source === "wrap"
-        ? T.provenanceWrap
+        ? sender === undefined
+          ? T.keyWrapUnnamed
+          : T.keyWrap(sender)
         : list.keyProvenance.source === "pairing"
-          ? T.provenancePairing
-          : T.provenanceUnknown;
+          ? T.keyPairing
+          : T.keyUnknown;
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-6">
+      {header}
+      {syncRow}
       {stale && unavailable}
-      <section className="grid gap-1" aria-label={T.leaderTitle}>
-        <h3>{T.leaderTitle}</h3>
-        <p>{list.leader.mode === "auto" ? T.leaderAuto : deviceName(list.leader.device)}</p>
-        <p role={list.leader.warn ? "alert" : "status"}>{leaderStatus}</p>
-        {list.leader.pendingFrom && (
-          <p>
-            {T.leaderPending}: {deviceName(list.leader.pendingFrom)}
-          </p>
-        )}
+      <section className="grid gap-2.5" aria-labelledby="devices-list-title">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h3 id="devices-list-title" className="font-strong">
+            {T.section}
+          </h3>
+          <span className="text-fg-muted">{rows.length}</span>
+          {pairButton}
+        </div>
         {fetchPaused && (
-          <div className="grid gap-1">
-            <p role="alert">{fetchPaused === "outage" ? S.fetchPaused : S.fetchPausedSyncOff}</p>
-            <div className="flex flex-wrap gap-3">
-              {onGoToSync && (
-                <Button variant="link" onPress={onGoToSync}>
-                  {S.goToSync}
-                </Button>
-              )}
+          <div role="alert" className="grid gap-2.5 rounded-lg bg-warning-bg p-4 text-warning">
+            <p>{fetchPaused === "outage" ? S.fetchPaused : S.fetchPausedSyncOff}</p>
+            <div className="flex flex-wrap gap-2">
+              {onGoToSync && <Button onPress={onGoToSync}>{S.goToSync}</Button>}
               {keepFetching && (
-                <Button disabled={keepFetching.busy} onPress={keepFetching.onAsk}>
-                  {S.keepFetching}
+                <Button variant="primary" disabled={keepFetching.busy} onPress={keepFetching.onAsk}>
+                  {T.fetchHere}
                 </Button>
               )}
             </div>
@@ -110,226 +157,36 @@ export function DevicesView({
                 {S.working}
               </p>
             )}
-            {keepFetching?.failed && <p role="alert">{S.actionFailed}</p>}
+            {keepFetching?.failed && <p>{S.actionFailed}</p>}
           </div>
         )}
-        {keepFetching?.confirming && (
-          <Dialog
-            size="narrow"
-            title={S.keepFetching}
-            label={S.keepFetching}
-            onClose={keepFetching.onCancel}
-          >
-            <p>
-              {keepFetching.otherMac === null
-                ? S.keepFetchingConfirmUnnamed
-                : S.keepFetchingConfirm(keepFetching.otherMac)}
-            </p>
-            <div className="flex gap-2">
-              <Button onPress={keepFetching.onConfirm}>{S.keepFetchingYes}</Button>
-              <Button onPress={keepFetching.onCancel}>{S.keepFetchingCancel}</Button>
-            </div>
-          </Dialog>
-        )}
-      </section>
-      {list.leader.warn && !fetchPaused && <LeaderAction state={leaderAction} />}
-      <section className="grid gap-1" aria-label={T.provenanceTitle}>
-        <h3>{T.provenanceTitle}</h3>
-        <p>{provenanceStatus}</p>
-        {list.keyProvenance.sender && (
-          <p>
-            {T.issuerBy}: {issuerName(list.keyProvenance.sender)}
-          </p>
-        )}
-      </section>
-      <section className="grid gap-1" aria-label={T.issuerTitle}>
-        <h3>{T.issuerTitle}</h3>
-        <ul>
-          {origins.map((device) => {
-            const leftDay = leftOn[device.id];
-            return (
-              <li key={device.id} className={leftDay === undefined ? undefined : "text-fg-muted"}>
-                {/* Log positions are internal: never shown. The day, when the host knows it. */}
-                {device.name}: {T.issuerBy} {issuerName(device.pairedBy)}
-                {device.pairedOn !== undefined && (
-                  <>
-                    {" · "}
-                    <DateText value={device.pairedOn} />
-                  </>
-                )}
-                {leftDay !== undefined && (
-                  <span className="flex flex-wrap items-center gap-2">
-                    {T.removedCopy(device.name, leftDay)}
-                    <Button
-                      variant="link"
-                      disabled={stale || state.status === "busy" || !!state.preview}
-                      onPress={() => state.removeLeft(device.id)}
-                    >
-                      {T.removeLeft}
-                    </Button>
-                  </span>
-                )}
-              </li>
-            );
-          })}
+        <ul className="rounded-lg border border-border bg-surface">
+          {rows.map((row) => (
+            <DeviceRowItem
+              key={row.id}
+              row={row}
+              disabled={stale || busy || !!state.preview}
+              onFetch={leaderAction.open}
+              onRemove={state.openRemoval}
+            />
+          ))}
         </ul>
       </section>
-      {list.evidence.overflow ? (
-        <p role="alert">{T.evidenceOverflow}</p>
-      ) : list.evidence.historyPending || list.evidence.authorityUncertain ? (
-        <p role="alert">{T.evidencePending}</p>
-      ) : list.evidence.writeAdmission !== "ready" ? (
-        <p role="alert">{T.writerPaused}</p>
-      ) : null}
-      {list.devices
-        .filter((device) => device.forked)
-        .map((device) => (
-          <p role="alert" key={device.id}>
-            {device.name}: {T.forked}
-          </p>
-        ))}
-      {list.devices
-        .filter((device) => device.behind && !device.forked)
-        .map((device) => (
-          <p role="status" key={device.id}>
-            {device.name}: {T.behind}
-          </p>
-        ))}
-      <label className="grid gap-2">
-        <span>{T.choose}</span>
-        <select
-          className={control}
-          value={state.target}
-          onChange={(event) => state.setTarget(event.target.value)}
-          disabled={!!state.preview || state.status === "busy" || stale}
-        >
-          <option value="">{T.choose}</option>
-          {list.devices
-            .filter((device) => device.id !== list.ownDevice && device.trusted && !device.revoked)
-            .map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.name}
-              </option>
-            ))}
-        </select>
-      </label>
-      {!state.preview && (
-        <Button
-          disabled={!state.target || state.status === "busy" || reviewBlocked}
-          onPress={state.review}
-        >
-          {T.preview}
-        </Button>
-      )}
-      {state.preview && (
-        <div className="grid gap-4 rounded-lg border border-border bg-surface-raised p-4">
-          <p role="alert">{T.warning}</p>
-          <ul>
-            {state.preview.targets.map((target) => (
-              <li key={target.device}>
-                {list.devices.find((device) => device.id === target.device)?.name ?? target.device}:{" "}
-                {target.head === "trusted" ? T.headTrusted : T.headLocalStart}
-              </li>
-            ))}
-          </ul>
-          {state.preview.affected.length > 0 && (
-            <fieldset className="grid gap-2">
-              <legend>{T.orphanTitle}</legend>
-              {affected.map((device) => {
-                const origin = originsById.get(device.device);
-                return (
-                  <label key={device.device} className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      disabled={state.status === "busy"}
-                      checked={state.recertify.includes(device.device)}
-                      onChange={(event) =>
-                        state.toggleRecertify(device.device, event.target.checked)
-                      }
-                    />
-                    {T.orphanChoice}: {device.name}
-                    {origin && (
-                      <span>
-                        {" "}
-                        ({T.issuerBy} {issuerName(origin.pairedBy)})
-                      </span>
-                    )}
-                  </label>
-                );
-              })}
-            </fieldset>
-          )}
-          {state.selectionDirty && (
-            <Button disabled={state.status === "busy"} onPress={state.review}>
-              {T.refreshSelection}
-            </Button>
-          )}
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              disabled={state.status === "busy"}
-              checked={state.warningAck}
-              onChange={(event) => state.setWarningAck(event.target.checked)}
-            />
-            {T.warningAck}
-          </label>
-          {state.preview.localStartConfirmationRequired && (
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                disabled={state.status === "busy"}
-                checked={state.localAck}
-                onChange={(event) => state.setLocalAck(event.target.checked)}
-              />
-              {T.localStart}
-            </label>
-          )}
-          <label className="grid gap-2">
-            <span>{T.recovery}</span>
-            <span>{T.recoveryHelp}</span>
-            <input
-              className={control}
-              disabled={state.status === "busy"}
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              value={state.phrase}
-              onChange={(event) => state.setPhrase(event.target.value)}
-            />
-          </label>
-          <div className="flex gap-2">
-            <Button
-              disabled={
-                state.status === "busy" ||
-                state.selectionDirty ||
-                !state.warningAck ||
-                !state.phrase ||
-                (state.preview.localStartConfirmationRequired && !state.localAck)
-              }
-              onPress={state.commit}
-            >
-              {T.remove}
-            </Button>
-            <Button disabled={state.status === "busy"} onPress={state.cancel}>
-              {T.cancel}
-            </Button>
-          </div>
+      <details>
+        <summary className="cursor-pointer text-fg-secondary">{T.security}</summary>
+        <div className="mt-2.5 rounded-lg border border-border bg-surface px-4.5 py-3">
+          <KeyValues
+            rows={[
+              { key: "key", label: T.profileKey, value: keyOrigin },
+              { key: "removing", label: T.removing, value: T.removingFact },
+            ]}
+          />
         </div>
-      )}
-      {state.status === "busy" && (
-        <p role="status" className="flex items-center gap-1.5">
-          <Spinner />
-          {T.working}
-        </p>
-      )}
-      {state.status === "completed" && <p role="status">{T.completed}</p>}
-      {state.status === "failed" && (
-        <p role="alert">{state.refusal === "recertify_capacity" ? T.capacity : T.failed}</p>
-      )}
-      {state.status === "unknown" && <p role="alert">{T.unknown}</p>}
-      {state.status === "unknown" && state.operationId && (
-        <Button onPress={state.inspect}>{T.inspect}</Button>
-      )}
+      </details>
+      {state.dialogOpen && <RemoveDeviceDialog state={state} />}
+      {leaderAction.dialogOpen && <FetchDialog state={leaderAction} />}
+      {keepFetching?.confirming && <KeepFetchingDialog state={keepFetching} />}
+      {pairDialog}
     </div>
   );
 }

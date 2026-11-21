@@ -79,7 +79,8 @@ it("shows the switch, the details line and one status line, never the word relay
   try {
     const text = view.container.textContent ?? "";
     expect(text).toContain("Through Google Firebase, end-to-end encrypted");
-    expect(text).toContain("Synced at 10:12 · 3 devices");
+    expect(text).toContain("Synced at 10:12");
+    expect(text).not.toContain("devices");
     expect(text.toLowerCase()).not.toContain("relay");
     expect(view.container.querySelector('[role="switch"]')?.getAttribute("aria-checked")).toBe(
       "true",

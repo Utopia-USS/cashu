@@ -44,16 +44,24 @@ export type PairingViewState =
 export function PairingView({
   state,
   onGoToSync,
+  bare = false,
 }: {
   state: PairingViewState;
   /** Moves focus to the Sync row; absent when there is no Sync row (no sync config). */
   onGoToSync?: () => void;
+  /** Inside the "Pair a phone" dialog, which carries the title. */
+  bare?: boolean;
 }) {
   return (
-    <section className="grid gap-4" aria-labelledby="pairing-title">
-      <h2 id="pairing-title" className="text-title font-strong">
-        {T.title}
-      </h2>
+    <section
+      className="grid gap-4"
+      {...(bare ? { "aria-label": T.title } : { "aria-labelledby": "pairing-title" })}
+    >
+      {!bare && (
+        <h2 id="pairing-title" className="text-title font-strong">
+          {T.title}
+        </h2>
+      )}
       <p>{T.intro}</p>
       {state.kind === "unavailable" && <p role="status">{T.unavailable}</p>}
       {state.kind === "creating" && (
@@ -79,14 +87,14 @@ export function PairingView({
               {state.copied ? T.copied : T.copy}
             </Button>
           </div>
-          <p>{T.expiry(state.expiresAt)}</p>
           {state.phone === "waiting" ? (
             <p role="status" className="flex items-center gap-1.5">
               <Spinner />
-              {T.waitingForScan}
+              {T.expiryScan(state.expiresAt)}
             </p>
           ) : (
             <>
+              <p>{T.expiry(state.expiresAt)}</p>
               <p>{T.sasInstruction}</p>
               <label className="grid gap-2">
                 <span>{T.sasLabel}</span>

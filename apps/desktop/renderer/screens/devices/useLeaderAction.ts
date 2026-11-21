@@ -1,39 +1,42 @@
-import type { DeviceListResult, LeaderPreviewResult } from "@cashu/host-protocol";
+import type { DeviceListResult } from "@cashu/host-protocol";
 import { useConnection, useProfile } from "@cashu/store-react";
+import { useToast } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
 import { devicesBridge } from "../../devicesBridge.js";
+import { T } from "./Devices.strings.js";
+import { currentFetcher } from "./deviceRows.js";
 
 type Ready = Extract<DeviceListResult, { kind: "ready" }>;
-type Prepared = Extract<LeaderPreviewResult, { kind: "prepared" }>;
 type Status = "idle" | "busy" | "completed" | "unknown" | "failed";
 
-/** One profile-scoped owner action. DevicesScreen remounts this hook when the vault changes. */
+/**
+ * Dialog F: which device fetches the bank data. One profile-scoped owner action; DevicesScreen remounts
+ * this hook when the vault changes. The primary button prepares the change and commits it with the
+ * confirmation the host prepared (the same two calls as before, without a typed confirmation).
+ */
 export function useLeaderAction(list: Ready | null) {
   const vault = useProfile();
   const connection = useConnection();
   const bridge = devicesBridge();
+  const toast = useToast();
   const [scope, setScope] = useState({ vault, bridge, connection });
   const epoch = useRef(0);
   const [target, setTarget] = useState("");
   const [force, setForce] = useState(false);
-  const [preview, setPreview] = useState<Prepared | null>(null);
-  const [typed, setTyped] = useState("");
   const [localStatus, setStatus] = useState<Status>("idle");
   const [localOperationId, setOperationId] = useState<string | null>(null);
   const [inspectedOperationId, setInspectedOperationId] = useState<string | null>(null);
-  const [expired, setExpired] = useState(false);
+  const [dismissedOperationId, setDismissed] = useState<string | null>(null);
   const scopeActive =
     scope.vault === vault && scope.bridge === bridge && scope.connection === connection;
   if (!scopeActive) {
     setScope({ vault, bridge, connection });
     setTarget("");
     setForce(false);
-    setPreview(null);
-    setTyped("");
     setStatus("idle");
     setOperationId(null);
     setInspectedOperationId(null);
-    setExpired(false);
+    setDismissed(null);
   }
   const activeList =
     scopeActive && (connection === "online" || connection === "recovered") ? list : null;
@@ -45,12 +48,6 @@ export function useLeaderAction(list: Ready | null) {
       if (ref.current === current) ref.current++;
     };
   }, [bridge, connection, vault]);
-
-  useEffect(() => {
-    if (!preview) return;
-    const timer = setTimeout(() => setExpired(true), Math.max(0, preview.expiresAt - Date.now()));
-    return () => clearTimeout(timer);
-  }, [preview]);
 
   const pending = activeList?.leaderOperations?.find(
     (row) => row.phase === "may_append" && row.operationId !== inspectedOperationId,
@@ -66,47 +63,42 @@ export function useLeaderAction(list: Ready | null) {
     activeList.operations.some((row) => row.phase === "may_append") ||
     (activeList.leaderOperations ?? []).some((row) => row.phase === "may_append");
 
-  async function review() {
-    if (!scopeActive || !bridge?.leaderPreview || !target || blocked || status === "busy") return;
-    const ticket = epoch.current;
-    setStatus("busy");
-    setPreview(null);
-    setTyped("");
-    setExpired(false);
-    try {
-      const result = await bridge.leaderPreview({ vault, leader: target, force });
-      if (epoch.current !== ticket || devicesBridge() !== bridge) return;
-      if (result.kind === "prepared" && result.vault === vault) {
-        setPreview(result);
-        setOperationId(result.operationId);
-        setStatus("idle");
-      } else setStatus("failed");
-    } catch {
-      if (epoch.current === ticket && devicesBridge() === bridge) setStatus("failed");
-    }
+  const targetName = activeList?.devices.find((device) => device.id === target)?.name ?? null;
+
+  function done(): void {
+    if (targetName !== null) toast(T.fetchDone(targetName), 4000);
+    setTarget("");
+    setForce(false);
   }
 
-  async function commit() {
+  async function confirm() {
     if (
-      !bridge?.leaderCommit ||
       !scopeActive ||
-      !preview ||
-      typed !== preview.confirmationText ||
-      status === "busy" ||
-      expired ||
-      Date.now() >= preview.expiresAt
+      !bridge?.leaderPreview ||
+      !bridge.leaderCommit ||
+      !target ||
+      blocked ||
+      status === "busy"
     )
       return;
     const ticket = epoch.current;
-    const prepared = preview;
-    setPreview(null);
-    setTyped("");
     setStatus("busy");
     try {
+      const prepared = await bridge.leaderPreview({ vault, leader: target, force });
+      if (epoch.current !== ticket || devicesBridge() !== bridge) return;
+      if (prepared.kind !== "prepared" || prepared.vault !== vault) {
+        setStatus("failed");
+        return;
+      }
+      setOperationId(prepared.operationId);
+      if (Date.now() >= prepared.expiresAt) {
+        setStatus("failed");
+        return;
+      }
       const result = await bridge.leaderCommit({
         vault,
         token: prepared.token,
-        confirmationText: typed,
+        confirmationText: prepared.confirmationText,
       });
       if (epoch.current !== ticket || devicesBridge() !== bridge) return;
       setStatus(
@@ -116,6 +108,7 @@ export function useLeaderAction(list: Ready | null) {
             ? "unknown"
             : "failed",
       );
+      if (result.kind === "completed") done();
     } catch {
       if (epoch.current === ticket && devicesBridge() === bridge) setStatus("unknown");
     }
@@ -135,7 +128,10 @@ export function useLeaderAction(list: Ready | null) {
             ? "unknown"
             : "failed",
       );
-      if (result.kind === "completed") setInspectedOperationId(operationId);
+      if (result.kind === "completed") {
+        setInspectedOperationId(operationId);
+        done();
+      }
     } catch {
       if (epoch.current === ticket && devicesBridge() === bridge) setStatus("unknown");
     }
@@ -144,23 +140,40 @@ export function useLeaderAction(list: Ready | null) {
   return {
     list: activeList,
     available: scopeActive && !!bridge?.leaderPreview,
+    /** Dialog F: open for a target, or for an outcome still to check. */
+    dialogOpen:
+      (target !== "" && !!activeList) ||
+      (status === "unknown" && (operationId === null || operationId !== dismissedOperationId)),
     target,
-    setTarget,
+    targetName,
+    /** Who fetches today and for how long it has been silent; null when no device is named. */
+    current:
+      activeList === null
+        ? null
+        : (() => {
+            const fetcher = currentFetcher(activeList);
+            return fetcher === null || fetcher.name === targetName ? null : fetcher;
+          })(),
     force,
     setForce,
-    preview,
-    typed,
-    setTyped,
     status,
     operationId,
     blocked,
-    expired,
-    review,
-    commit,
+    open(device: string) {
+      if (status === "busy") return;
+      setTarget(device);
+      setForce(false);
+      setDismissed(null);
+      if (status !== "unknown") setStatus("idle");
+    },
+    confirm,
     inspect,
-    cancel: () => {
-      setPreview(null);
-      setTyped("");
+    close() {
+      if (status === "busy") return;
+      if (status === "unknown") setDismissed(operationId);
+      setTarget("");
+      setForce(false);
+      if (status !== "unknown") setStatus("idle");
     },
   };
 }

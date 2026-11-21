@@ -5,7 +5,7 @@ export const T = catalog({
   title: { pl: "Połącz telefon", en: "Pair a phone" },
   // #23.7 verbatim.
   intro: {
-    pl: "Otwórz cashU na telefonie i zeskanuj ten kod. Telefon potrzebuje internetu; Mac nie musi być włączony.",
+    pl: "Otwórz cashU na telefonie i zeskanuj ten kod. Telefon potrzebuje internetu, Mac nie musi być włączony.",
     en: "Open cashU on your phone and scan this code. The phone needs internet; the Mac does not have to stay on.",
   },
   create: { pl: "Utwórz zaproszenie", en: "Create invitation" },
@@ -19,14 +19,15 @@ export const T = catalog({
   codeLabel: { pl: "Kod do wklejenia na telefonie", en: "Code to paste on the phone" },
   // QA Obs. 7: the confirmation on "Copy code", until the next host push or action.
   copied: { pl: "Skopiowano", en: "Copied" },
+  // Devices spec §6: "Ważny do {time}." / "Expires at {time}.", followed by the waiting line.
   expiry: {
-    pl: (at: number) => `Zaproszenie wygasa o ${clockTime(at, "pl")}`,
-    en: (at: number) => `Invitation expires at ${clockTime(at, "en")}`,
+    pl: (at: number) => `Ważny do ${clockTime(at, "pl")}.`,
+    en: (at: number) => `Expires at ${clockTime(at, "en")}.`,
   },
-  // Proposed (QA Obs. 7), for the designer: the invitation is out, no phone has connected yet.
-  waitingForScan: {
-    pl: "Czekanie, aż telefon zeskanuje kod.",
-    en: "Waiting for the phone to scan the code.",
+  // Designer correction (Devices spec §6, 2026-11-21): the invitation is out, no phone connected yet.
+  expiryScan: {
+    pl: (at: number) => `Ważny do ${clockTime(at, "pl")}. Zeskanuj go telefonem.`,
+    en: (at: number) => `Expires at ${clockTime(at, "en")}. Scan it with the phone.`,
   },
   sasInstruction: {
     pl: "Wpisz sześć cyfr wyświetlonych na telefonie.",

@@ -1,7 +1,8 @@
 import { useProfile } from "@cashu/store-react";
-import { PairingView } from "../pairing/PairingView.js";
+import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { usePairingScreen } from "../pairing/usePairingScreen.js";
 import { DevicesView } from "./DevicesView.js";
+import { deviceRows } from "./deviceRows.js";
 import { SyncRowView } from "./SyncRowView.js";
 import { fetchPausedLine } from "./syncStatusLine.js";
 import { useDevicesScreen } from "./useDevicesScreen.js";
@@ -32,20 +33,24 @@ function ScopedDevicesScreen() {
     devices.list?.kind === "ready" ? devices.list.leader.paused : undefined,
     sync.status,
   );
+  const today = useCalendarDay();
+  // Today's rule for changing the fetching device: the leader warning (36 hours without a fetch),
+  // never while this Mac's own fetch is paused (the override takes its place).
+  const rows =
+    ready === null
+      ? []
+      : deviceRows(ready, today, ready.leader.warn && !fetchPaused && leaderAction.available);
+  const goToSync = sync.state.kind === "ready" ? { onGoToSync: () => reveal("sync") } : {};
   return (
-    <div className="grid gap-6">
-      <SyncRowView state={sync.state} />
-      <PairingView
-        state={pairing}
-        {...(sync.state.kind === "ready" ? { onGoToSync: () => reveal("sync") } : {})}
-      />
-      <DevicesView
-        state={devices}
-        leaderAction={leaderAction}
-        fetchPaused={fetchPaused}
-        keepFetching={keepFetching}
-        {...(sync.state.kind === "ready" ? { onGoToSync: () => reveal("sync") } : {})}
-      />
-    </div>
+    <DevicesView
+      state={devices}
+      rows={rows}
+      leaderAction={leaderAction}
+      fetchPaused={fetchPaused}
+      keepFetching={keepFetching}
+      syncRow={<SyncRowView state={sync.state} />}
+      pairing={pairing}
+      {...goToSync}
+    />
   );
 }

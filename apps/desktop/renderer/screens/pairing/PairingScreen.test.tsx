@@ -326,7 +326,7 @@ it("shows a long code as one start…end line, copies the whole code and writes 
     expect(view.container.textContent).not.toContain(LONG);
     await act(async () => view.button("Copy code")?.click());
     expect(writeText).toHaveBeenCalledWith(LONG);
-    expect(view.container.textContent).toContain("Invitation expires at 18:56");
+    expect(view.container.textContent).toContain("Expires at 18:56.");
     expect(view.container.textContent).not.toContain("18:56:44");
   } finally {
     await view.close();
@@ -340,12 +340,12 @@ it("hides the six digits until the host says a phone connected, then offers them
     .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: true });
   const view = await created(readyBridge({ inspect }));
   try {
-    expect(view.container.textContent).toContain("Waiting for the phone to scan the code.");
+    expect(view.container.textContent).toContain("Scan it with the phone.");
     expect(view.container.querySelector('input[inputmode="numeric"]')).toBeNull();
     expect(view.button("Confirm code")).toBeUndefined();
     expect(view.button("Cancel invitation")).toBeDefined();
     await view.push();
-    expect(view.container.textContent).not.toContain("Waiting for the phone to scan");
+    expect(view.container.textContent).not.toContain("Scan it with the phone");
     expect(view.container.querySelector('input[inputmode="numeric"]')).not.toBeNull();
     expect(view.button("Confirm code")).toBeDefined();
   } finally {
@@ -414,7 +414,7 @@ it("re-inspects on a push that only changes the list's pairingRevision, not on a
     .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: true });
   const view = await created(readyBridge({ inspect }));
   try {
-    expect(view.container.textContent).toContain("Waiting for the phone to scan the code.");
+    expect(view.container.textContent).toContain("Scan it with the phone.");
     await view.pushShared(list(1));
     expect(inspect).toHaveBeenCalledTimes(1);
     // The phone connected: the host bumps the revision and nothing else in the list changes.

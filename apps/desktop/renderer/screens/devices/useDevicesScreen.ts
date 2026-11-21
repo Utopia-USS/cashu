@@ -1,10 +1,11 @@
 import { type DeviceListResult, deviceListResultSchema } from "@cashu/host-protocol";
-import { formatCalendarDate } from "@cashu/i18n/values";
 import { deviceListState } from "@cashu/store/core/desktop-settings";
+import { profileIdentity } from "@cashu/store/core/profile";
 import { useConnection, useProfile, useQuery } from "@cashu/store-react";
-import { useUiEnv } from "@cashu/ui";
+import { useToast } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
 import { devicesBridge } from "../../devicesBridge.js";
+import { T } from "./Devices.strings.js";
 
 type ReadyList = Extract<DeviceListResult, { kind: "ready" }>;
 
@@ -16,7 +17,8 @@ type Preview = Extract<
 export function useDevicesScreen() {
   const vault = useProfile();
   const connection = useConnection();
-  const { locale } = useUiEnv();
+  const toast = useToast();
+  const profile = useQuery(profileIdentity);
   const bridge = devicesBridge();
   // The device list is a live host query, pushed again after every sync pass and device change.
   const live = useQuery(deviceListState, { privacy: false });
@@ -36,6 +38,8 @@ export function useDevicesScreen() {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [currentOperationId, setOperationId] = useState<string | null>(null);
   const [inspectedOperationId, setInspectedOperationId] = useState<string | null>(null);
+  /** An open outcome the owner closed the dialog on; it shows again on the next removal. */
+  const [dismissedOperationId, setDismissed] = useState<string | null>(null);
   // Reset scoped input during render, before the new vault reaches the View.
   if (!scopeActive) {
     setScope({ vault, bridge, connection });
@@ -49,6 +53,7 @@ export function useDevicesScreen() {
     setRefusal(null);
     setOperationId(null);
     setInspectedOperationId(null);
+    setDismissed(null);
   }
   const current =
     scopeActive && (connection === "online" || connection === "recovered") && parsed?.success
@@ -67,18 +72,6 @@ export function useDevicesScreen() {
   const kept = held?.vault === vault ? held.list : null;
   const list = ready ?? kept ?? current;
   const stale = ready === null && kept !== null;
-  // "{device} removed its copy on {date}": the day each such device wrote its note, formatted once here.
-  const shown = ready ?? kept;
-  const leftOn: Readonly<Record<string, string>> = Object.fromEntries(
-    (shown?.devices ?? []).flatMap((device) =>
-      device.leftAt === undefined ||
-      !device.trusted ||
-      device.revoked ||
-      device.id === shown?.ownDevice
-        ? []
-        : [[device.id, formatCalendarDate(device.leftAt, locale)]],
-    ),
-  );
   const target = scopeActive ? selectedTarget : "";
   const recertify = scopeActive ? selectedRecertify : [];
   const preview = scopeActive ? preparedPreview : null;
@@ -102,6 +95,10 @@ export function useDevicesScreen() {
   const activeAttempt = useRef<{ vault: string; operationId: string } | null>(null);
   const committing = useRef(false);
   const previewRef = useRef<Preview | null>(null);
+  /** The removal dialog already asked once with every affected device kept (they start ticked). */
+  const keptByDefault = useRef(false);
+  /** The device name of the removal in flight, for the toast once it completed. */
+  const removing = useRef<string | null>(null);
 
   useEffect(() => {
     previewRef.current = preview;
@@ -137,7 +134,22 @@ export function useDevicesScreen() {
     return () => clearTimeout(timer);
   }, [scopeActive, preparedPreview]);
 
-  async function review(chosen: string = target): Promise<void> {
+  /** Why a removal cannot start now (shown inside the dialog), or null. */
+  const blocked: "overflow" | "pending" | "writer" | null =
+    list?.kind !== "ready"
+      ? null
+      : list.evidence.overflow
+        ? "overflow"
+        : list.evidence.historyPending || list.evidence.authorityUncertain
+          ? "pending"
+          : list.evidence.writeAdmission !== "ready"
+            ? "writer"
+            : null;
+
+  async function review(
+    chosen: string = target,
+    keep: readonly string[] = recertify,
+  ): Promise<void> {
     if (
       !bridge ||
       !chosen ||
@@ -162,7 +174,7 @@ export function useDevicesScreen() {
       const result = await bridge.revokePreview({
         vault,
         targets: [chosen],
-        recertify: [...recertify].sort(),
+        recertify: [...keep].sort(),
       });
       if (lifetime.current !== epoch || requestGeneration.current !== request) {
         if (result.kind === "prepared")
@@ -173,6 +185,30 @@ export function useDevicesScreen() {
         setRefusal(result.code);
         setStatus("failed");
         return;
+      }
+      // The devices the removed one added start ticked ("Keep them in the profile"): ask once more
+      // with all of them kept. When that is refused (capacity), the first answer stays, unticked.
+      if (!keptByDefault.current && keep.length === 0 && result.affected.length > 0) {
+        keptByDefault.current = true;
+        const all = result.affected.map((device) => device.device).sort();
+        const again = await bridge.revokePreview({ vault, targets: [chosen], recertify: all });
+        if (lifetime.current !== epoch || requestGeneration.current !== request) {
+          void bridge.revokeCancel({ vault, token: result.token }).catch(() => {});
+          if (again.kind === "prepared")
+            void bridge.revokeCancel({ vault, token: again.token }).catch(() => {});
+          return;
+        }
+        if (again.kind === "prepared") {
+          void bridge.revokeCancel({ vault, token: result.token }).catch(() => {});
+          setRecertify(all);
+          setPreview(again);
+          setOperationId(again.operationId);
+          setWarningAck(false);
+          setLocalAck(false);
+          setStatus("idle");
+          return;
+        }
+        setRefusal(again.code);
       }
       setPreview(result);
       setOperationId(result.operationId);
@@ -197,6 +233,7 @@ export function useDevicesScreen() {
       return;
     const epoch = lifetime.current;
     const words = phrase;
+    removing.current = targetName;
     activeAttempt.current = { vault, operationId: preview.operationId };
     committing.current = true;
     setPhrase("");
@@ -231,6 +268,7 @@ export function useDevicesScreen() {
             : "failed",
       );
       if (result.kind === "refused" || result.kind === "completed") activeAttempt.current = null;
+      if (result.kind === "completed") done();
     } catch {
       if (lifetime.current === epoch) {
         setPreview(null);
@@ -265,6 +303,7 @@ export function useDevicesScreen() {
         activeAttempt.current = null;
         setInspectedOperationId(inspected);
       }
+      if (result.kind === "completed") done();
     } catch {
       if (lifetime.current === epoch) setStatus("unknown");
     }
@@ -299,29 +338,73 @@ export function useDevicesScreen() {
     setLocalAck(false);
   }
 
-  /** A device that removed its copy: the normal removal flow (recovery words) with it chosen. */
-  function removeLeft(device: string): void {
-    if (stale || !(device in leftOn) || status === "busy" || preview) return;
+  /** A removal finished: the toast says so and the dialog closes. */
+  function done(): void {
+    toast(removing.current === null ? T.removedUnnamed : T.removed(removing.current), 4000);
+    removing.current = null;
+    setTarget("");
+    setRecertify([]);
+  }
+
+  /** "Remove from profile…" on a row (also the note of a device that removed its copy). */
+  function openRemoval(device: string): void {
+    if (stale || status === "busy" || preview || list?.kind !== "ready") return;
+    if (!list.devices.some((row) => row.id === device && row.trusted && !row.revoked)) return;
+    keptByDefault.current = false;
+    setDismissed(null);
     setTarget(device);
-    void review(device);
+    setRecertify([]);
+    setRefusal(null);
+    setStatus("idle");
+    if (blocked === null) void review(device, []);
+  }
+
+  /** Cancel or close: the prepared removal is cancelled and the words dropped. */
+  async function closeRemoval(): Promise<void> {
+    if (status === "unknown") setDismissed(operationId);
+    setTarget("");
+    setRecertify([]);
+    setRefusal(null);
+    await cancel();
+    if (!activeAttempt.current) setStatus("idle");
+  }
+
+  const targetDevice =
+    list?.kind === "ready" ? list.devices.find((device) => device.id === target) : undefined;
+  const targetName = targetDevice?.name ?? null;
+  /** The one checkbox of the dialog: which fact it states. */
+  const ackKind: "local_start" | "behind" | "plain" = preview?.localStartConfirmationRequired
+    ? "local_start"
+    : targetDevice?.behind
+      ? "behind"
+      : "plain";
+  const ack = warningAck && (!preview?.localStartConfirmationRequired || localAck);
+  function setAck(checked: boolean): void {
+    setWarningAck(checked);
+    setLocalAck(checked);
   }
 
   return {
     list,
     stale,
-    leftOn,
-    removeLeft,
+    profileName: profile?.name ?? null,
+    /** The removal dialog: open for a device, or for an outcome still to check. */
+    dialogOpen:
+      target !== "" ||
+      (status === "unknown" && (operationId === null || operationId !== dismissedOperationId)),
     target,
-    setTarget,
+    targetName,
+    blocked,
+    openRemoval,
+    closeRemoval,
     preview,
     recertify,
     toggleRecertify,
     selectionDirty,
     refusal,
-    warningAck,
-    setWarningAck,
-    localAck,
-    setLocalAck,
+    ackKind,
+    ack,
+    setAck,
     phrase,
     setPhrase,
     status,
@@ -329,7 +412,6 @@ export function useDevicesScreen() {
     review: () => review(),
     commit,
     inspect,
-    cancel,
   };
 }
 export type DevicesScreenState = ReturnType<typeof useDevicesScreen>;

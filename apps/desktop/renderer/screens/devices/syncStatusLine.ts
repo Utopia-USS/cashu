@@ -32,9 +32,8 @@ export type SyncStatusLine =
       readonly kind: "synced";
       readonly at: number;
       readonly day: "today" | "yesterday" | "earlier";
-      readonly devices: number;
     }
-  | { readonly kind: "first_sync"; readonly devices: number };
+  | { readonly kind: "first_sync" };
 
 /**
  * Most urgent first: an identity to reconnect, a removed device that can still receive data, the
@@ -61,12 +60,11 @@ export function syncStatusLine(
     return { kind: "stuck_failed", device: stuckDevice };
   if (status.stuck !== undefined && status.stuck.waiting > 0)
     return { kind: "stuck_waiting", device: stuckDevice };
-  if (status.lastSyncAt === undefined) return { kind: "first_sync", devices: status.devices };
+  if (status.lastSyncAt === undefined) return { kind: "first_sync" };
   return {
     kind: "synced",
     at: status.lastSyncAt,
     day: relativeDay(new Date(status.lastSyncAt), new Date(now)),
-    devices: status.devices,
   };
 }
 

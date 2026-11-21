@@ -19,7 +19,7 @@ const B = "b".repeat(32);
 const names: Record<string, string> = { [A]: "Old iPhone" };
 const line = (overrides: Partial<RelayStatusResult>) =>
   syncStatusLine({ ...base, ...overrides }, NOW, (device) => names[device] ?? null);
-const syncedToday = { kind: "synced", at: NOW - 2 * MIN, day: "today", devices: 3 };
+const syncedToday = { kind: "synced", at: NOW - 2 * MIN, day: "today" };
 
 it("hides the row without a sync config, even with other fields set", () => {
   expect(line({ configured: false, enabled: true, pausedSince: NOW })).toEqual({ kind: "hidden" });
@@ -109,25 +109,22 @@ it("says when it synced as a clock time on today, yesterday or an earlier day", 
     kind: "synced",
     at: today,
     day: "today",
-    devices: 3,
   });
   expect(line({ lastSyncAt: yesterday })).toEqual({
     kind: "synced",
     at: yesterday,
     day: "yesterday",
-    devices: 3,
   });
   expect(line({ lastSyncAt: earlier })).toEqual({
     kind: "synced",
     at: earlier,
     day: "earlier",
-    devices: 3,
   });
 });
 
 it("waits for the first sync when no pass reached it yet", () => {
   const { lastSyncAt: _drop, ...never } = base;
-  expect(syncStatusLine(never, NOW)).toEqual({ kind: "first_sync", devices: 3 });
+  expect(syncStatusLine(never, NOW)).toEqual({ kind: "first_sync" });
 });
 
 it("picks the bank fetch paused variant from the sync switch", () => {
