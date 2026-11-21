@@ -533,6 +533,11 @@ export const PairPhone = {
     open?.click();
   },
 };
+/** A: the phone is paired (the commit); the dialog says so while the phone fetches its data. */
+export const PairPhoneCompleted = {
+  render: () => page({ pairing: { kind: "completed", onCreate: asyncNoop } }),
+  play: PairPhone.play,
+};
 /** A host handover: the last list stays, actions disabled; the message only after 3 s (CSS). */
 export const Reconnecting = { render: () => page({ state: screen({ stale: true }) }) };
 /** No list at all for more than 3 s. */

@@ -39,12 +39,11 @@ export const T = catalog({
     pl: "Nie wiadomo, czy się udało. Sprawdź, czy telefon został dodany, zanim utworzysz nowe zaproszenie.",
     en: "The outcome is unknown. Check whether the phone was added before creating another invitation.",
   },
-  // Proposed (W3-7 addendum a), for the designer: the phone is admitted, its first sync not seen yet.
-  waitingForPhone: {
-    pl: "Telefon dodany. Trwa jego pierwsza synchronizacja: zostaw cashU otwarte na telefonie, aż się skończy.",
-    en: "Phone added. Waiting for its first sync: keep cashU open on the phone until it finishes.",
+  // Designer (DV4 item 3): shown at the commit (membership written), while the phone fetches its data.
+  complete: {
+    pl: "Telefon sparowany. Właśnie pobiera dane; możesz zamknąć to okno.",
+    en: "Phone paired. It's getting the data now; you can close this window.",
   },
-  complete: { pl: "Telefon połączono.", en: "Phone paired." },
   refused: {
     pl: "Nie udało się połączyć telefonu. Sprawdź stan urządzeń, zanim spróbujesz ponownie.",
     en: "The phone could not be paired. Check device status before trying again.",

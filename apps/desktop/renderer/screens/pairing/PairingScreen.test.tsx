@@ -239,14 +239,15 @@ it("offers a new code once the invitation expired", async () => {
   }
 });
 
-it("waits for the phone's first sync and asks inspect again on each host push until completed", async () => {
+// Designer copy (DV4 item 3), quoted verbatim.
+const PAIRED = "Phone paired. It's getting the data now; you can close this window.";
+
+it("says 'Phone paired' at the commit, without waiting for the phone's first sync", async () => {
   const operationId = "0".repeat(26);
   const device = "d".repeat(32);
   const inspect = vi
     .fn()
-    .mockResolvedValueOnce({ kind: "pending", operationId, phoneConnected: true })
-    .mockResolvedValueOnce({ kind: "waiting_for_phone", operationId })
-    .mockResolvedValueOnce({ kind: "completed", operationId });
+    .mockResolvedValueOnce({ kind: "pending", operationId, phoneConnected: true });
   const view = await created({
     invite: vi.fn(async () => ({
       kind: "ready" as const,
@@ -254,6 +255,7 @@ it("waits for the phone's first sync and asks inspect again on each host push un
       qr: "synthetic-waiting",
       expiresAt: Date.now() + 60_000,
     })),
+    // The membership is written; the phone has not synced yet.
     confirm: vi.fn(async () => ({ kind: "waiting_for_phone" as const, operationId, device })),
     inspect,
     cancel: vi.fn(async () => ({ kind: "cancelled" as const })),
@@ -268,21 +270,55 @@ it("waits for the phone's first sync and asks inspect again on each host push un
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => view.button("Confirm code")?.click());
-    expect(view.container.textContent).toContain("Waiting for its first sync");
-    expect(view.container.textContent).not.toContain("Phone paired.");
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe(PAIRED);
+    expect(view.container.textContent).not.toContain("first sync");
     expect(view.container.querySelector("code")).toBeNull();
-    // The invitation read once on entry; entering the waiting state reads once more; the phone has
-    // not synced yet.
-    expect(inspect).toHaveBeenCalledTimes(2);
-    expect(view.container.textContent).toContain("Waiting for its first sync");
-    // No timer: nothing more without a push.
-    await act(async () => new Promise((done) => setTimeout(done, 20)));
-    expect(inspect).toHaveBeenCalledTimes(2);
+    // The attempt is over: a push asks the host nothing more.
+    expect(inspect).toHaveBeenCalledTimes(1);
     await view.push();
-    expect(inspect).toHaveBeenCalledTimes(3);
-    expect(inspect).toHaveBeenLastCalledWith({ vault: bindings.vault, operationId });
-    expect(view.container.textContent).toContain("Phone paired.");
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe(PAIRED);
   } finally {
+    await view.close();
+  }
+});
+
+it("an inspect that finds the membership written also says 'Phone paired' (Polish too)", async () => {
+  const operationId = "0".repeat(26);
+  const inspect = vi
+    .fn()
+    .mockResolvedValueOnce({ kind: "pending", operationId, phoneConnected: true })
+    .mockResolvedValueOnce({ kind: "waiting_for_phone", operationId });
+  const view = await created({
+    invite: vi.fn(async () => ({
+      kind: "ready" as const,
+      operationId,
+      qr: "synthetic-unknown",
+      expiresAt: Date.now() + 60_000,
+    })),
+    confirm: vi.fn(async () => ({ kind: "outcome_unknown" as const, operationId })),
+    inspect,
+    cancel: vi.fn(async () => ({ kind: "cancelled" as const })),
+  });
+  try {
+    const input = view.container.querySelector('input[inputmode="numeric"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        input,
+        "123456",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => view.button("Confirm code")?.click());
+    await act(async () => view.button("Check outcome")?.click());
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe(PAIRED);
+    setLanguageForTests("pl");
+    await view.push();
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe(
+      "Telefon sparowany. Właśnie pobiera dane; możesz zamknąć to okno.",
+    );
+  } finally {
+    setLanguageForTests("en");
     await view.close();
   }
 });

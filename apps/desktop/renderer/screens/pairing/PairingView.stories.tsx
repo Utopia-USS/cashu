@@ -59,4 +59,3 @@ export const Expired = {
 export const SyncOff = {
   render: () => <PairingView state={{ kind: "sync_off", onCreate: noop }} onGoToSync={() => {}} />,
 };
-export const WaitingForPhone = { render: () => <PairingView state={{ kind: "waiting" }} /> };

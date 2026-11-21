@@ -128,7 +128,7 @@ it("'Keep fetching on this Mac' opens dialog F and keeps fetching for this profi
   await click("Keep fetching on this Mac");
   expect(dialog()?.getAttribute("aria-label")).toBe("Keep fetching on this Mac?");
   expect(dialog()?.querySelector("p")?.textContent).toBe(
-    "Make sure your other Mac Mac mini doesn't fetch too. cashU asks again in 7 days.",
+    "Mac mini hasn't reported for 7 days. If it is still running, both Macs may fetch once; duplicate transactions are filtered out.",
   );
   expect(keepFetching).not.toHaveBeenCalled();
   await act(async () =>

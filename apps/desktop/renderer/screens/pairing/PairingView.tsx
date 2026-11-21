@@ -31,9 +31,8 @@ export type PairingViewState =
     }
   /** Always offers a way back: cancels the attempt (or reports the outcome as unknown). */
   | { kind: "checking"; onCancel(): Promise<void> }
-  /** The phone is admitted; its first sync has not reached this Mac yet. */
-  | { kind: "waiting" }
   | { kind: "unknown"; onInspect(): Promise<void> }
+  /** Paired at the commit (membership written); the phone's first sync runs on the phone. */
   | { kind: "completed"; onCreate(): Promise<void> }
   /** A cancel the host refused because the phone was already written into the vault. */
   | { kind: "already_added"; onCreate(): Promise<void> }
@@ -157,12 +156,6 @@ export function PairingView({
             <Button onPress={state.onInspect}>{T.inspect}</Button>
           </div>
         </div>
-      )}
-      {state.kind === "waiting" && (
-        <p role="status" className="flex items-center gap-1.5">
-          <Spinner />
-          {T.waitingForPhone}
-        </p>
       )}
       {state.kind === "completed" && <p role="status">{T.complete}</p>}
       {state.kind === "refused" && <p role="alert">{T.refused}</p>}

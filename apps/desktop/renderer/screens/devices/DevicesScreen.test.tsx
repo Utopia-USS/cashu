@@ -583,10 +583,10 @@ it("while this Mac's fetch is paused, tags it, explains the bound and asks befor
   expect(button("Fetch bank data on this Mac")).toBeUndefined();
   await click("Keep fetching on this Mac");
   expect(dialog()?.getAttribute("aria-label")).toBe("Keep fetching on this Mac?");
-  // The body does not ask the title's question again; the other Mac's name stands without quotes.
+  // The body does not ask the title's question again; the other Mac's name stands alone.
   const body = dialog()?.querySelector("p")?.textContent;
   expect(body).toBe(
-    "Make sure your other Mac Mac mini doesn't fetch too. cashU asks again in 7 days.",
+    "Mac mini hasn't reported for 7 days. If it is still running, both Macs may fetch once; duplicate transactions are filtered out.",
   );
   expect(dialogButtons()).toEqual(["Cancel", "Keep fetching"]);
   // The primary button takes the focus.

@@ -12,9 +12,11 @@ type Phase =
   | "invited"
   | "checking"
   | "unknown"
+  /**
+   * The phone is paired: the host committed its membership (`waiting_for_phone` or `completed`). Its
+   * first sync runs on the phone and the host watches it; the dialog does not wait for it.
+   */
   | "completed"
-  /** The phone is admitted; this Mac has not seen its first sync yet (re-inspected on each push). */
-  | "waiting"
   | "refused"
   /** A cancel came too late: the host had already written the phone into the vault. */
   | "already_added"
@@ -44,9 +46,9 @@ export function usePairingScreen(): PairingViewState {
   const vault = useProfile();
   const connection = useConnection();
   const bridge = pairingBridge();
-  // Only a trigger while an invitation is out or waiting for the phone: the host pushes the device
-  // list again after every sync pass and device change, and bumps the list's `pairingRevision` on every
-  // pairing transition (a phone connected, an admission settled, the phone's first sync). The client
+  // Only a trigger while an invitation is out: the host pushes the device list again after every sync
+  // pass and device change, and bumps the list's `pairingRevision` on every pairing transition (a
+  // phone connected, an admission settled). The client
   // keeps an equal snapshot's identity, so a revision-only change still yields a new object here.
   // Also the end of a "Copied" confirmation. No timer.
   const changed = useQuery(deviceListState, { privacy: false });
@@ -68,9 +70,6 @@ export function usePairingScreen(): PairingViewState {
   const inviteRef = useRef<Invite | null>(null);
   const inspectOnScope = useEffectEvent(() => {
     void inspectCurrent();
-  });
-  const inspectWhileWaiting = useEffectEvent(() => {
-    void inspectCurrent(true);
   });
   const inspectWhileInvited = useEffectEvent(() => {
     void inspectInvite();
@@ -104,10 +103,6 @@ export function usePairingScreen(): PairingViewState {
         void bridge.cancel({ vault, operationId: pending.operationId }).catch(() => {});
     };
   }, [vault, bridge, connection]);
-
-  useEffect(() => {
-    if (phase === "waiting" && changed) inspectWhileWaiting();
-  }, [phase, changed]);
 
   // Entering the invitation and each push after it ask whether a phone has connected.
   useEffect(() => {
@@ -162,35 +157,31 @@ export function usePairingScreen(): PairingViewState {
     } else setPhase("unknown");
   }
 
-  /** `quiet`: a re-check while waiting for the phone keeps the waiting card instead of "checking". */
-  async function inspectCurrent(quiet = false): Promise<void> {
+  async function inspectCurrent(): Promise<void> {
     const attempt = currentAttempt.current;
     if (!bridge || !attempt || attempt.vault !== vault || busy.current) return;
     busy.current = true;
     const generation = epoch.current;
-    if (!quiet) setPhase("checking");
+    setPhase("checking");
     try {
       const result = await bridge.inspect({ vault, operationId: attempt.operationId });
       if (generation !== epoch.current) return;
       applyOutcome(result);
     } catch {
-      // A quiet re-check that cannot reach the host keeps waiting: the next push asks again.
-      if (generation === epoch.current && !quiet) setPhase("unknown");
+      if (generation === epoch.current) setPhase("unknown");
     } finally {
       if (generation === epoch.current) busy.current = false;
     }
   }
 
   function applyOutcome(result: PairingInspectResult): void {
-    if (result.kind === "completed") {
+    // The commit point: the phone is paired once its membership is written (`waiting_for_phone`),
+    // not only after its first sync reached this Mac (`completed`).
+    if (result.kind === "completed" || result.kind === "waiting_for_phone") {
       currentAttempt.current = null;
       setInvite(null);
       inviteRef.current = null;
       setPhase("completed");
-    } else if (result.kind === "waiting_for_phone") {
-      setInvite(null);
-      inviteRef.current = null;
-      setPhase("waiting");
     } else if (result.kind === "not_started" || result.kind === "phone_cancelled") {
       currentAttempt.current = null;
       setInvite(null);
@@ -276,16 +267,12 @@ export function usePairingScreen(): PairingViewState {
         code: entered,
       });
       if (generation !== epoch.current) return;
-      if (result.kind === "completed") {
+      // Paired at the commit point (see applyOutcome); the host watches the phone's first sync.
+      if (result.kind === "completed" || result.kind === "waiting_for_phone") {
         currentAttempt.current = null;
         setInvite(null);
         inviteRef.current = null;
         setPhase("completed");
-      } else if (result.kind === "waiting_for_phone") {
-        // Admitted: keep the attempt so each push re-inspects it until the phone's first sync lands.
-        setInvite(null);
-        inviteRef.current = null;
-        setPhase("waiting");
       } else if (result.kind === "outcome_unknown") {
         setInvite(null);
         inviteRef.current = null;
@@ -410,7 +397,6 @@ export function usePairingScreen(): PairingViewState {
       submitting,
     };
   if (phase === "unknown") return { kind: "unknown", onInspect: () => inspectCurrent() };
-  if (phase === "waiting") return { kind: "waiting" };
   if (phase === "creating") return { kind: "creating" };
   if (phase === "checking") return { kind: "checking", onCancel: abandon };
   if (phase === "completed") return { kind: "completed", onCreate: create };

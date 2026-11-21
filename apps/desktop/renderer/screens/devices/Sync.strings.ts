@@ -111,11 +111,11 @@ export const S = catalog({
     en: "That didn't work. Try again in a moment.",
   },
   working: { pl: "Trwa operacja…", en: "Working…" },
-  // Lead's wording, addendum 3a: two Macs with sync off. The sync-on text is Devices.strings
+  // Two Macs with sync off (designer, DV4 item 1). The sync-on text is Devices.strings
   // fetchPausedBanner (one entry for Devices and Banking, FetchPausedBanner.tsx).
   fetchPausedSyncOff: {
-    pl: "Pobieranie z banku wstrzymane: synchronizacja jest wyłączona, więc ten Mac nie wie, czy pobiera Twój drugi Mac. Włącz synchronizację albo ustaw ten Mac jako pobierający.",
-    en: "Bank fetch paused: sync is off, so this Mac can't tell whether your other Mac fetches. Turn sync on, or make this Mac the one that fetches.",
+    pl: "Pobieranie z banku wstrzymane: synchronizacja jest wyłączona, więc ten Mac nie wie, czy Twój drugi Mac też pobiera. Włącz synchronizację albo pobieraj dalej na tym Macu.",
+    en: "Bank fetch paused: sync is off, so this Mac can't tell whether your other Mac fetches too. Turn sync on, or keep fetching on this Mac.",
   },
   // The links under the paused state.
   goToSync: { pl: "Przejdź do synchronizacji", en: "Go to sync" },
