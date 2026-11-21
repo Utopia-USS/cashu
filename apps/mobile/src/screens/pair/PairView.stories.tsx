@@ -58,6 +58,7 @@ export const FirstSyncWaiting = {
     canOpen: false,
     suggestLock: true,
     done: false,
+    slow: false,
     onOpen: noop,
   },
 };
@@ -69,6 +70,19 @@ export const FirstSyncProgress = {
     canOpen: false,
     suggestLock: true,
     done: false,
+    slow: false,
+    onOpen: noop,
+  },
+};
+export const FirstSyncSlow = {
+  args: {
+    kind: "firstSync",
+    profile: null,
+    progress: { step: "receiving", done: 1_240_000, total: 6_400_000 },
+    canOpen: false,
+    suggestLock: true,
+    done: false,
+    slow: true,
     onOpen: noop,
   },
 };
@@ -80,6 +94,7 @@ export const FirstSyncOpenable = {
     canOpen: true,
     suggestLock: true,
     done: false,
+    slow: false,
     onOpen: noop,
   },
 };
@@ -91,6 +106,7 @@ export const FirstSyncSaving = {
     canOpen: false,
     suggestLock: true,
     done: false,
+    slow: false,
     onOpen: noop,
   },
 };
@@ -102,6 +118,7 @@ export const FirstSyncChecking = {
     canOpen: false,
     suggestLock: true,
     done: false,
+    slow: false,
     onOpen: noop,
   },
 };
@@ -113,6 +130,7 @@ export const Done = {
     canOpen: true,
     suggestLock: true,
     done: true,
+    slow: false,
     onOpen: noop,
   },
 };

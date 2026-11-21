@@ -46,6 +46,8 @@ export const LEASE_PINNED = "lease.pinned";
 export const LEASE_FETCHED = "lease.fetched";
 export const RECOVERY_CHANGED = "device.recoveryChanged";
 export const HEADS_GOSSIPED = "device.headsGossiped";
+/** A device's note about itself: it removed its copy of the vault (informational, never trust). */
+export const DEVICE_LEFT = "device.left";
 
 /** Every event type this module defines is at schema version 1. */
 export const DEVICE_EVENT_VERSION = 1;
@@ -99,6 +101,18 @@ export interface DeviceAddedData {
   readonly certificate: string;
   /** Who signed this statement: the writer, or `RECOVERY_SIGNER_ID` at vault creation. */
   readonly signer: string;
+  readonly sig: string;
+}
+
+/**
+ * "This device removed its copy" (`device.left`): written by the device about ITSELF into its own
+ * stream before it wipes its copy. Informational only: it never changes trust, keys, the registry's
+ * membership or the lease (the owner still removes the device with the recovery words). `at` is the
+ * writer's wall clock, ms.
+ */
+export interface DeviceLeftData {
+  readonly device: string;
+  readonly at: number;
   readonly sig: string;
 }
 
@@ -646,6 +660,23 @@ export function buildLeaseFetched(
   });
 }
 
+/**
+ * The `device.left` statement `identity` writes about itself (its own stream only: a note naming
+ * another device than its writer is ignored by the fold). `at` is the local wall clock, ms.
+ */
+export function buildDeviceLeft(
+  identity: DeviceIdentity,
+  vaultId: string,
+  eid: string,
+  at: number,
+): UnstampedEvent {
+  if (!isTime(at)) throw new RangeError("at must be a positive integer of milliseconds");
+  return signed(identity, "cashu/registry/v1", vaultId, DEVICE_LEFT, eid, {
+    device: identity.deviceId,
+    at,
+  });
+}
+
 /** What the replaced recovery identity signs: the change without `sig` and `authorization`. */
 export function recoveryChangeAuthorizationBody(
   vaultId: string,
@@ -1011,6 +1042,17 @@ export function decodeLeaseFetched(
   data: Readonly<Record<string, unknown>>,
 ): LeaseFetchedData | undefined {
   return decodeLeaseRelease(data);
+}
+
+export function decodeDeviceLeft(
+  data: Readonly<Record<string, unknown>>,
+): DeviceLeftData | undefined {
+  if (!hasExactly(data, ["device", "at", "sig"])) return undefined;
+  const { device, at, sig } = data;
+  if (typeof device !== "string" || !isDeviceId(device) || !isTime(at) || !isSig(sig)) {
+    return undefined;
+  }
+  return { device, at, sig };
 }
 
 export function decodeRecoveryChanged(

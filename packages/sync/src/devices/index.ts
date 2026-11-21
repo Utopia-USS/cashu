@@ -10,6 +10,7 @@ export type {
 } from "./catchUp.js";
 export {
   buildDeviceAdded,
+  buildDeviceLeft,
   buildDeviceRevoked,
   buildKeysRotated,
   buildLeaseFetched,
@@ -19,8 +20,10 @@ export {
   consentToRevocation,
   DEVICE_ADDED,
   DEVICE_EVENT_VERSION,
+  DEVICE_LEFT,
   DEVICE_REVOKED,
   type DeviceAddedData,
+  type DeviceLeftData,
   type DeviceRevokedData,
   decodeDeviceRevoked,
   isDeviceName,

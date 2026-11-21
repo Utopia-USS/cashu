@@ -18,7 +18,12 @@ function pairedOn(hlc: string): string | undefined {
   } catch {
     return undefined;
   }
-  if (!Number.isSafeInteger(wall) || wall <= 0) return undefined;
+  return localDay(wall);
+}
+
+/** The local calendar day ("2026-11-14") of a wall clock in ms; undefined when it is no time. */
+function localDay(wall: number | undefined): string | undefined {
+  if (wall === undefined || !Number.isSafeInteger(wall) || wall <= 0) return undefined;
   const day = new Date(wall);
   if (Number.isNaN(day.getTime())) return undefined;
   return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
@@ -88,6 +93,7 @@ export function deviceReads(
         },
         devices: records.map((record) => {
           const day = pairedOn(record.pairedAt.hlc);
+          const left = localDay(record.leftAt);
           return {
             id: record.deviceId,
             name: record.name,
@@ -99,6 +105,7 @@ export function deviceReads(
             pairedBy: record.pairedBy,
             pairedAt: record.pairedAt.position,
             ...(day === undefined ? {} : { pairedOn: day }),
+            ...(left === undefined ? {} : { leftAt: left }),
           };
         }),
         ...(pairingRevision() > 0 ? { pairingRevision: pairingRevision() } : {}),

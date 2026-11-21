@@ -15,7 +15,7 @@ import {
   toUnstampedEvent,
   vaultSalt,
 } from "@cashu/store";
-import { HybridClock } from "@cashu/store/runtime";
+import { HybridClock, viewHash } from "@cashu/store/runtime";
 import {
   initializeMetaClockGuard,
   loadDeviceAuthority,
@@ -28,12 +28,14 @@ import {
 } from "@cashu/store/sync";
 import {
   AnonymousAuth,
+  type ApplyOutcome,
   createOwnLogCodec,
   createSyncEngine,
   crypto,
   devices,
   FirestoreRest,
   FirestoreTransport,
+  type InboundBatch,
   START_CURSOR,
   type SyncEngine,
   type Transport,
@@ -49,7 +51,12 @@ import Database from "better-sqlite3";
 import { memoryKeyStore, runtime } from "../selftest/testing/runtime";
 import { createVaultQueue } from "./commandQueue";
 import { readVaultBootstrap, storeJoinedVault } from "./vaultBootstrap";
-import { createVaultSession, type VaultEngineDeps, type VaultSession } from "./vaultEngine";
+import {
+  createVaultSession,
+  type VaultEngineDeps,
+  type VaultSession,
+  yieldingSink,
+} from "./vaultEngine";
 
 const DEMO_VAULT = "ca000000000000000000000000000a11";
 const DEMO_DEVICE = "d2000000000000000000000000000041";
@@ -990,4 +997,302 @@ describe("a paired vault", () => {
     await reopened.close();
     await mac.engine.close();
   }, 60_000);
+});
+
+/** `remote` whose calls never answer while `hang()` (the phone offline with no error, a dead socket). */
+function hangingWhile(remote: Transport, hang: () => boolean, onHang = () => {}): Transport {
+  const never = <T>(call: () => Promise<T>): Promise<T> => {
+    if (!hang()) return call();
+    onHang();
+    return new Promise<T>(() => {});
+  };
+  return {
+    consistency: remote.consistency,
+    list: (vault) => never(() => remote.list(vault)),
+    read: (vault, device, seg, from) => never(() => remote.read(vault, device, seg, from)),
+    append: (vault, device, seg, at, bytes) =>
+      never(() => remote.append(vault, device, seg, at, bytes)),
+  };
+}
+
+/** The phone's record in the Mac's registry fold. */
+function macView(mac: Mac, phone: string) {
+  const registry = mac.candidate.devices.registry;
+  return {
+    leftAt: registry.devices.get(phone)?.leftAt,
+    trusted: registry.trusted.has(phone),
+    revoked: registry.revoked.has(phone),
+  };
+}
+
+describe("leaving before the copy goes", () => {
+  it("writes this phone's removed-its-copy statement and pushes it; the Mac folds it, trust unchanged", async () => {
+    const fake = createFakeFirebase();
+    const mac = await createMac(fake);
+    const paired = await pairPhone(fake, mac);
+    const phone = paired.open();
+    await phone.opened;
+    await phone.pass("full");
+    expect(macView(mac, paired.device)).toEqual({
+      leftAt: undefined,
+      trusted: true,
+      revoked: false,
+    });
+
+    const before = Date.now();
+    expect(await phone.leave(Date.now() + 5_000)).toBe("pushed");
+    expect(phone.status().unpushed).toBe(false);
+    await phone.close();
+    // The relay holds it: the Mac pulls it without the phone ever running again.
+    await mac.engine.sync();
+    const seen = macView(mac, paired.device);
+    expect(seen.leftAt).toBeGreaterThanOrEqual(before);
+    expect(seen.leftAt).toBeLessThanOrEqual(Date.now());
+    expect(seen).toMatchObject({ trusted: true, revoked: false });
+    await mac.engine.close();
+  }, 60_000);
+
+  it("offline, ends by the deadline with the statement only written locally, and closes at once", async () => {
+    const fake = createFakeFirebase();
+    const mac = await createMac(fake);
+    const paired = await pairPhone(fake, mac);
+    let offline = false;
+    let hung!: () => void;
+    const hanging = new Promise<void>((resolve) => {
+      hung = resolve;
+    });
+    const phone = paired.open(
+      hangingWhile(
+        paired.relay,
+        () => offline,
+        () => hung(),
+      ),
+    );
+    await phone.opened;
+    await phone.pass("full");
+    offline = true;
+    // A pass already holding the queue on a dead connection is abandoned, so the statement still runs.
+    const stuck = phone.pass("full");
+    await hanging;
+    const started = Date.now();
+    const outcome = await phone.leave(started + 400);
+    await stuck;
+    await phone.close();
+    const elapsed = Date.now() - started;
+    expect(outcome).toBe("written");
+    expect(elapsed).toBeLessThan(3_000);
+    await mac.engine.sync();
+    expect(macView(mac, paired.device).leftAt).toBeUndefined();
+    await mac.engine.close();
+  }, 60_000);
+
+  it("killed between the statement and the wipe: the copy opens as before, and the statement still arrives", async () => {
+    const fake = createFakeFirebase();
+    const mac = await createMac(fake);
+    const paired = await pairPhone(fake, mac);
+    let offline = false;
+    const first = paired.open(hangingWhile(paired.relay, () => offline));
+    await first.opened;
+    await first.pass("full");
+    offline = true;
+    expect(await first.leave(Date.now() + 300)).toBe("written");
+    // The app is killed here: no wipe ran, every file and key is still there.
+    await first.close();
+
+    const again = paired.open();
+    await again.opened;
+    // The statement changes nothing about this phone's own authority: ready, a push due, commands work.
+    expect(again.status()).toMatchObject({ phase: "ready", unpushed: true });
+    expect(await again.execute(renameProfile, { name: "Still here" }, "k1")).toMatchObject({
+      kind: "completed",
+    });
+    await again.pass("push");
+    expect(again.status()).toMatchObject({ phase: "ready", unpushed: false });
+    await again.close();
+    await mac.engine.sync();
+    expect(macView(mac, paired.device)).toMatchObject({ trusted: true, revoked: false });
+    expect(macView(mac, paired.device).leftAt).toEqual(expect.any(Number));
+    expect(profileName(mac.store)).toBe("Still here");
+    await mac.engine.close();
+  }, 60_000);
+
+  it("writes nothing for a demo vault", async () => {
+    const log = memoryDriver();
+    const store = demoView();
+    const keyStore = memoryKeyStore(sodium);
+    const session = createVaultSession(deps({ store, log, keyStore }));
+    await session.opened;
+    expect(session.status().phase).toBe("ready");
+    const bytes = () =>
+      log.prepare("SELECT COALESCE(SUM(size), 0) AS n FROM log_segments").get<{ n: number }>()?.n;
+    const held = bytes();
+    expect(await session.leave(Date.now() + 5_000)).toBe("skipped");
+    expect(bytes()).toBe(held);
+    await session.close();
+  }, 60_000);
+});
+
+describe("the sink wrapper", () => {
+  const MAC = "a1000000000000000000000000000001";
+  const event = (i: number) =>
+    ({ h: String(i).padStart(12, "0") }) as unknown as InboundBatch["events"][number];
+  const batch = (
+    device: string,
+    from: number,
+    n: number,
+    seg: number,
+    own = false,
+  ): InboundBatch => ({
+    vault: DEMO_VAULT,
+    device,
+    own,
+    events: Array.from({ length: n }, (_, i) => event(from + i)),
+    cursor: { seg, offset: 100 * seg },
+  });
+
+  it("cuts a batch over 1,500 events into transactions of at most 1,500, yielding and reporting each", async () => {
+    const calls: { events: number; cursors: string[]; deriveLater: boolean }[] = [];
+    const order: string[] = [];
+    const sink = {
+      cursors: () => new Map([[MAC, { seg: 2, offset: 7 }]]),
+      reset: () => {},
+      applyBatches: (batches: readonly InboundBatch[], options?: { deriveLater?: boolean }) => {
+        order.push("apply");
+        calls.push({
+          events: batches.reduce((n, b) => n + b.events.length, 0),
+          cursors: batches.map((b) => `${b.device.slice(0, 2)}:${b.cursor.seg}:${b.cursor.offset}`),
+          deriveLater: options?.deriveLater === true,
+        });
+        return batches.map(
+          (b): ApplyOutcome => ({ applied: b.events.length - 1, duplicates: 1, parked: 0 }),
+        );
+      },
+    } as unknown as Parameters<typeof yieldingSink>[0];
+    const reported: number[] = [];
+    const wrapped = yieldingSink(
+      sink,
+      async () => {
+        order.push("yield");
+      },
+      (_batches, applied) => reported.push(applied),
+      1500,
+    );
+    // A small batch, then one frame group of 3,200 events of the same writer.
+    const outcome = await wrapped.applyBatches([batch(MAC, 0, 10, 3), batch(MAC, 10, 3200, 5)]);
+    expect(calls).toEqual([
+      // The small batch moves the cursor to 3; the group's parts but the last keep it there.
+      { events: 10, cursors: ["a1:3:300"], deriveLater: true },
+      { events: 1500, cursors: ["a1:3:300"], deriveLater: true },
+      { events: 1500, cursors: ["a1:3:300"], deriveLater: true },
+      { events: 200, cursors: ["a1:5:500"], deriveLater: false },
+    ]);
+    expect(order).toEqual(Array.from({ length: 4 }, () => ["yield", "apply"]).flat());
+    expect(reported).toEqual([9, 1499, 1499, 199]);
+    // Per input batch, the sum of its parts.
+    expect(outcome).toEqual([
+      { applied: 9, duplicates: 1, parked: 0 },
+      { applied: 3200 - 3, duplicates: 3, parked: 0 },
+    ]);
+    // A group with no earlier cursor anywhere keeps the stream start for its first parts.
+    calls.length = 0;
+    const fresh = yieldingSink(
+      { ...sink, cursors: () => new Map() } as typeof sink,
+      async () => {},
+      () => {},
+      1500,
+    );
+    await fresh.applyBatches([batch(MAC, 0, 1501, 1)]);
+    expect(calls.map((c) => c.cursors[0])).toEqual([
+      `a1:${START_CURSOR.seg}:${START_CURSOR.offset}`,
+      "a1:1:100",
+    ]);
+    // Up to 1,500 events: one transaction that derives, as before.
+    calls.length = 0;
+    await fresh.applyBatches([batch(MAC, 0, 700, 1), batch(MAC, 700, 800, 2)]);
+    expect(calls).toEqual([
+      { events: 1500, cursors: ["a1:1:100", "a1:2:200"], deriveLater: false },
+    ]);
+  });
+
+  it("saves a large frame group in steps of at most 1,500 events and recovers from a kill between them", async () => {
+    const fake = createFakeFirebase();
+    const mac = await createMac(fake);
+    // One write of 3,200 renames: one frame group, one engine batch for the phone.
+    const env = {
+      device: mac.device,
+      clock: { now: () => Date.now() },
+      lease: { isHolder: () => false },
+    };
+    const events = [];
+    for (let i = 0; i < 3200; i++) {
+      const prepared = prepareCommand(mac.store, renameProfile, { name: `Ala ${i}` }, env);
+      if (!prepared.ok) throw new Error(prepared.reason);
+      events.push(...prepared.events.map(toUnstampedEvent));
+    }
+    await mac.engine.write(events);
+    await mac.engine.sync();
+    const paired = await pairPhone(fake, mac);
+    // A phone whose first sync runs clean: its saving step moves in steps of at most 1,500 events.
+    const clean = (await pairPhone(fake, mac)).open();
+    await clean.opened;
+    const saving: number[] = [];
+    const stop = clean.subscribe(() => {
+      const p = clean.status().progress;
+      if (p?.phase === "saving" && p.events !== saving.at(-1)) saving.push(p.events);
+    });
+    await clean.pass("full");
+    stop();
+    expect(clean.status().phase).toBe("ready");
+    expect(saving.length).toBeGreaterThan(2);
+    expect(saving.at(-1)).toBeGreaterThan(3200);
+    for (const [i, n] of saving.entries())
+      expect(n - (saving[i - 1] ?? 0)).toBeLessThanOrEqual(1500);
+    await clean.close();
+
+    const original = paired.store.sink.bind(paired.store);
+    let owing = false;
+    let kill = true;
+    paired.store.sink = () => {
+      const inner = original();
+      return {
+        ...inner,
+        applyBatches: (batches, options) => {
+          // The app dies after the group's first part committed, before the next one.
+          if (kill && owing) throw new Error("killed");
+          const outcome = inner.applyBatches(batches, options);
+          owing = options?.deriveLater === true;
+          return outcome;
+        },
+      };
+    };
+    const first = paired.open();
+    await first.opened;
+    await first.pass("full");
+    // The pass failed: no profile reached the view's ready state.
+    expect(first.status().phase).not.toBe("ready");
+    await first.close();
+    // In between: the first part's events are in the view, the stream's cursor has not passed them,
+    // and the derivation they owe is kept.
+    const held = paired.store.read<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM event_log WHERE substr(hlc, 16) = ?",
+      mac.device,
+    )[0]?.n;
+    expect(held).toBeGreaterThanOrEqual(1500);
+    expect(held).toBeLessThan(3200);
+    expect(paired.store.read("SELECT 1 FROM store_meta WHERE key = 'derive_owed'").length).toBe(1);
+
+    kill = false;
+    const second = paired.open();
+    await second.opened;
+    await second.pass("full");
+    expect(second.status().phase).toBe("ready");
+    expect(paired.store.read("SELECT 1 FROM store_meta WHERE key = 'derive_owed'")).toEqual([]);
+    expect(paired.store.rederive().touchedTables).toEqual(new Set());
+    // The phone holds what the Mac holds: the same view.
+    await mac.engine.sync();
+    expect(profileName(paired.store)).toBe(profileName(mac.store));
+    expect(viewHash(paired.store).hash).toBe(viewHash(mac.store).hash);
+    await second.close();
+    await mac.engine.close();
+  }, 120_000);
 });

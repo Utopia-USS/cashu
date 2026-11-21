@@ -11,7 +11,14 @@ import {
   showWiping,
   subscribeEpoch,
 } from "./lifecycle";
-import { beforeWipeTasks, onBeforeWipe, type WipeSteps, wipeDevice } from "./wipe";
+import {
+  beforeWipeTasks,
+  LEAVE_PUSH_MS,
+  leaveBeforeWipe,
+  onBeforeWipe,
+  type WipeSteps,
+  wipeDevice,
+} from "./wipe";
 
 type StepName = Exclude<keyof WipeSteps, "beforeWipe">;
 
@@ -213,5 +220,43 @@ describe("root phases", () => {
     await wipeDevice(bound());
     off();
     expect(getRootPhase()).toBe("ready");
+  });
+});
+
+describe("leaving before the wipe", () => {
+  it("gives every vault the same deadline and waits for all of them", async () => {
+    const deadlines: number[] = [];
+    const done: string[] = [];
+    await leaveBeforeWipe(
+      ["a", "b"].map((vault) => ({
+        async leave(deadline: number) {
+          deadlines.push(deadline);
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          done.push(vault);
+        },
+      })),
+      () => 1_000,
+    );
+    expect(deadlines).toEqual([1_000 + LEAVE_PUSH_MS, 1_000 + LEAVE_PUSH_MS]);
+    expect(done.sort()).toEqual(["a", "b"]);
+  });
+
+  it("ends by the bound when a vault never answers, and a failing one does not reject", async () => {
+    const started = Date.now();
+    await leaveBeforeWipe(
+      [
+        { leave: () => new Promise<never>(() => {}) },
+        {
+          leave: () => {
+            throw new Error("synthetic leave failure");
+          },
+        },
+      ],
+      Date.now,
+      200,
+    );
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeGreaterThanOrEqual(150);
+    expect(elapsed).toBeLessThan(2_000);
   });
 });

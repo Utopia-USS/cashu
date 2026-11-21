@@ -306,6 +306,7 @@ export function PairView(props: PairViewProps) {
           ) : (
             !props.canOpen && <Body>{S.firstSyncWaiting}</Body>
           )}
+          {props.slow && !props.done && <Body>{S.firstSyncSlow}</Body>}
           {props.canOpen && !props.done && <Body>{S.stillReceiving}</Body>}
           <NoteLine icon="shield">{props.suggestLock ? S.storedNote : S.storedNoteLocked}</NoteLine>
         </Frame>

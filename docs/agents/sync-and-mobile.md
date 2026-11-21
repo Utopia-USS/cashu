@@ -119,7 +119,9 @@ vault's 24 recovery words.
 ### When the Mac syncs
 
 `apps/host/src/relay/service.ts`, `policy.ts`: a pass at vault open, a push 2 s after own writes
-(debounced), a pull every 5 minutes while the host runs (at most one per 60 s), a pull every 5 s for
+(debounced), a pull every 60 s while the vault has a member besides this Mac (a paired phone; there are
+no push notifications) and every 5 minutes while it has none (a pull at most 60 s after any other
+pass), a pull every 5 s for
 up to 3 minutes while a new phone's first sync is awaited, and one final push before the idle exit.
 Every pass runs in the vault's queue like a UI command. After a failure the passes back off: 60 s
 doubling to 30 minutes when the relay is unreachable or refuses, 1 h when the daily quota is used up;
@@ -252,6 +254,9 @@ and reach the Mac with the next push.
   open) with "Remove this copy", always confirmed first.
 - "Remove this phone" (`apps/mobile/src/services/wipe.ts`) stops the notification plans, deletes the
   Keychain items, closes and deletes every database and rebuilds the demo.
+- Before a paired vault's copy goes, the phone writes `device.left` about itself and tries one push
+  (best effort); the Mac then lists that device greyed out with "removed its copy" and offers the
+  normal removal with the recovery words, because the note never changes trust (events.md 8.11).
 
 ### Running the phone against the emulator
 

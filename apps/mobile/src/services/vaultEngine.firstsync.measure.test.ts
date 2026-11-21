@@ -42,7 +42,6 @@ import {
   createSyncEngine,
   crypto,
   devices,
-  type EventSink,
   FirestoreRest,
   FirestoreTransport,
   type Transport,
@@ -432,18 +431,20 @@ function gidSaltOf(ring: crypto.Keyring): Uint8Array {
       });
       const sink = store.sink.bind(store);
       let applied = 0;
-      store.sink = (): EventSink => {
+      store.sink = (): ReturnType<Store["sink"]> => {
         const inner = sink();
         return {
           ...inner,
           cursors: () => inner.cursors(),
           reset: () => inner.reset(),
-          applyBatches: async (batches) => {
+          applyBatches: async (batches, options) => {
             applied += batches.reduce((n, b) => n + b.events.length, 0);
-            return clock.timeAsync("sink applyBatches", async () => inner.applyBatches(batches));
+            return clock.timeAsync("sink applyBatches", async () =>
+              inner.applyBatches(batches, options),
+            );
           },
-          ...(inner.needsUpgrade ? { needsUpgrade: () => inner.needsUpgrade?.() } : {}),
-        } as EventSink;
+          ...(inner.needsUpgrade ? { needsUpgrade: inner.needsUpgrade.bind(inner) } : {}),
+        };
       };
       const relay = timedTransport(relayTransport(fake), clock);
       const session = createVaultSession({

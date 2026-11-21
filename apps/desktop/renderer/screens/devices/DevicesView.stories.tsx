@@ -52,6 +52,9 @@ const base = {
       },
     ],
   },
+  stale: false,
+  leftOn: {},
+  removeLeft: () => {},
   target: "c".repeat(32),
   setTarget: () => {},
   preview: null,
@@ -200,6 +203,48 @@ export const KeepFetchingConfirmUnnamed = {
       leaderAction={{ ...leaderAction, list: pausedList }}
       fetchPaused="sync_off"
       keepFetching={{ ...keepFetching, otherMac: null, confirming: true }}
+    />
+  ),
+};
+/** A paired device wrote that it removed its copy: greyed out under the others, removal offered. */
+export const RemovedItsCopy = {
+  render: () => (
+    <DevicesView
+      leaderAction={leaderAction}
+      state={
+        {
+          ...base,
+          target: "",
+          list: {
+            ...baseReady,
+            devices: [
+              ...baseReady.devices.slice(0, 1),
+              { ...baseReady.devices[1], name: "iPhone", leftAt: "2026-11-15" },
+              { ...baseReady.devices[1], id: "d".repeat(32), name: "iPad", pairedOn: "2026-11-13" },
+            ],
+          },
+          leftOn: { ["c".repeat(32)]: "15 Nov 2026" },
+        } as DevicesScreenState
+      }
+    />
+  ),
+};
+/** A host handover (pairing, sync switch): the last list stays, actions disabled; the message only
+ * appears after 3 s (CSS-delayed). */
+export const Reconnecting = {
+  render: () => (
+    <DevicesView
+      leaderAction={leaderAction}
+      state={{ ...base, stale: true } as DevicesScreenState}
+    />
+  ),
+};
+/** No list at all for more than 3 s. */
+export const Unavailable = {
+  render: () => (
+    <DevicesView
+      leaderAction={leaderAction}
+      state={{ ...base, list: null } as DevicesScreenState}
     />
   ),
 };

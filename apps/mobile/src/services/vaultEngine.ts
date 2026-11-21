@@ -14,9 +14,16 @@
 // vault could not be opened or its authority no longer checks out: fail closed, nothing is written;
 // `retry` opens it again, the sync runner decides when: `syncRunner.ts`).
 //
-// Hermes runs everything on one JS thread: the engine hands the sink at most `MAX_BATCH_EVENTS` events
-// per transaction and the sink wrapper yields a macrotask before each one, so a long first sync
-// leaves frames to the UI and live queries refresh per committed chunk.
+// Hermes runs everything on one JS thread: the sink takes at most `MAX_BATCH_EVENTS` events per
+// transaction (the engine cuts its calls there, the sink wrapper cuts a larger frame group into parts)
+// and the wrapper yields a macrotask before each one, so a long first sync leaves frames to the UI,
+// its saving step counts up per transaction. Live queries refresh once per engine call: the parts of a
+// split frame group but the last apply with `deriveLater` (no derivation, no notification), so mounted
+// queries keep their last result until the group's last part commits and refreshes them.
+//
+// Before this vault's copy is deleted (`leave`), a paired vault writes this device's `device.left`
+// statement and tries one push, its relay calls ending by the caller's deadline (best effort: the
+// statement is informational, the owner still removes the device with the recovery words).
 
 import type { Command } from "@cashu/store";
 import type { Store } from "@cashu/store/runtime";
@@ -42,6 +49,7 @@ import {
 } from "@cashu/store/sync";
 import type { DurableOutcome } from "@cashu/store-react/local";
 import {
+  type ApplyOutcome,
   createOwnLogCodec,
   createSyncEngine,
   crypto,
@@ -53,11 +61,13 @@ import {
   type RelayStatus,
   type SegmentCursor,
   type SegmentInfo,
+  START_CURSOR,
   type StuckKind,
   type StuckRecord,
   type SyncEngine,
   type SyncResult,
   type Transport,
+  TransportError,
 } from "@cashu/sync/engine";
 import type { PhoneVaultQueue } from "./commandQueue";
 import {
@@ -71,6 +81,9 @@ import {
   saveRelayCursor,
   viewResetPending,
 } from "./vaultBootstrap";
+
+/** The view store's sink (`deriveLater` for all but the last transaction of a split frame group). */
+type ViewSink = ReturnType<Store["sink"]>;
 
 /** Events per sink transaction on the phone (the engine default is 25,000: one long JS-thread block). */
 const MAX_BATCH_EVENTS = 1500;
@@ -159,6 +172,9 @@ export interface VaultEngineDeps {
   readonly demoDeviceName?: string;
 }
 
+/** What `VaultSession.leave` did. */
+type LeaveOutcome = "pushed" | "written" | "skipped";
+
 export interface VaultSession {
   readonly vault: string;
   readonly device: string;
@@ -179,6 +195,15 @@ export interface VaultSession {
    * engine pushes and pulls in one pass). Resolves with the result, or undefined when nothing ran.
    */
   pass(mode: "full" | "push"): Promise<SyncResult | undefined>;
+  /**
+   * Before this vault's copy is deleted: write this device's `device.left` statement (a paired vault
+   * with a relay that is `ready` or `receiving`; never the demo) and try ONE push. The call abandons
+   * the relay calls a running pass is waiting on (so the queue frees up at once), and every later relay
+   * call of this session ends by `deadline` (epoch ms on `now`) as an outage. The session is meant to be
+   * closed next. Never rejects: `pushed` (the relay holds the statement), `written` (only the local
+   * log does), `skipped` (nothing written).
+   */
+  leave(deadline: number): Promise<LeaveOutcome>;
   /** Close the engine (after the queued work) and release the key material. */
   close(): Promise<void>;
 }
@@ -219,22 +244,95 @@ function ensureClockGuard(store: Store, device: string): void {
   initializeMetaClockGuard(store.driver, device);
 }
 
-/** The sink wrapper: a macrotask before every transaction, the applied foreign batches reported. */
-function yieldingSink(
-  sink: EventSink,
+/**
+ * The sink wrapper: at most `maxEvents` events per sink transaction, a macrotask before each one, and
+ * the applied foreign batches reported after each one.
+ *
+ * The engine already cuts a pass into calls of at most `maxBatchEvents` events, but never inside one
+ * batch: a frame group (one command, e.g. a 20,000-row import) arrives as ONE batch and was applied in
+ * one long transaction with no yield and no progress (the real run: "Saving ... 359 changes" frozen
+ * for 20 s on a 2.3 MB segment). Such a batch is applied here in parts of at most `maxEvents` events,
+ * each in its own transaction. Every part but the last persists the stream's cursor as the sink held
+ * it BEFORE the batch (the previous batch of the device in this call, else the sink's own, else the
+ * stream start): a kill between parts leaves events in the view whose frames the cursor has not
+ * passed, so the engine delivers the whole batch again and the parts already held count as duplicates
+ * (idempotent by eid; the view is a function of the held event set). Only the last part moves the
+ * cursor past the batch. Every transaction of a split call but the last applies with `deriveLater`:
+ * the store keeps the dirty partitions with that transaction and the last one derives them all, so the
+ * derivers still run once per call (once per transaction cost a 20,000-row first sync 2.7 s more on
+ * V8, vaultEngine.firstsync.measure.test.ts); a kill in between leaves the owed derivation to the next
+ * apply or open. The outcome of a split batch is the sum of its parts'.
+ */
+export function yieldingSink(
+  sink: ViewSink,
   yieldToUi: () => Promise<void>,
   onForeignApplied: (batches: readonly InboundBatch[], applied: number) => void,
+  maxEvents: number = MAX_BATCH_EVENTS,
 ): EventSink {
+  const apply = async (
+    part: readonly InboundBatch[],
+    deriveLater = false,
+  ): Promise<readonly ApplyOutcome[]> => {
+    await yieldToUi();
+    const outcome = await sink.applyBatches(part, deriveLater ? { deriveLater } : undefined);
+    const foreign = part.filter((b) => !b.own && b.events.length > 0);
+    let applied = 0;
+    for (const [i, b] of part.entries()) if (!b.own) applied += outcome[i]?.applied ?? 0;
+    if (foreign.length > 0) onForeignApplied(foreign, applied);
+    return outcome;
+  };
   const wrapped: EventSink = {
     cursors: () => sink.cursors(),
     async applyBatches(batches: readonly InboundBatch[]) {
-      await yieldToUi();
-      const outcome = await sink.applyBatches(batches);
-      const foreign = batches.filter((b) => !b.own && b.events.length > 0);
-      let applied = 0;
-      for (const [i, b] of batches.entries()) if (!b.own) applied += outcome[i]?.applied ?? 0;
-      if (foreign.length > 0) onForeignApplied(foreign, applied);
-      return outcome;
+      if (batches.every((b) => b.events.length <= maxEvents)) {
+        const total = batches.reduce((n, b) => n + b.events.length, 0);
+        if (total <= maxEvents) return apply(batches);
+      }
+      // Parts of at most `maxEvents` events, in order; `of` = the index of the batch a part belongs to.
+      const held = new Map(await sink.cursors());
+      const parts: { batch: InboundBatch; of: number }[] = [];
+      for (const [of, batch] of batches.entries()) {
+        const before = held.get(batch.device) ?? START_CURSOR;
+        for (let at = 0; at < batch.events.length || at === 0; at += maxEvents) {
+          const end = Math.min(at + maxEvents, batch.events.length);
+          const last = end >= batch.events.length;
+          parts.push({
+            batch: {
+              ...batch,
+              events: batch.events.slice(at, end),
+              cursor: last ? batch.cursor : before,
+            },
+            of,
+          });
+          if (last) break;
+        }
+        held.set(batch.device, batch.cursor);
+      }
+      const sums = batches.map(() => ({ applied: 0, duplicates: 0, parked: 0 }));
+      let chunk: typeof parts = [];
+      let events = 0;
+      const flush = async (last: boolean) => {
+        if (chunk.length === 0) return;
+        const outcome = await apply(
+          chunk.map((p) => p.batch),
+          !last,
+        );
+        for (const [i, p] of chunk.entries()) {
+          const sum = sums[p.of] as { applied: number; duplicates: number; parked: number };
+          sum.applied += outcome[i]?.applied ?? 0;
+          sum.duplicates += outcome[i]?.duplicates ?? 0;
+          sum.parked += outcome[i]?.parked ?? 0;
+        }
+        chunk = [];
+        events = 0;
+      };
+      for (const part of parts) {
+        if (chunk.length > 0 && events + part.batch.events.length > maxEvents) await flush(false);
+        chunk.push(part);
+        events += part.batch.events.length;
+      }
+      await flush(true);
+      return sums;
     },
     reset: () => sink.reset(),
   };
@@ -419,6 +517,62 @@ function sighted(
   };
   const watch = remote.watch?.bind(remote);
   return watch === undefined ? wrapped : { ...wrapped, watch };
+}
+
+/**
+ * The relay calls of a leaving session (`leave`): `cut()` abandons every call running at that moment
+ * (they belong to a pass whose result no longer matters) and `endBy(deadline)` makes every later call
+ * end by `deadline` (epoch ms on `now`): refused after it, abandoned at it. Both as a transport outage,
+ * so the engine counts the remote offline and finishes its pass. An abandoned call may still land on
+ * the relay later; the session is closed after a leave and the copy deleted, so nothing relies on it.
+ */
+class RelayDeadline {
+  #by: number | undefined;
+  readonly #running = new Set<(error: TransportError) => void>();
+  readonly #now: () => number;
+  constructor(now: () => number) {
+    this.#now = now;
+  }
+
+  cut(): void {
+    for (const abandon of [...this.#running]) abandon(leaveDeadline());
+  }
+
+  endBy(deadline: number): void {
+    this.#by = Math.min(this.#by ?? deadline, deadline);
+  }
+
+  wrap(remote: Transport): Transport {
+    const bounded = <T>(call: () => Promise<T>): Promise<T> => {
+      const by = this.#by;
+      if (by !== undefined && by <= this.#now()) return Promise.reject(leaveDeadline());
+      let abandon: ((error: TransportError) => void) | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const abandoned = new Promise<never>((_, reject) => {
+        abandon = reject;
+      });
+      const entry = abandon as (error: TransportError) => void;
+      this.#running.add(entry);
+      if (by !== undefined) timer = setTimeout(() => entry(leaveDeadline()), by - this.#now());
+      return Promise.race([call(), abandoned]).finally(() => {
+        clearTimeout(timer);
+        this.#running.delete(entry);
+      });
+    };
+    const wrapped: Transport = {
+      consistency: remote.consistency,
+      list: (vault) => bounded(() => remote.list(vault)),
+      read: (vault, writer, seg, from) => bounded(() => remote.read(vault, writer, seg, from)),
+      append: (vault, writer, seg, atOffset, bytes) =>
+        bounded(() => remote.append(vault, writer, seg, atOffset, bytes)),
+    };
+    const watch = remote.watch?.bind(remote);
+    return watch === undefined ? wrapped : { ...wrapped, watch };
+  }
+}
+
+function leaveDeadline(): TransportError {
+  return new TransportError("unavailable", "leave_deadline", "outage");
 }
 
 /**
@@ -611,9 +765,11 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
    * marking every vault removed).
    */
   let relay: RelayStatus | undefined;
+  /** Bounds this session's relay calls once `leave` was called. */
+  const relayDeadline = new RelayDeadline(deps.now);
   const remotes = deps.remotes.map((remote, index) =>
     sighted(
-      remote,
+      relayDeadline.wrap(remote),
       device,
       () => sights[index] as RemoteSight,
       () => {
@@ -974,6 +1130,36 @@ export function createVaultSession(deps: VaultEngineDeps): VaultSession {
     pass(mode) {
       if (closed) return Promise.resolve(undefined);
       return queue.run(vault, () => runPass(mode)).catch(() => undefined);
+    },
+    async leave(by) {
+      if (closed || deps.kind !== "paired" || deps.remotes.length === 0) return "skipped";
+      // A pass holding the queue on the relay is cut now (its result no longer matters), and every
+      // relay call from here on ends by the deadline: the queue frees up for the statement at once.
+      relayDeadline.cut();
+      relayDeadline.endBy(by);
+      let wrote = false;
+      const note = async (): Promise<LeaveOutcome> => {
+        const current = opened;
+        if (closed || current === undefined) return "skipped";
+        // A revoked, waiting or failed vault writes nothing: the owner removes it anyway, and a waiting
+        // vault refuses own writes until another device rotates.
+        if (status.phase !== "ready" && status.phase !== "receiving") return "skipped";
+        if (current.engine.writeAdmission() !== "ready") return "skipped";
+        if (deps.now() >= by) return "skipped";
+        await current.engine.write([
+          devices.buildDeviceLeft(
+            current.candidate.identity,
+            vault,
+            mintUlid(deps.now(), (n) => deps.sodium.randomBytes(n)),
+            deps.now(),
+          ),
+        ]);
+        wrote = true;
+        set({ unpushed: true });
+        const result = await runPass("push");
+        return result !== undefined && !status.unpushed ? "pushed" : "written";
+      };
+      return queue.run(vault, note).catch((): LeaveOutcome => (wrote ? "written" : "skipped"));
     },
     async close() {
       if (closed) return;

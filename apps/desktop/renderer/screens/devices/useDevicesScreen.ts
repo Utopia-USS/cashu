@@ -1,8 +1,12 @@
-import { deviceListResultSchema } from "@cashu/host-protocol";
+import { type DeviceListResult, deviceListResultSchema } from "@cashu/host-protocol";
+import { formatCalendarDate } from "@cashu/i18n/values";
 import { deviceListState } from "@cashu/store/core/desktop-settings";
 import { useConnection, useProfile, useQuery } from "@cashu/store-react";
+import { useUiEnv } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
 import { devicesBridge } from "../../devicesBridge.js";
+
+type ReadyList = Extract<DeviceListResult, { kind: "ready" }>;
 
 type Preview = Extract<
   Awaited<ReturnType<NonNullable<ReturnType<typeof devicesBridge>>["revokePreview"]>>,
@@ -12,6 +16,7 @@ type Preview = Extract<
 export function useDevicesScreen() {
   const vault = useProfile();
   const connection = useConnection();
+  const { locale } = useUiEnv();
   const bridge = devicesBridge();
   // The device list is a live host query, pushed again after every sync pass and device change.
   const live = useQuery(deviceListState, { privacy: false });
@@ -45,10 +50,35 @@ export function useDevicesScreen() {
     setOperationId(null);
     setInspectedOperationId(null);
   }
-  const list =
+  const current =
     scopeActive && (connection === "online" || connection === "recovered") && parsed?.success
       ? parsed.data
       : null;
+  // The last ready list of this profile. A host handover (after a pairing or a sync switch) drops the
+  // connection or refuses the list for a moment; the screen keeps showing what it had (`stale`, its
+  // actions disabled) instead of flashing "unavailable". Keyed by the profile only: the connection
+  // changes during exactly that handover. The View reveals the message itself after 3 s (CSS delay).
+  const ready = current?.kind === "ready" ? current : null;
+  const [held, setHeld] = useState<{ vault: string; raw: unknown; list: ReadyList } | null>(null);
+  const raw = live.status === "ready" ? live.list : undefined;
+  if (ready !== null && (held?.vault !== vault || held.raw !== raw)) {
+    setHeld({ vault, raw, list: ready });
+  }
+  const kept = held?.vault === vault ? held.list : null;
+  const list = ready ?? kept ?? current;
+  const stale = ready === null && kept !== null;
+  // "{device} removed its copy on {date}": the day each such device wrote its note, formatted once here.
+  const shown = ready ?? kept;
+  const leftOn: Readonly<Record<string, string>> = Object.fromEntries(
+    (shown?.devices ?? []).flatMap((device) =>
+      device.leftAt === undefined ||
+      !device.trusted ||
+      device.revoked ||
+      device.id === shown?.ownDevice
+        ? []
+        : [[device.id, formatCalendarDate(device.leftAt, locale)]],
+    ),
+  );
   const target = scopeActive ? selectedTarget : "";
   const recertify = scopeActive ? selectedRecertify : [];
   const preview = scopeActive ? preparedPreview : null;
@@ -107,18 +137,18 @@ export function useDevicesScreen() {
     return () => clearTimeout(timer);
   }, [scopeActive, preparedPreview]);
 
-  async function review(): Promise<void> {
+  async function review(chosen: string = target): Promise<void> {
     if (
       !bridge ||
-      !target ||
+      !chosen ||
       status === "busy" ||
-      list?.kind !== "ready" ||
-      list.evidence.historyPending ||
-      list.evidence.overflow ||
-      list.evidence.authorityUncertain ||
-      list.evidence.writeAdmission !== "ready" ||
+      current?.kind !== "ready" ||
+      current.evidence.historyPending ||
+      current.evidence.overflow ||
+      current.evidence.authorityUncertain ||
+      current.evidence.writeAdmission !== "ready" ||
       activeAttempt.current?.vault === vault ||
-      list.operations.some((operation) => operation.phase === "may_append")
+      current.operations.some((operation) => operation.phase === "may_append")
     )
       return;
     const epoch = lifetime.current;
@@ -131,7 +161,7 @@ export function useDevicesScreen() {
       setPhrase("");
       const result = await bridge.revokePreview({
         vault,
-        targets: [target],
+        targets: [chosen],
         recertify: [...recertify].sort(),
       });
       if (lifetime.current !== epoch || requestGeneration.current !== request) {
@@ -269,8 +299,18 @@ export function useDevicesScreen() {
     setLocalAck(false);
   }
 
+  /** A device that removed its copy: the normal removal flow (recovery words) with it chosen. */
+  function removeLeft(device: string): void {
+    if (stale || !(device in leftOn) || status === "busy" || preview) return;
+    setTarget(device);
+    void review(device);
+  }
+
   return {
     list,
+    stale,
+    leftOn,
+    removeLeft,
     target,
     setTarget,
     preview,
@@ -286,7 +326,7 @@ export function useDevicesScreen() {
     setPhrase,
     status,
     operationId,
-    review,
+    review: () => review(),
     commit,
     inspect,
     cancel,

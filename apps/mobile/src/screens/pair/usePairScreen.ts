@@ -1,6 +1,6 @@
 // The pairing modal's screen hook: the flow (`pairFlow`, which outlives the services' reopen), the
 // camera permission, the pasted text, the six digits' countdown and the first sync's progress of the
-// vault just added. Navigation and the services-facing ports come in from the route.
+// vault just added (with its 20 s "large histories take a while" line). Navigation and the services-facing ports come in from the route.
 import type { ProfileRole } from "@cashu/domain/core/notifications";
 import { useEffect, useEffectEvent, useState, useSyncExternalStore } from "react";
 import { useCameraAccess } from "../../platform/camera";
@@ -65,6 +65,8 @@ export type PairScreenState =
       readonly suggestLock: boolean;
       /** Everything arrived. */
       readonly done: boolean;
+      /** The screen has waited `FIRST_SYNC_SLOW_MS`: the line that a large history takes a while. */
+      readonly slow: boolean;
       onOpen(): void;
     }
   | {
@@ -75,6 +77,9 @@ export type PairScreenState =
       onScanAgain(): void;
       onCancel(): void;
     };
+
+/** How long the first sync's screen waits before it says a large history takes a minute or two. */
+const FIRST_SYNC_SLOW_MS = 20_000;
 
 export interface PairScreenArgs {
   /** The default device name (the model). */
@@ -135,6 +140,14 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [counting]);
+
+  // 20 s on the first sync's screen (per vault): the line that a large history takes a while.
+  const [slowFor, setSlowFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (vault === "") return;
+    const timer = setTimeout(() => setSlowFor(vault), FIRST_SYNC_SLOW_MS);
+    return () => clearTimeout(timer);
+  }, [vault]);
 
   // The flow closed (cancel, "Open cashU"): leave and start over next time.
   const leave = useEffectEvent(() => {
@@ -222,6 +235,7 @@ export function usePairScreen(args: PairScreenArgs): PairScreenState {
         canOpen: ready,
         suggestLock: args.lockAfter !== true,
         done: ready && status?.syncing !== true,
+        slow: slowFor === state.vault,
         onOpen: () => pairFlow.dispatch({ type: "finish" }),
       };
     }

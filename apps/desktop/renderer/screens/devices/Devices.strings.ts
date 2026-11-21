@@ -53,6 +53,14 @@ export const T = catalog({
     en: "Not every selected device can be recertified. Change the selection and review again.",
   },
   inspect: { pl: "Sprawdź wynik", en: "Check outcome" },
+  // Designer copy (dev-feedback, real run 2): a device that removed its own copy (`device.left`).
+  removedCopy: {
+    pl: (device: string, date: string) =>
+      `Urządzenie „${device}” usunęło swoją kopię ${date}. Usunąć je z tego profilu?`,
+    en: (device: string, date: string) =>
+      `${device} removed its copy on ${date}. Remove it from this profile?`,
+  },
+  removeLeft: { pl: "Usuń z profilu", en: "Remove from profile" },
   // Proposed (QA run 2 Obs. 9), for the designer: the removal keeps this device's changes up to the
   // last one this Mac verified and leaves out later ones (the contrast to "Changes not fetched here").
   headTrusted: {

@@ -463,3 +463,100 @@ it("says in plain words what a removal keeps from a device this Mac has changes 
   expect(text).toContain("Target: Changes that already reached this Mac stay.");
   expect(text.toLowerCase()).not.toContain("cut head");
 });
+
+it("shows a device that removed its copy greyed out under the others and opens the normal removal for it", async () => {
+  const revokePreview = vi.fn(async () => prepared(false));
+  bindings.bridge = {
+    revokePreview,
+    revokeCancel: vi.fn(async () => ({ kind: "cancelled" as const })),
+    revokeCommit: vi.fn(),
+    revokeInspect: vi.fn(),
+  };
+  bindings.list = deviceList({
+    devices: [
+      device(own, "This device"),
+      { ...device(target, "iPhone"), leftAt: "2026-11-15" },
+      { ...device(orphan, "iPad"), pairedAt: { seg: 1, offset: 9 } },
+    ],
+  });
+  await render();
+  const rows = () => [...container.querySelectorAll("section[aria-label] li")];
+  // Sorted under the active devices (the iPad was added after the iPhone), greyed out.
+  expect(rows().map((row) => row.textContent?.split(":")[0])).toEqual([
+    "This device",
+    "iPad",
+    "iPhone",
+  ]);
+  const left = rows()[2];
+  expect(left?.className).toContain("text-fg-muted");
+  expect(rows()[1]?.className ?? "").not.toContain("text-fg-muted");
+  expect(left?.textContent).toMatch(
+    /iPhone removed its copy on (Nov 15, 2026|15 Nov 2026)\. Remove it from this profile\?/,
+  );
+  // The action is the normal removal: a preview, then the warning and the recovery words.
+  await click("Remove from profile");
+  expect(revokePreview).toHaveBeenCalledWith({
+    vault: bindings.vault,
+    targets: [target],
+    recertify: [],
+  });
+  expect(container.textContent).toContain("may exclude changes");
+  expect(phrase()).not.toBeNull();
+  expect((container.querySelector("select") as HTMLSelectElement).value).toBe(target);
+
+  setLanguageForTests("pl");
+  await click("Anuluj");
+  bindings.list = deviceList({
+    devices: [device(own, "This device"), { ...device(target, "iPhone"), leftAt: "2026-11-15" }],
+  });
+  await render();
+  expect(container.textContent).toContain(
+    "Urządzenie „iPhone” usunęło swoją kopię 15 lis 2026. Usunąć je z tego profilu?",
+  );
+});
+
+it("without a note nothing changes, whatever the device is called", async () => {
+  bindings.list = deviceList({
+    devices: [device(own, "This device"), device(target, "Removed iPhone (old copy)")],
+  });
+  await render();
+  expect(container.querySelector(".text-fg-muted")).toBeNull();
+  expect(container.textContent).not.toContain("removed its copy");
+  expect(button("Remove from profile")).toBeUndefined();
+});
+
+it("keeps the last list through a host handover and reveals 'unavailable' only after 3 s, without a timer", async () => {
+  bindings.list = deviceList();
+  await render();
+  const message = () =>
+    [...container.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes("Device management is unavailable."),
+    );
+  expect(message()).toBeUndefined();
+  // The handover: the connection drops, then the new host refuses the list for a moment.
+  bindings.connection = "offline";
+  await render();
+  expect(container.textContent).toContain("Target: Added by This device");
+  expect(button("Review removal")?.disabled).toBe(true);
+  expect(message()?.className).toContain("3s");
+  bindings.connection = "recovered";
+  bindings.list = { kind: "refused", code: "unavailable" };
+  await render();
+  expect(container.textContent).toContain("Target: Added by This device");
+  expect(message()?.className).toContain("3s");
+  // The new host's list arrives: the message is gone and the actions are back.
+  bindings.list = deviceList();
+  await render();
+  expect(message()).toBeUndefined();
+  expect(button("Review removal")).toBeDefined();
+});
+
+it("with no list ever, the message is the delayed one", async () => {
+  bindings.list = { kind: "refused", code: "unavailable" };
+  await render();
+  const message = [...container.querySelectorAll("p")].find(
+    (p) => p.textContent === "Device management is unavailable.",
+  );
+  expect(message).toBeDefined();
+  expect(message?.className).toContain("3s");
+});

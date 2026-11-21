@@ -33,6 +33,7 @@ import { MemoryClockStore, MemoryTransport } from "../testing/memory.js";
 import { concat, lp, toHex, utf8 } from "./bytes.js";
 import {
   buildDeviceAdded,
+  buildDeviceLeft,
   buildDeviceRevoked,
   buildLeaseClaim,
   buildLeaseRenewal,
@@ -128,6 +129,8 @@ function fixture() {
     },
   };
   let opens = 0;
+  /** The device state of the last `open` (what its gate folded). */
+  let lastDevices: VaultDevices | undefined;
   const open = async (
     options: {
       checkpoint?: boolean;
@@ -151,6 +154,7 @@ function fixture() {
       clock: () => T0,
       bootstrapCertificates: [certificate, ...(options.certificates ?? [])],
     });
+    lastDevices = devices;
     const real = createOwnLogCodec({ sodium, ring, signer: identity });
     const codec: FrameCodec = {
       ...real,
@@ -322,6 +326,10 @@ function fixture() {
     local,
     sink,
     cp,
+    devices: () => {
+      if (lastDevices === undefined) throw new Error("no engine opened yet");
+      return lastDevices;
+    },
     store,
     evidence,
     open,
@@ -840,5 +848,58 @@ describe("recovery checkpoint (phone open strategy)", () => {
     expect(f.cp.text).toBeUndefined();
     await phone.close();
     await engine.close();
+  });
+  it("device.left in the prefix or the tail: a restore reports the same leftAt and authority as a full replay", async () => {
+    // Why SYNC_RULES_VERSION stays 1 for `device.left`: every build's gate keeps every `device.*`
+    // statement in its signed snapshot (whether its registry folds the type or not), and a restore
+    // folds those statements under the CURRENT code. So a checkpoint from a build without the note
+    // gives a build with it the full replay's `leftAt`, and the note is no authority statement, so a
+    // tail with it keeps the checkpoint. Oracle: the recovery without a checkpoint over a copy.
+    const f = await seeded(3);
+    const me = f.identity.deviceId;
+    const prefixAt = T0 + 60_000;
+    const engine = await f.open();
+    await engine.write([buildDeviceLeft(f.identity, f.vaultId, newEid(), prefixAt)]);
+    expect((await engine.recoverLocal()).complete).toBe(true);
+    expect(f.devices().registry.devices.get(me)?.leftAt).toBe(prefixAt);
+    await engine.close();
+    const gate = (JSON.parse(f.cp.text ?? "{}") as { body: string }).body;
+    expect(gate).toContain("device.left");
+
+    // Prefix: no frame is opened again; the note comes back from the snapshot's statements.
+    const restored = await f.open();
+    const quiet = await f.counted(() => restored.recoverLocal());
+    expect(quiet.value.complete).toBe(true);
+    expect(quiet.opens).toBe(0);
+    const fromCheckpoint = f.devices().registry;
+    expect(fromCheckpoint.devices.get(me)?.leftAt).toBe(prefixAt);
+
+    // Tail: an earlier note after the checkpoint (a re-delivery of another wipe attempt) is verified
+    // alone, keeps the checkpoint and lowers leftAt exactly as the full replay does.
+    const tailAt = T0 + 30_000;
+    await restored.write([buildDeviceLeft(f.identity, f.vaultId, newEid(), tailAt)]);
+    const clearsBefore = f.cp.clears;
+    const before = await f.capture();
+    const reopened = await f.open();
+    const tail = await f.counted(() => reopened.recoverLocal());
+    const withCheckpoint = f.devices().registry;
+    expect(tail.opens).toBe(1);
+    expect(f.cp.clears).toBe(clearsBefore);
+    const oracle = await reference(f, before);
+    const replayed = f.devices().registry;
+    expect(tail.value).toEqual(oracle.result);
+    expect(withCheckpoint.devices.get(me)?.leftAt).toBe(tailAt);
+    expect(replayed.devices.get(me)?.leftAt).toBe(tailAt);
+    const authority = (r: typeof replayed) => ({
+      trusted: [...r.trusted.keys()].sort(),
+      revoked: [...r.revoked.keys()].sort(),
+      conflicts: [...r.conflicts],
+      events: r.events.map((e) => e.eid).sort(),
+      ignored: r.ignored,
+    });
+    expect(authority(withCheckpoint)).toEqual(authority(replayed));
+    expect(withCheckpoint.isTrusted(me)).toBe(true);
+    await restored.close();
+    await reopened.close();
   });
 });

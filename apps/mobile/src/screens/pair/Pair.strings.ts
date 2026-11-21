@@ -120,6 +120,11 @@ export const S = catalog({
     pl: (percent: number) => `Sprawdzanie kopii na tym telefonie · ${percent}%`,
     en: (percent: number) => `Checking this phone's copy · ${percent}%`,
   },
+  // The designer's line (dev-feedback, real run 2) after 20 s on the first sync's screen.
+  firstSyncSlow: {
+    pl: "Duża historia za pierwszym razem zajmuje minutę lub dwie. Kolejne synchronizacje trwają kilka sekund.",
+    en: "Large histories take a minute or two the first time. Later syncs take seconds.",
+  },
   firstSyncWaiting: {
     pl: "Czekanie na dane z Maca...",
     en: "Waiting for your data from your Mac...",

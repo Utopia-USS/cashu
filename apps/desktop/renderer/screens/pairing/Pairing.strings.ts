@@ -25,7 +25,7 @@ export const T = catalog({
   },
   // Proposed (QA Obs. 7), for the designer: the invitation is out, no phone has connected yet.
   waitingForScan: {
-    pl: "Czekamy, aż telefon zeskanuje kod.",
+    pl: "Czekanie, aż telefon zeskanuje kod.",
     en: "Waiting for the phone to scan the code.",
   },
   sasInstruction: {
@@ -43,7 +43,7 @@ export const T = catalog({
   },
   // Proposed (W3-7 addendum a), for the designer: the phone is admitted, its first sync not seen yet.
   waitingForPhone: {
-    pl: "Telefon dodany. Czekamy na jego pierwszą synchronizację: zostaw cashU otwarte na telefonie, aż się skończy.",
+    pl: "Telefon dodany. Trwa jego pierwsza synchronizacja: zostaw cashU otwarte na telefonie, aż się skończy.",
     en: "Phone added. Waiting for its first sync: keep cashU open on the phone until it finishes.",
   },
   complete: { pl: "Telefon połączono.", en: "Phone paired." },

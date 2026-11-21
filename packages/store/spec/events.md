@@ -806,8 +806,24 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 
 `device.*`, `lease.*` (S29) and `snapshot.*` (S32) are defined by those scopes (schemas and folds:
 `packages/sync/src/devices/events.ts`, `leaseFold.ts`, `lease.ts`). Reserved `device.*`: `added`,
-`revoked`, `keysRotated`, `recoveryChanged`, `headsGossiped`. Reserved `lease.*`: `claimed`, `renewed`, `released`,
+`revoked`, `keysRotated`, `recoveryChanged`, `headsGossiped`, `left`. Reserved `lease.*`: `claimed`, `renewed`, `released`,
 `pinned`, `fetched`.
+
+#### device.left (a device removed its copy)
+
+`device.left` is payload `v: 1`, exactly `{device: deviceId, at: ms > 0, sig}`, signed in the
+`cashu/registry/v1` context over `statementBody(vault, "device.left", eid, {device, at})`
+(`buildDeviceLeft`). A device writes it about ITSELF into its own stream just before it deletes its
+copy of the vault (best effort: a wipe never waits for it). It is informational only: the registry
+fold reports `leftAt` (the earliest `at` of the writer's valid notes) on that device's record and
+nothing else; it never changes trust, certificates, revocations, keys, recovery pins or the lease.
+The device stays a vault device until the owner removes it with the recovery words. A note whose
+`device` is not its frame writer, whose signature does not verify with a key that counts at its
+position (after a revocation cut included), or that is malformed is ignored and listed in `ignored`;
+re-deliveries are idempotent. Builds that predate it skip it like any `device.*` type they do not know
+(the store skips sync statements, `VaultDevices.ingest` keeps only the kinds it folds, the gate keeps
+it in its signed snapshot), so it neither parks nor refuses a frame, and it changes no acceptance rule
+(`SYNC_RULES_VERSION` unchanged).
 
 #### v1.3 device head gossip (S29c-B4)
 
@@ -923,6 +939,9 @@ The fetch leader (S29c R4; rule 6 must not rest on an unstated linearizable remo
   days after the owner's "keep fetching on this Mac" acknowledgement (the host's device-local relay
   setting, cleared by the next complete pull). A vault with no remote (sync off) reads as offline since
   its last complete pull, under the same rule. Mode `auto` ignores offline evidence.
+- **Pull schedule (host, not normative):** the Mac host pulls a vault every 60 s while it has a member besides that
+  Mac (a phone), every 5 minutes while it has none, and any other pull waits 60 s after the previous pass
+  (`apps/host/src/relay/policy.ts`).
 
 Lease state never enters the view fold (6.2 LEADER), so the convergence scenarios do not model it.
 
@@ -949,6 +968,11 @@ Derived internal tables (not hashed, never synced). A table queries read declare
 for a SQL that names the table, so a live query over it wakes without reading them (the aggregates of
 `budget.months`: `transactions`, `accounts`; the records of `budget.recurring`: also `category_rules`).
 The deriver's other tables (its row memory and environment) declare nothing and are read by no query.
+The derivers run once per apply transaction, except that an apply with `deriveLater` (the phone cutting one large
+frame group into several transactions) owes them: its dirty partitions and touched tables go into the device-local
+`store_meta` key `derive_owed` (`{v: 1, dirty, touched}`, never synced, written with its folds and cursors) and the
+next deriving transaction (an apply, the open after a crash, a snapshot export) derives them, while a record that
+does not decode as `v: 1` makes that transaction re-derive everything instead, so a store always opens.
 
 Companion derivers (`Deriver.companion`): `budget.recurring`, `budget.months` and `budget.search` are read only by
 the phone's companion queries, so they are registered only on a store opened with `StoreOptions.companionReads`

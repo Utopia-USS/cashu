@@ -5,8 +5,9 @@
 //
 // Order: the root shows "Removing this phone's copy" (the app's tree unmounts, so no render reads a
 // store from here on), the first before-wipe tasks (the notification plans stop: nothing schedules any
-// more), then the other before-wipe tasks (our scheduled and delivered notifications), the Keychain
-// items (async only: expo-secure-store has no synchronous delete), one frame so the "Removing" state
+// more), then the other before-wipe tasks (our scheduled and delivered notifications; each paired
+// vault's "removed its copy" statement with one push, at most `LEAVE_PUSH_MS`, then the engines close),
+// the Keychain items (async only: expo-secure-store has no synchronous delete), one frame so the "Removing" state
 // reaches the screen, then synchronously close every database, delete the files and rebuild the
 // services (the demo's fixture build), and remount. Deleting the key before the files is safe: an
 // interrupted wipe leaves files without a key, which the next boot discards (services.ts).
@@ -14,6 +15,41 @@
 // A failed close or delete is not rebuilt over: a database may still be open, and the key is gone. The
 // root then shows the fatal "close cashU and open it again" state, as it does when the rebuild throws;
 // the next launch discards the files without a key and starts clean.
+
+/** How long the "this device removed its copy" statement may take to reach the relay before a wipe. */
+export const LEAVE_PUSH_MS = 5_000;
+
+/** A vault session as the wipe sees it (`VaultSession.leave`). */
+export interface LeavingVault {
+  leave(deadline: number): Promise<unknown>;
+}
+
+/**
+ * Before a paired vault's copy goes ("Remove this phone", "Remove this copy"): each vault writes this
+ * device's `device.left` statement and tries one push, all of them ending by `now() + LEAVE_PUSH_MS`
+ * (each session cuts its relay calls there; this wait is capped there too). Best effort: resolves by
+ * the deadline whatever the sessions do, never rejects, and the wipe goes on either way.
+ */
+export async function leaveBeforeWipe(
+  vaults: readonly LeavingVault[],
+  now: () => number,
+  ms: number = LEAVE_PUSH_MS,
+): Promise<void> {
+  if (vaults.length === 0) return;
+  const deadline = now() + ms;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  const all = Promise.allSettled(
+    vaults.map((vault) => Promise.resolve().then(() => vault.leave(deadline))),
+  );
+  try {
+    await Promise.race([all, cap]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** A before-wipe task; a `first` one settles before any other starts. */
 export type BeforeWipeTask = (() => Promise<void> | void) & { readonly first?: true };

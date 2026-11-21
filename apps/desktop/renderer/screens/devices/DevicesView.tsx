@@ -28,9 +28,14 @@ export function DevicesView({
   /** Moves focus to the Sync row (absent: no Sync row). */
   onGoToSync?: () => void;
 }) {
-  if (state.list?.kind !== "ready") return <p>{T.unavailable}</p>;
+  // Shown only once the list has been missing for 3 s (a CSS-delayed reveal, no timer): a host
+  // handover after a pairing or a sync switch never flashes it.
+  const unavailable = <p className="animate-[scrim-in_0.15s_ease-out_3s_both]">{T.unavailable}</p>;
+  if (state.list?.kind !== "ready") return unavailable;
   const list = state.list;
+  const { stale, leftOn } = state;
   const reviewBlocked =
+    stale ||
     list.evidence.historyPending ||
     list.evidence.overflow ||
     list.evidence.authorityUncertain ||
@@ -39,8 +44,10 @@ export function DevicesView({
   const deviceName = (id: string | null) =>
     id === null ? T.leaderNone : (list.devices.find((device) => device.id === id)?.name ?? id);
   const issuerName = (id: string) => (id === "0".repeat(32) ? T.issuerRecovery : deviceName(id));
+  // Devices that removed their copy sit under the active ones, greyed out.
   const origins = [...list.devices].sort(
     (a, b) =>
+      Number(a.id in leftOn) - Number(b.id in leftOn) ||
       a.pairedAt.seg - b.pairedAt.seg ||
       a.pairedAt.offset - b.pairedAt.offset ||
       a.id.localeCompare(b.id),
@@ -72,6 +79,7 @@ export function DevicesView({
           : T.provenanceUnknown;
   return (
     <div className="grid gap-4">
+      {stale && unavailable}
       <section className="grid gap-1" aria-label={T.leaderTitle}>
         <h3>{T.leaderTitle}</h3>
         <p>{list.leader.mode === "auto" ? T.leaderAuto : deviceName(list.leader.device)}</p>
@@ -137,18 +145,33 @@ export function DevicesView({
       <section className="grid gap-1" aria-label={T.issuerTitle}>
         <h3>{T.issuerTitle}</h3>
         <ul>
-          {origins.map((device) => (
-            <li key={device.id}>
-              {/* Log positions are internal: never shown. The day, when the host knows it. */}
-              {device.name}: {T.issuerBy} {issuerName(device.pairedBy)}
-              {device.pairedOn !== undefined && (
-                <>
-                  {" · "}
-                  <DateText value={device.pairedOn} />
-                </>
-              )}
-            </li>
-          ))}
+          {origins.map((device) => {
+            const leftDay = leftOn[device.id];
+            return (
+              <li key={device.id} className={leftDay === undefined ? undefined : "text-fg-muted"}>
+                {/* Log positions are internal: never shown. The day, when the host knows it. */}
+                {device.name}: {T.issuerBy} {issuerName(device.pairedBy)}
+                {device.pairedOn !== undefined && (
+                  <>
+                    {" · "}
+                    <DateText value={device.pairedOn} />
+                  </>
+                )}
+                {leftDay !== undefined && (
+                  <span className="flex flex-wrap items-center gap-2">
+                    {T.removedCopy(device.name, leftDay)}
+                    <Button
+                      variant="link"
+                      disabled={stale || state.status === "busy" || !!state.preview}
+                      onPress={() => state.removeLeft(device.id)}
+                    >
+                      {T.removeLeft}
+                    </Button>
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </section>
       {list.evidence.overflow ? (
@@ -178,7 +201,7 @@ export function DevicesView({
           className={control}
           value={state.target}
           onChange={(event) => state.setTarget(event.target.value)}
-          disabled={!!state.preview || state.status === "busy"}
+          disabled={!!state.preview || state.status === "busy" || stale}
         >
           <option value="">{T.choose}</option>
           {list.devices

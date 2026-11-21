@@ -123,6 +123,15 @@ export const deviceListResultSchema = z.discriminatedUnion("kind", [
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/)
             .optional(),
+          /**
+           * The local calendar day (this Mac's timezone) the device said it removed its copy (its own
+           * `device.left` note, the earliest). Informational: it stays a vault device until the owner
+           * removes it. Absent without a note.
+           */
+          leftAt: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
         }),
       )
       .max(1024),

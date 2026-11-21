@@ -1,7 +1,8 @@
 // The device registry: a pure fold over the signed `device.added` / `device.revoked` /
-// `device.recoveryChanged` statements of a vault's log, rooted at the recovery signing key pinned in
-// the keyring (never read from storage). The result depends only on the SET of events: every device
-// that holds the same set computes the same registry, whatever the delivery order (S29b, review B1).
+// `device.recoveryChanged` statements (and the informational `device.left` notes) of a vault's log,
+// rooted at the recovery signing key pinned in the keyring (never read from storage). The result
+// depends only on the SET of events: every device that holds the same set computes the same registry,
+// whatever the delivery order (S29b, review B1).
 //
 // Trust comes ONLY from certificate chains (crypto `CertificateIndex`): a revoked device and its
 // certificate subtree are untrusted, a device id certified with two key pairs is conflicted.
@@ -56,10 +57,13 @@ import { DecisionKeys } from "./decisionKeys.js";
 import {
   byHlc,
   DEVICE_ADDED,
+  DEVICE_LEFT,
   DEVICE_REVOKED,
   type DeviceAddedData,
+  type DeviceLeftData,
   type DeviceRevokedData,
   decodeDeviceAdded,
+  decodeDeviceLeft,
   decodeDeviceRevoked,
   decodeRecoveryChanged,
   type LogEvent,
@@ -99,6 +103,11 @@ export interface DeviceRecord {
   readonly pairedBy: string;
   /** When: that event's position in the writer's stream and its HLC stamp. */
   readonly pairedAt: { readonly position: SegmentCursor; readonly hlc: string };
+  /**
+   * When the device said it removed its copy (`device.left`, its own signed note; the earliest `at`
+   * when there are several). Informational: the device stays registered and trusted until revoked.
+   */
+  readonly leftAt?: number;
 }
 
 /** A `device.recoveryChanged` statement whose signer was trusted under this registry's root. */
@@ -116,7 +125,12 @@ export interface RegistryOptions {
   readonly certificateCache?: CertificateCache;
 }
 
-const REGISTRY_TYPES = new Set<string>([DEVICE_ADDED, DEVICE_REVOKED, RECOVERY_CHANGED]);
+const REGISTRY_TYPES = new Set<string>([
+  DEVICE_ADDED,
+  DEVICE_REVOKED,
+  RECOVERY_CHANGED,
+  DEVICE_LEFT,
+]);
 
 export function isRegistryEvent(event: LogEvent): boolean {
   return REGISTRY_TYPES.has(event.type);
@@ -307,6 +321,7 @@ export function foldRegistry(
   const added: Decoded<DeviceAddedData>[] = [];
   const revocations: Decoded<DeviceRevokedData>[] = [];
   const changes: Decoded<RecoveryChangedData>[] = [];
+  const left: Decoded<DeviceLeftData>[] = [];
   for (const event of unique) {
     if (event.v !== 1) {
       ignored.push({ eid: event.eid, reason: "malformed" });
@@ -317,6 +332,10 @@ export function foldRegistry(
     } else if (event.type === DEVICE_REVOKED) {
       const data = decodeDeviceRevoked(event.data);
       if (data) revocations.push({ event, data });
+      else ignored.push({ eid: event.eid, reason: "malformed" });
+    } else if (event.type === DEVICE_LEFT) {
+      const data = decodeDeviceLeft(event.data);
+      if (data) left.push({ event, data });
       else ignored.push({ eid: event.eid, reason: "malformed" });
     } else {
       const data = decodeRecoveryChanged(event.data);
@@ -447,6 +466,41 @@ export function foldRegistry(
         pairedBy: data.signer === RECOVERY_SIGNER_ID ? RECOVERY_SIGNER_ID : event.writer,
         pairedAt: { position: event.position, hlc: event.hlc },
       });
+    }
+  }
+
+  // --- "Removed its copy" notes (cosmetic, like names): only about the writer itself, signed with a
+  // key that counts at the note's position. They never feed trust, revocations, keys or the lease.
+  for (const { event, data } of left) {
+    const keys = data.device === event.writer ? statementKeys(event.writer, event.position) : [];
+    if (keys.length === 0) {
+      ignored.push({
+        eid: event.eid,
+        reason:
+          data.device === event.writer && revoked.has(event.writer)
+            ? "after_revocation"
+            : "untrusted_signer",
+      });
+      continue;
+    }
+    const source: KeySource = {
+      kind: "statement",
+      keys: decided.result.keys,
+      device: event.writer,
+      position: event.position,
+      revoked,
+    };
+    if (!verifies(event, data.sig, source)) {
+      ignored.push({ eid: event.eid, reason: "bad_signature" });
+      continue;
+    }
+    const record = devices.get(data.device);
+    if (record === undefined) {
+      ignored.push({ eid: event.eid, reason: "no_effect" });
+      continue;
+    }
+    if (record.leftAt === undefined || data.at < record.leftAt) {
+      devices.set(data.device, { ...record, leftAt: data.at });
     }
   }
 

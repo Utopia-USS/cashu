@@ -1,14 +1,17 @@
 // The device pieces a syncing device that never invites needs (`devices` of `@cashu/sync/engine`): the
 // registry fold and the frame gate a vault's authority is built from, the events the engine writes for
-// its own device, the joiner side of QR pairing and the provenance of a paired keyring. The inviter,
-// revocation, rotation planning, the lease writers and the leader liveness stay in `./index.ts` for the
-// hosts. Re-exports only: every name here is the same binding as in `./index.ts`.
+// its own device (its announcement, and `device.left` before it wipes its copy), the joiner side of
+// QR pairing and the provenance of a paired keyring. The inviter, revocation, rotation planning, the
+// lease writers and the leader liveness stay in `./index.ts` for the hosts. Re-exports only: every name here is the same binding as in `./index.ts`.
 
 export {
   buildDeviceAdded,
+  buildDeviceLeft,
   DEVICE_ADDED,
+  DEVICE_LEFT,
   DEVICE_REVOKED,
   type DeviceAddedData,
+  type DeviceLeftData,
   type DeviceRevokedData,
   isDeviceName,
   KEYS_ROTATED,

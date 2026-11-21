@@ -247,6 +247,28 @@ it("suggests Face ID on the last step only when the lock will be off", async () 
   expect(screen.getByText(/Turn on Face ID so only you can open it/)).toBeOnTheScreen();
 });
 
+it("says a large history takes a minute or two after 20 s on the first sync's screen", async () => {
+  jest.useFakeTimers();
+  try {
+    await render(wrap(<Screen close={() => {}} />));
+    await act(async () => {
+      pairFlow.dispatch({ type: "connecting" });
+      pairFlow.dispatch({ type: "sas", sas: "418207", expiresAt: Date.now() + 60_000 });
+      pairFlow.dispatch({ type: "storing" });
+      pairFlow.dispatch({ type: "stored", vault: "v1" });
+      pairFlow.dispatch({ type: "roleSaved" });
+    });
+    const line = "Large histories take a minute or two the first time. Later syncs take seconds.";
+    expect(screen.getByText("Waiting for your data from your Mac...")).toBeOnTheScreen();
+    await act(async () => jest.advanceTimersByTime(19_000));
+    expect(screen.queryByText(line)).toBeNull();
+    await act(async () => jest.advanceTimersByTime(1_000));
+    expect(screen.getByText(line)).toBeOnTheScreen();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 describe("PairView stories", () => {
   const named = Object.entries(pairStories).filter(([name]) => name !== "default") as [
     string,

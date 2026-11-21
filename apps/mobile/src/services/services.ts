@@ -100,7 +100,7 @@ import {
   storeJoinedInQueue,
 } from "./vaultBootstrap";
 import { createVaultSession, type VaultSession, type VaultSyncStatus } from "./vaultEngine";
-import { beforeWipeTasks, onBeforeWipe, wipeDevice } from "./wipe";
+import { beforeWipeTasks, leaveBeforeWipe, onBeforeWipe, wipeDevice } from "./wipe";
 
 interface ServicesProfile {
   readonly vault: string;
@@ -803,8 +803,11 @@ export function bootServices(): Services {
   return services;
 }
 
-// Removing this phone closes every engine (after its queued pass or command) before the databases go.
+// Removing this phone: each paired vault first writes this device's "removed its copy" statement and
+// tries one push (best effort, at most `LEAVE_PUSH_MS`; nothing for the demo), then every engine closes
+// (after its queued pass or command) before the databases go.
 onBeforeWipe(async () => {
+  await leaveBeforeWipe(services?.vaults.list() ?? [], Date.now);
   await services?.closeSessions();
 });
 
@@ -912,13 +915,17 @@ export async function setPairedVaultRole(vault: string, role: ProfileRole): Prom
 
 /**
  * Remove one paired vault's copy from this phone (the removed and sync-off states offer it, never
- * automatically): every engine and database closes, then `forgetVault` deletes the vault's log FIRST
+ * automatically): the vault first writes this device's "removed its copy" statement and tries one push
+ * (best effort, at most `LEAVE_PUSH_MS`; a revoked vault writes nothing), every engine and database
+ * closes, then `forgetVault` deletes the vault's log FIRST
  * (its copy of the list entry would otherwise restore it), its view, the list entry and its keys; the
  * services open again over what is left (no paired vault left: the demo, and the pairing screen).
  */
 export async function forgetThisVault(vault: string): Promise<void> {
   showOpening();
   try {
+    const leaving = services?.vaults.get(vault);
+    await leaveBeforeWipe(leaving === undefined ? [] : [leaving], Date.now);
     await services?.closeSessions();
     const entry = prepared?.base === undefined ? undefined : pairedOf(prepared.base.device);
     const device = entry?.find((e) => e.vaultId === vault)?.deviceId;
@@ -954,7 +961,8 @@ export async function forgetThisVault(vault: string): Promise<void> {
 }
 
 /**
- * "Remove this phone": cancel and dismiss our notifications, close every engine, delete every
+ * "Remove this phone": cancel and dismiss our notifications, tell each paired vault this phone removed
+ * its copy (best effort, `leaveBeforeWipe`), close every engine, delete every
  * database, key and file this app wrote on the phone, then rebuild the services and remount (or show
  * the fatal state when that could not be done safely). Rejects only when the rebuilt app is shown
  * although a step failed; the fatal state is its own report. TRANSITIONAL(S44): the rebuild lands on
