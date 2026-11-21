@@ -3,6 +3,7 @@ import {
   createPortClient,
   messagePortChannel,
 } from "@cashu/store-react/client";
+import { QUERY_ERROR_RETRY_MS } from "./shell/reconnectWindow.js";
 
 /** The existing preload/main own-origin relay; the page receives no filesystem or IPC authority. */
 function requestStorePort(): Promise<MessagePort> {
@@ -36,5 +37,8 @@ export async function desktopClient(onStatus?: (status: ConnectionStatus) => voi
     // A page opened again within this time renders its last values at once instead of suspending
     // (a fallback costs ~300 ms of React's reveal throttle); its live queries reopen behind it.
     retainMs: 10 * 60_000,
+    // A host handover fails the live queries just before the host goes: they are asked again within
+    // the reconnect window and keep their last values meanwhile (shell/reconnectWindow.ts).
+    errorRetryMs: QUERY_ERROR_RETRY_MS,
   });
 }

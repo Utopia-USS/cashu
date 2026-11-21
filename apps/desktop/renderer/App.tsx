@@ -13,13 +13,15 @@ import { NotificationRouteController } from "./NotificationRouteController.js";
 import { RouteFailure, router } from "./routes.js";
 import { CreationScreen } from "./screens/onboarding/CreationScreen.js";
 
+/** The last boundary: its failure screen retries on its own a few times by rendering the tree again. */
 class RootBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  readonly #reset = () => this.setState({ failed: false });
   override render() {
-    return this.state.failed ? <RouteFailure /> : this.props.children;
+    return this.state.failed ? <RouteFailure reset={this.#reset} /> : this.props.children;
   }
 }
 

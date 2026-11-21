@@ -99,6 +99,7 @@ const silent: Ready = {
 const screen = (overrides: Partial<DevicesScreenState> = {}): DevicesScreenState => ({
   list,
   stale: false,
+  unavailable: false,
   profileName: "Anna",
   dialogOpen: false,
   target: "",
@@ -538,7 +539,13 @@ export const PairPhoneCompleted = {
   render: () => page({ pairing: { kind: "completed", onCreate: asyncNoop } }),
   play: PairPhone.play,
 };
-/** A host handover: the last list stays, actions disabled; the message only after 3 s (CSS). */
+/** A host handover: the last list stays, actions disabled, no message (within the reconnect window). */
 export const Reconnecting = { render: () => page({ state: screen({ stale: true }) }) };
-/** No list at all for more than 3 s. */
-export const Unavailable = { render: () => page({ state: screen({ list: null }) }) };
+/** The last list held for longer than the reconnect window: the message shows above it. */
+export const ReconnectingTooLong = {
+  render: () => page({ state: screen({ stale: true, unavailable: true }) }),
+};
+/** No list at all for longer than the reconnect window. */
+export const Unavailable = {
+  render: () => page({ state: screen({ list: null, unavailable: true }) }),
+};

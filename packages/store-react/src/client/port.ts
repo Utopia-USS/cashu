@@ -6,7 +6,9 @@
 // The host can go away while the window is open (killed, crashed, replaced by an update). Main then
 // says so with `link` messages and reconnects (starting a host when none answers). Meanwhile the
 // snapshots stay as they are (stale); offline commands return not_started. On ready, live queries
-// resubscribe. An uncertain command is never automatically submitted again.
+// resubscribe and the stale values stay shown until fresh ones arrive. A query error while connected
+// may wait out a reconnect window first (`errorRetryMs`). An uncertain command is never automatically
+// submitted again.
 
 import {
   decodeValue,
@@ -34,6 +36,15 @@ export interface PortClientOptions extends Omit<CacheOptions, "async" | "connect
   readonly onProtocolError?: (error: unknown) => void;
   /** How long `recovered` is shown after the host came back, before `online` (default 4 s). */
   readonly recoveredMs?: number;
+  /**
+   * The reconnect window for a live query's error. While connected, an `error` frame is not final at
+   * once: the query is asked again after each of these delays (ms), and only an error still standing
+   * when the last delay ran out reaches the readers. A value meanwhile clears it; a lost link drops it
+   * (the new session's `ready` subscribes again). A host handing over to a new process fails its live
+   * queries just before it goes away, so those errors never reach the screen. Default `[]`: an error is
+   * final at once.
+   */
+  readonly errorRetryMs?: readonly number[];
   /** Mints a command's idempotency key (default: a ULID of now). */
   readonly mintKey?: () => string;
   /**
@@ -66,10 +77,64 @@ export function createPortClient(
       throw error;
     });
   const recoveredMs = options.recoveredMs ?? DEFAULT_RECOVERED_MS;
+  const errorRetryMs = options.errorRetryMs ?? [];
   const connection = new ConnectionState("connecting");
   if (options.onStatus) connection.subscribe(() => options.onStatus?.(connection.getSnapshot()));
 
   const subs = new Map<number, { readonly sink: Sink; readonly message: Sub }>();
+  /** Errors inside their reconnect window: the latest error and the next step's timer, per sid. */
+  const held = new Map<
+    number,
+    { error: RemoteStoreError; step: number; timer: ReturnType<typeof setTimeout> | undefined }
+  >();
+  const release = (sid: number) => {
+    const pending = held.get(sid);
+    if (pending === undefined) return;
+    clearTimeout(pending.timer);
+    held.delete(sid);
+  };
+  const releaseAll = () => {
+    for (const sid of [...held.keys()]) release(sid);
+  };
+  /** One step of a held error: ask the query again, or (after the last delay) deliver the error. */
+  const stepHeld = (sid: number) => {
+    const pending = held.get(sid);
+    const subscription = subs.get(sid);
+    if (pending === undefined) return;
+    if (subscription === undefined || !live) {
+      release(sid);
+      return;
+    }
+    if (pending.step >= errorRetryMs.length) {
+      release(sid);
+      subscription.sink.error(pending.error);
+      return;
+    }
+    const delay = errorRetryMs[pending.step] ?? 0;
+    pending.step += 1;
+    pending.timer = setTimeout(() => {
+      if (held.get(sid) !== pending) return;
+      // The last delay only waits for an answer to the last request; the others ask again first.
+      if (pending.step < errorRetryMs.length) post(subscription.message);
+      stepHeld(sid);
+    }, delay);
+  };
+  const failSub = (sid: number, error: RemoteStoreError) => {
+    const subscription = subs.get(sid);
+    if (subscription === undefined) return;
+    if (!live) return; // the link is down: the next session's `ready` subscribes again
+    if (errorRetryMs.length === 0) {
+      subscription.sink.error(error);
+      return;
+    }
+    const pending = held.get(sid);
+    if (pending !== undefined) {
+      pending.error = error;
+      return;
+    }
+    held.set(sid, { error, step: 0, timer: undefined });
+    stepHeld(sid);
+  };
   const runs = new Map<
     number,
     {
@@ -137,6 +202,7 @@ export function createPortClient(
     privacy = current;
     policyGeneration += 1;
     interrupt();
+    releaseAll();
     const existing = [...subs.entries()];
     const interrupted = [...actions.values()];
     actions.clear();
@@ -157,6 +223,7 @@ export function createPortClient(
     if (live) lost = true;
     live = false;
     interrupt();
+    releaseAll();
     for (const resolve of actions.values())
       resolve({ status: "outcome_unknown", reason: "interrupted" });
     actions.clear();
@@ -183,6 +250,7 @@ export function createPortClient(
             stopChannel?.();
             clearTimeout(recoveredTimer);
             interrupt();
+            releaseAll();
             subs.clear();
             for (const resolve of actions.values())
               resolve({ status: "outcome_unknown", reason: "interrupted" });
@@ -225,6 +293,7 @@ export function createPortClient(
             subs.set(sid, { sink, message });
             post(message);
             return () => {
+              release(sid);
               if (subs.delete(sid)) post({ t: "unsub", sid });
             };
           },
@@ -308,8 +377,11 @@ export function createPortClient(
         return;
       }
       // A new session (the host came back, or a new host took over): it knows nothing of ours.
+      // The privacy policy did not change, so the shown values stay (stale) until the new session's
+      // values replace them: a handover never sends the screens back to their loading state.
       const existing = [...subs.entries()];
-      client.resetSnapshots();
+      releaseAll();
+      client.resetFailed();
       for (const [sid, subscription] of existing) {
         if (subs.get(sid) !== subscription) continue;
         const message: Sub = {
@@ -367,6 +439,7 @@ export function createPortClient(
           if (message.generation === policyGeneration) {
             const subscription = subs.get(message.sid);
             if (subscription !== undefined) {
+              release(message.sid);
               const value = decodeValue(message.value);
               if (
                 subscription.message.query === currentVault.id &&
@@ -379,7 +452,7 @@ export function createPortClient(
           return;
         case "error":
           if (message.generation === policyGeneration)
-            subs.get(message.sid)?.sink.error(new RemoteStoreError(message.error));
+            failSub(message.sid, new RemoteStoreError(message.error));
           return;
         case "result": {
           const pending = runs.get(message.rid);

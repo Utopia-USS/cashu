@@ -5,6 +5,7 @@ import { useConnection, useProfile, useQuery } from "@cashu/store-react";
 import { useToast } from "@cashu/ui";
 import { useEffect, useRef, useState } from "react";
 import { devicesBridge } from "../../devicesBridge.js";
+import { useOutlasts } from "../../shell/reconnectWindow.js";
 import { T } from "./Devices.strings.js";
 
 type ReadyList = Extract<DeviceListResult, { kind: "ready" }>;
@@ -62,7 +63,8 @@ export function useDevicesScreen() {
   // The last ready list of this profile. A host handover (after a pairing or a sync switch) drops the
   // connection or refuses the list for a moment; the screen keeps showing what it had (`stale`, its
   // actions disabled) instead of flashing "unavailable". Keyed by the profile only: the connection
-  // changes during exactly that handover. The View reveals the message itself after 3 s (CSS delay).
+  // changes during exactly that handover. "Unavailable" shows only once the list has been missing for
+  // the whole reconnect window (shell/reconnectWindow.ts), never for a handover.
   const ready = current?.kind === "ready" ? current : null;
   const [held, setHeld] = useState<{ vault: string; raw: unknown; list: ReadyList } | null>(null);
   const raw = live.status === "ready" ? live.list : undefined;
@@ -72,6 +74,7 @@ export function useDevicesScreen() {
   const kept = held?.vault === vault ? held.list : null;
   const list = ready ?? kept ?? current;
   const stale = ready === null && kept !== null;
+  const unavailable = useOutlasts(list?.kind !== "ready" || stale);
   const target = scopeActive ? selectedTarget : "";
   const recertify = scopeActive ? selectedRecertify : [];
   const preview = scopeActive ? preparedPreview : null;
@@ -387,6 +390,8 @@ export function useDevicesScreen() {
   return {
     list,
     stale,
+    /** The list has been missing (or held stale) for longer than the reconnect window. */
+    unavailable,
     profileName: profile?.name ?? null,
     /** The removal dialog: open for a device, or for an outcome still to check. */
     dialogOpen:

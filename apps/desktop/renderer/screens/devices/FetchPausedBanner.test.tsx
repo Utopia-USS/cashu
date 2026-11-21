@@ -6,14 +6,14 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { FetchPausedBanner } from "./FetchPausedBanner.js";
 import type { KeepFetchingState } from "./useKeepFetching.js";
 
-// Designer copy (DV4 items 1 and 2), quoted verbatim: the oracle is the brief, not the catalog.
+// Designer copy (DV4 items 1 and 2 and the follow-up's third sentence), quoted verbatim: the oracle is the brief, not the catalog.
 const SYNC_OFF = {
   en: "Bank fetch paused: sync is off, so this Mac can't tell whether your other Mac fetches too. Turn sync on, or keep fetching on this Mac.",
   pl: "Pobieranie z banku wstrzymane: synchronizacja jest wyłączona, więc ten Mac nie wie, czy Twój drugi Mac też pobiera. Włącz synchronizację albo pobieraj dalej na tym Macu.",
 };
 const TAIL = {
-  en: "If it is still running, both Macs may fetch once; duplicate transactions are filtered out.",
-  pl: "Jeśli wciąż działa, oba Maki mogą raz pobrać dane; zdublowane transakcje zostaną odfiltrowane.",
+  en: "If it is still running, both Macs may fetch once; duplicate transactions are filtered out. cashU asks again in 7 days.",
+  pl: "Jeśli wciąż działa, oba Maki mogą raz pobrać dane; zdublowane transakcje zostaną odfiltrowane. cashU zapyta ponownie za 7 dni.",
 };
 
 let container: HTMLDivElement;
@@ -77,6 +77,6 @@ it.each([
 ] as const)("keep-fetching dialog body (%s, name %s)", async (language, name, body) => {
   await show(language, "outage", keepFetching(name));
   expect(dialogBody()).toBe(body);
-  // The name stands alone, and the "asks again" sentence is gone.
-  expect(dialogBody()).not.toMatch(/other Mac Mac|drugi Mac Mac|asks again|zapyta ponownie/);
+  // The name stands alone.
+  expect(dialogBody()).not.toMatch(/other Mac Mac|drugi Mac Mac/);
 });

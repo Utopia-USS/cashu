@@ -122,6 +122,19 @@ class Entry<R> implements QueryEntry<R> {
     this.#notify();
   }
 
+  get failed(): boolean {
+    return this.#state.status === "error";
+  }
+
+  /** A failed live query asked again from the start: its readers wait for the new answer. */
+  retry(): void {
+    if (this.#state.status !== "error") return;
+    this.#close?.();
+    this.#close = null;
+    this.reset();
+    this.start();
+  }
+
   get ready(): PromiseLike<void> {
     return this.#ready;
   }
@@ -357,6 +370,23 @@ export class QueryCache implements StoreClient {
     const entries = [...this.#entries.values()];
     for (const entry of entries) entry.reset();
     for (const entry of entries) entry.notify();
+  }
+
+  /**
+   * A new session of the store's process: failed snapshots go back to waiting (the session asks again),
+   * values stay shown until the session's own values replace them.
+   */
+  resetFailed(): void {
+    const failed = [...this.#entries.values()].filter((entry) => entry.failed);
+    for (const entry of failed) entry.reset();
+    for (const entry of failed) entry.notify();
+  }
+
+  /** Ask every failed live query again (a failure screen retrying); values are not touched. */
+  retryFailed(): void {
+    const failed = [...this.#entries.values()].filter((entry) => entry.failed);
+    for (const entry of failed) entry.retry();
+    for (const entry of failed) entry.notify();
   }
 
   /** Release every live query (the app or test is shutting down). */

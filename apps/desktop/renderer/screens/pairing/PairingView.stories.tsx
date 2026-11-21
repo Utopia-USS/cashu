@@ -38,11 +38,12 @@ export const Checking = {
 export const Unknown = {
   render: () => <PairingView state={{ kind: "unknown", onInspect: noop }} />,
 };
+/** The end states close with "Done" (in the dialog) and offer a new invitation. */
 export const Completed = {
-  render: () => <PairingView state={{ kind: "completed", onCreate: noop }} />,
+  render: () => <PairingView state={{ kind: "completed", onCreate: noop }} onDone={() => {}} />,
 };
 export const Refused = {
-  render: () => <PairingView state={{ kind: "refused", onCreate: noop }} />,
+  render: () => <PairingView state={{ kind: "refused", onCreate: noop }} onDone={() => {}} />,
 };
 /** A cancel that came after the host had written the phone into the vault. */
 export const AlreadyAdded = {
@@ -54,7 +55,7 @@ export const PhoneCancelled = {
 };
 export const Unavailable = { render: () => <PairingView state={{ kind: "unavailable" }} /> };
 export const Expired = {
-  render: () => <PairingView state={{ kind: "expired", onCreate: noop }} />,
+  render: () => <PairingView state={{ kind: "expired", onCreate: noop }} onDone={() => {}} />,
 };
 export const SyncOff = {
   render: () => <PairingView state={{ kind: "sync_off", onCreate: noop }} onGoToSync={() => {}} />,

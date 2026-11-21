@@ -21,8 +21,10 @@ vi.mock("@cashu/store-react", () => ({
 }));
 vi.mock("./pairingBridge.js", () => ({ pairingBridge: () => bindings.bridge }));
 
+/** The dialog's close, as DevicesView passes it. */
+const onDone = vi.fn();
 function Harness() {
-  return <PairingView state={usePairingScreen()} />;
+  return <PairingView state={usePairingScreen()} onDone={onDone} />;
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -37,6 +39,7 @@ beforeEach(() => {
   setLanguageForTests("en");
   bindings.vault = "a".repeat(32);
   bindings.connection = "online";
+  onDone.mockClear();
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -151,6 +154,7 @@ async function created(bridge: unknown) {
     container,
     button: (label: string) =>
       [...container.querySelectorAll("button")].find((node) => node.textContent === label),
+    buttons: () => [...container.querySelectorAll("button")].map((node) => node.textContent),
     /** Re-renders as after a host push of the device list. */
     async push() {
       bindings.pushed = { status: "ready" };
@@ -217,7 +221,7 @@ it("shows the code as text under the QR and copies exactly that text", async () 
   }
 });
 
-it("offers a new code once the invitation expired", async () => {
+it("ends an expired invitation with Done and Try again (a new invitation)", async () => {
   const invite = vi.fn(async () => ({
     kind: "ready" as const,
     operationId: "0".repeat(26),
@@ -232,7 +236,10 @@ it("offers a new code once the invitation expired", async () => {
   });
   try {
     expect(view.container.textContent).toContain("Invitation expired.");
-    await act(async () => view.button("Show a new code")?.click());
+    expect(view.buttons()).toEqual(["Done", "Try again"]);
+    await act(async () => view.button("Done")?.click());
+    expect(onDone).toHaveBeenCalledTimes(1);
+    await act(async () => view.button("Try again")?.click());
     expect(invite).toHaveBeenCalledTimes(2);
   } finally {
     await view.close();
@@ -248,13 +255,14 @@ it("says 'Phone paired' at the commit, without waiting for the phone's first syn
   const inspect = vi
     .fn()
     .mockResolvedValueOnce({ kind: "pending", operationId, phoneConnected: true });
+  const invite = vi.fn(async () => ({
+    kind: "ready" as const,
+    operationId,
+    qr: "synthetic-waiting",
+    expiresAt: Date.now() + 60_000,
+  }));
   const view = await created({
-    invite: vi.fn(async () => ({
-      kind: "ready" as const,
-      operationId,
-      qr: "synthetic-waiting",
-      expiresAt: Date.now() + 60_000,
-    })),
+    invite,
     // The membership is written; the phone has not synced yet.
     confirm: vi.fn(async () => ({ kind: "waiting_for_phone" as const, operationId, device })),
     inspect,
@@ -278,6 +286,12 @@ it("says 'Phone paired' at the commit, without waiting for the phone's first syn
     await view.push();
     expect(inspect).toHaveBeenCalledTimes(1);
     expect(view.container.querySelector('[role="status"]')?.textContent).toBe(PAIRED);
+    // Designer (DV4 follow-up): "Done" closes, "Pair another phone" starts a new invitation.
+    expect(view.buttons()).toEqual(["Done", "Pair another phone"]);
+    await act(async () => view.button("Done")?.click());
+    expect(onDone).toHaveBeenCalledTimes(1);
+    await act(async () => view.button("Pair another phone")?.click());
+    expect(invite).toHaveBeenCalledTimes(2);
   } finally {
     await view.close();
   }
@@ -319,6 +333,24 @@ it("an inspect that finds the membership written also says 'Phone paired' (Polis
     );
   } finally {
     setLanguageForTests("en");
+    await view.close();
+  }
+});
+
+it("ends a refused invitation with Done and Try again, in Polish too", async () => {
+  const invite = vi.fn(async () => ({ kind: "refused" as const, code: "busy" as const }));
+  const view = await created({ invite, confirm: vi.fn(), inspect: vi.fn(), cancel: vi.fn() });
+  try {
+    expect(view.container.textContent).toContain("The phone could not be paired.");
+    expect(view.buttons()).toEqual(["Done", "Try again"]);
+    await act(async () => view.button("Done")?.click());
+    expect(onDone).toHaveBeenCalledTimes(1);
+    await act(async () => view.button("Try again")?.click());
+    expect(invite).toHaveBeenCalledTimes(2);
+    setLanguageForTests("pl");
+    await view.push();
+    expect(view.buttons()).toEqual(["Gotowe", "Spróbuj ponownie"]);
+  } finally {
     await view.close();
   }
 });

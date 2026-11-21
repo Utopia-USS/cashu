@@ -1,5 +1,6 @@
 import { Button, Spinner } from "@cashu/ui";
 import { QRCodeSVG } from "qrcode.react";
+import { S as D } from "../../Desktop.strings.js";
 import { T } from "./Pairing.strings.js";
 
 export type PairingViewState =
@@ -60,14 +61,42 @@ function DigitsStep({ state }: { state: Extract<PairingViewState, { kind: "invit
   );
 }
 
+/**
+ * The buttons of an end state (paired, expired, refused): "Done" closes the dialog, the second one
+ * starts a new invitation (designer, DV4 follow-up).
+ */
+function EndActions({
+  again,
+  onCreate,
+  onDone,
+}: {
+  again: string;
+  onCreate(): Promise<void>;
+  onDone: (() => void) | undefined;
+}) {
+  return (
+    <div className="flex gap-2">
+      {onDone && (
+        <Button variant="primary" onPress={onDone}>
+          {T.done}
+        </Button>
+      )}
+      <Button onPress={onCreate}>{again}</Button>
+    </div>
+  );
+}
+
 export function PairingView({
   state,
   onGoToSync,
+  onDone,
   bare = false,
 }: {
   state: PairingViewState;
   /** Moves focus to the Sync row; absent when there is no Sync row (no sync config). */
   onGoToSync?: () => void;
+  /** Closes the "Pair a phone" dialog ("Done" in the end states); absent outside a dialog. */
+  onDone?: () => void;
   /** Inside the "Pair a phone" dialog, which carries the title. */
   bare?: boolean;
 }) {
@@ -157,16 +186,24 @@ export function PairingView({
           </div>
         </div>
       )}
-      {state.kind === "completed" && <p role="status">{T.complete}</p>}
-      {state.kind === "refused" && <p role="alert">{T.refused}</p>}
+      {state.kind === "completed" && (
+        <div className="grid gap-2">
+          <p role="status">{T.complete}</p>
+          <EndActions again={T.pairAnother} onCreate={state.onCreate} onDone={onDone} />
+        </div>
+      )}
+      {state.kind === "refused" && (
+        <div className="grid gap-2">
+          <p role="alert">{T.refused}</p>
+          <EndActions again={D.retry} onCreate={state.onCreate} onDone={onDone} />
+        </div>
+      )}
       {state.kind === "already_added" && <p role="alert">{T.alreadyAdded}</p>}
       {state.kind === "phone_cancelled" && <p role="status">{T.phoneCancelled}</p>}
       {state.kind === "expired" && (
         <div className="grid gap-2">
           <p role="alert">{T.expired}</p>
-          <div>
-            <Button onPress={state.onCreate}>{T.newCode}</Button>
-          </div>
+          <EndActions again={D.retry} onCreate={state.onCreate} onDone={onDone} />
         </div>
       )}
       {state.kind === "sync_off" && (
@@ -180,8 +217,6 @@ export function PairingView({
         </div>
       )}
       {(state.kind === "idle" ||
-        state.kind === "completed" ||
-        state.kind === "refused" ||
         state.kind === "already_added" ||
         state.kind === "phone_cancelled") && (
         <div>

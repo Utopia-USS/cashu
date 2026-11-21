@@ -53,9 +53,9 @@ export function DevicesView({
   pairing?: PairingViewState;
 }) {
   const [pairOpen, setPairOpen] = useState(false);
-  // Shown only once the list has been missing for 3 s (a CSS-delayed reveal, no timer): a host
-  // handover after a pairing or a sync switch never flashes it.
-  const unavailable = <p className="animate-[scrim-in_0.15s_ease-out_3s_both]">{T.unavailable}</p>;
+  // Rendered only once the list has been missing for the reconnect window (`state.unavailable`): a host
+  // handover after a pairing or a sync switch never shows it, not even to a screen reader.
+  const unavailable = state.unavailable && <p>{T.unavailable}</p>;
   // The Settings card carries the title ("Devices"); the page starts with the lead line.
   const header = (
     <p className="text-fg-secondary">
@@ -82,6 +82,7 @@ export function DevicesView({
       <PairingView
         bare
         state={pairing}
+        onDone={closePairing}
         {...(onGoToSync
           ? {
               onGoToSync: () => {
@@ -127,7 +128,7 @@ export function DevicesView({
     <div className="grid gap-6">
       {header}
       {syncRow}
-      {stale && unavailable}
+      {unavailable}
       <section className="grid gap-2.5" aria-labelledby="devices-list-title">
         <div className="flex flex-wrap items-center gap-2.5">
           {/* The card already says "Devices": the header counts them (designer DV2 item 2). */}

@@ -4,6 +4,7 @@ import { act } from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { RECONNECT_WINDOW_MS } from "../../shell/reconnectWindow.js";
 import { DevicesScreen } from "./DevicesScreen.js";
 
 const bindings = vi.hoisted(() => ({
@@ -586,7 +587,7 @@ it("while this Mac's fetch is paused, tags it, explains the bound and asks befor
   // The body does not ask the title's question again; the other Mac's name stands alone.
   const body = dialog()?.querySelector("p")?.textContent;
   expect(body).toBe(
-    "Mac mini hasn't reported for 7 days. If it is still running, both Macs may fetch once; duplicate transactions are filtered out.",
+    "Mac mini hasn't reported for 7 days. If it is still running, both Macs may fetch once; duplicate transactions are filtered out. cashU asks again in 7 days.",
   );
   expect(dialogButtons()).toEqual(["Cancel", "Keep fetching"]);
   // The primary button takes the focus.
@@ -670,38 +671,75 @@ it("replaces the button row of a failed step with Close and 'Try again', which r
   expect(dialog()).toBeNull();
 });
 
-it("keeps the last list through a host handover and reveals 'unavailable' only after 3 s, without a timer", async () => {
-  bindings.list = deviceList();
-  await render();
-  const message = () =>
-    [...container.querySelectorAll("p")].find((p) =>
-      p.textContent?.includes("Device management is unavailable."),
-    );
-  expect(message()).toBeUndefined();
-  bindings.connection = "offline";
-  await render();
-  expect(rowNames()).toEqual(["Demo Mac", "Target"]);
-  expect(rowOf("Target")?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.disabled).toBe(
-    true,
+/** Lets the reconnect window's timers run (fake timers) inside React's act. */
+const elapse = (ms: number) =>
+  act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+const unavailableMessage = () =>
+  [...container.querySelectorAll("p")].find((p) =>
+    p.textContent?.includes("Device management is unavailable."),
   );
-  expect(message()?.className).toContain("3s");
-  bindings.connection = "recovered";
-  bindings.list = { kind: "refused", code: "unavailable" };
-  await render();
-  expect(rowNames()).toEqual(["Demo Mac", "Target"]);
-  bindings.list = deviceList();
-  await render();
-  expect(message()).toBeUndefined();
-  expect(rowOf("Target")?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.disabled).toBe(
-    false,
-  );
+
+it("keeps the last list through a host handover and never shows 'unavailable' within the reconnect window", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    bindings.list = deviceList();
+    await render();
+    expect(unavailableMessage()).toBeUndefined();
+    bindings.connection = "offline";
+    await render();
+    expect(rowNames()).toEqual(["Demo Mac", "Target"]);
+    expect(
+      rowOf("Target")?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.disabled,
+    ).toBe(true);
+    // Not in the DOM at all (no screen reader hears it), for most of the window.
+    expect(unavailableMessage()).toBeUndefined();
+    await elapse(RECONNECT_WINDOW_MS - 1_000);
+    expect(unavailableMessage()).toBeUndefined();
+    bindings.connection = "recovered";
+    bindings.list = { kind: "refused", code: "unavailable" };
+    await render();
+    expect(rowNames()).toEqual(["Demo Mac", "Target"]);
+    bindings.list = deviceList();
+    await render();
+    // The handover ended inside the window: the message never showed, and its timer is gone.
+    await elapse(RECONNECT_WINDOW_MS * 2);
+    expect(unavailableMessage()).toBeUndefined();
+    expect(
+      rowOf("Target")?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.disabled,
+    ).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
-it("with no list ever, the message is the delayed one", async () => {
-  bindings.list = { kind: "refused", code: "unavailable" };
-  await render();
-  const message = [...container.querySelectorAll("p")].find(
-    (p) => p.textContent === "Device management is unavailable.",
-  );
-  expect(message?.className).toContain("3s");
+it("shows 'unavailable' over the held list once the list stays missing past the reconnect window", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    bindings.list = deviceList();
+    await render();
+    bindings.list = { kind: "refused", code: "unavailable" };
+    await render();
+    await elapse(RECONNECT_WINDOW_MS - 1);
+    expect(unavailableMessage()).toBeUndefined();
+    await elapse(1);
+    expect(unavailableMessage()).toBeDefined();
+    expect(rowNames()).toEqual(["Demo Mac", "Target"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("with no list ever, the message shows only after the reconnect window", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    bindings.list = { kind: "refused", code: "unavailable" };
+    await render();
+    expect(unavailableMessage()).toBeUndefined();
+    await elapse(RECONNECT_WINDOW_MS);
+    expect(unavailableMessage()?.textContent).toBe("Device management is unavailable.");
+  } finally {
+    vi.useRealTimers();
+  }
 });

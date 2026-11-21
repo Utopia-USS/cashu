@@ -98,6 +98,8 @@ export interface StoreClient {
     attempt?: CommandAttempt,
   ): Promise<CommandOutcome<R>>;
   reconcile<R>(attempt: CommandAttempt): Promise<CommandOutcome<R>>;
+  /** Ask every failed live query again (a failure screen's retry); absent: nothing to retry. */
+  retryFailed?(): void;
 }
 
 /** A message channel (a DOM / Node MessagePort), adapted by the app. */

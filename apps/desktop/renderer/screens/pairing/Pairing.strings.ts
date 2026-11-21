@@ -61,8 +61,10 @@ export const T = catalog({
   },
   unavailable: { pl: "Łączenie jest teraz niedostępne.", en: "Pairing is unavailable now." },
   expired: { pl: "Zaproszenie wygasło.", en: "Invitation expired." },
-  // #23.8 (a).
-  newCode: { pl: "Pokaż nowy kod", en: "Show a new code" },
+  // Designer (DV4 follow-up): the end states (paired, expired, refused) close with "Done"; a second
+  // button starts a new invitation ("Try again" is Desktop.strings `retry`).
+  done: { pl: "Gotowe", en: "Done" },
+  pairAnother: { pl: "Połącz kolejny telefon", en: "Pair another phone" },
   // Lead addendum 3b: refusals relay_off / no_config.
   syncOff: {
     pl: "Najpierw włącz synchronizację: telefon łączy się z Makiem przez nią.",

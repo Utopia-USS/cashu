@@ -56,6 +56,7 @@ import { resolveProfileRoute } from "./shell/profileRoute.js";
 import { ProfileRouteSync } from "./shell/profileRouteSync.js";
 import { ShellView } from "./shell/ShellView.js";
 import { useCalendarDay } from "./shell/useCalendarDay.js";
+import { useFailureRetry } from "./shell/useFailureRetry.js";
 import { useShellScreen } from "./shell/useShellScreen.js";
 
 const budgetCurrencyByVault = new Map<string, string>();
@@ -261,7 +262,13 @@ function ShellRoute() {
   );
 }
 
-export function RouteFailure() {
+/**
+ * The full-screen failure. As a boundary's fallback (`reset` given: a route's errorComponent, the App's
+ * root boundary) it retries on its own with a bounded back-off first (shell/useFailureRetry.ts); the
+ * button reloads the window.
+ */
+export function RouteFailure({ reset }: { reset?: () => void } = {}) {
+  useFailureRetry(reset);
   return (
     <main className="p-6">
       <p role="alert">{S.failed}</p>

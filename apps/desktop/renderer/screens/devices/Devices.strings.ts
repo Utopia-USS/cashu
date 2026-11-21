@@ -17,6 +17,8 @@ const removedPl = (day: DayWord) =>
     : `${dayPl(day)} usunęło swoją kopię`;
 /** "od 1 dnia", "od 7 dni". */
 const daysPl = (n: number) => `${n} ${plForm(n, "dnia", "dni", "dni")}`;
+/** "za 1 dzień", "za 7 dni". */
+const inDaysPl = (n: number) => `${n} ${plForm(n, "dzień", "dni", "dni")}`;
 const daysEn = (n: number) => `${n} ${enForm(n, "day", "days")}`;
 
 export const T = catalog({
@@ -250,19 +252,21 @@ export const T = catalog({
   },
   fetchConfirmHere: { pl: "Pobieraj na tym Macu", en: "Fetch on this Mac" },
   // Dialog F for the paused fetch (DV2 items 4 and 13): the title asks, the body does not repeat it.
-  // Designer (DV4 item 2): the other Mac by its name alone, "Your other Mac" without one.
+  // Designer (DV4 item 2): the other Mac by its name alone, "Your other Mac" without one. The last
+  // sentence holds because the override expires: the host's acknowledgement restarts the 7-day bound
+  // (sync lease.ts `offlinePullAt`), after which the pause returns.
   keepFetchingTitle: { pl: "Pobierać dalej na tym Macu?", en: "Keep fetching on this Mac?" },
   keepFetchingBody: {
     pl: (name: string, days: number) =>
-      `${name} nie odzywa się od ${daysPl(days)}. Jeśli wciąż działa, oba Maki mogą raz pobrać dane; zdublowane transakcje zostaną odfiltrowane.`,
+      `${name} nie odzywa się od ${daysPl(days)}. Jeśli wciąż działa, oba Maki mogą raz pobrać dane; zdublowane transakcje zostaną odfiltrowane. cashU zapyta ponownie za ${inDaysPl(days)}.`,
     en: (name: string, days: number) =>
-      `${name} hasn't reported for ${daysEn(days)}. If it is still running, both Macs may fetch once; duplicate transactions are filtered out.`,
+      `${name} hasn't reported for ${daysEn(days)}. If it is still running, both Macs may fetch once; duplicate transactions are filtered out. cashU asks again in ${daysEn(days)}.`,
   },
   keepFetchingBodyUnnamed: {
     pl: (days: number) =>
-      `Twój drugi Mac nie odzywa się od ${daysPl(days)}. Jeśli wciąż działa, oba Maki mogą raz pobrać dane; zdublowane transakcje zostaną odfiltrowane.`,
+      `Twój drugi Mac nie odzywa się od ${daysPl(days)}. Jeśli wciąż działa, oba Maki mogą raz pobrać dane; zdublowane transakcje zostaną odfiltrowane. cashU zapyta ponownie za ${inDaysPl(days)}.`,
     en: (days: number) =>
-      `Your other Mac hasn't reported for ${daysEn(days)}. If it is still running, both Macs may fetch once; duplicate transactions are filtered out.`,
+      `Your other Mac hasn't reported for ${daysEn(days)}. If it is still running, both Macs may fetch once; duplicate transactions are filtered out. cashU asks again in ${daysEn(days)}.`,
   },
   keepFetchingConfirm: { pl: "Pobieraj dalej", en: "Keep fetching" },
   fetchDone: {
