@@ -177,8 +177,8 @@ describe("Activity over the real synchronous store", () => {
     expect(state.canAddCash).toBe(true);
     expect(screen.getByRole("button", { name: "Add a cash expense" })).toBeOnTheScreen();
     expect(state.days.slice(0, 2).map((d) => [d.label, d.spent?.amount.toString()])).toEqual([
-      ["Wed, Nov 11", "403.93"],
-      ["Tue, Nov 10", "45.00"],
+      ["Wed 11 Nov", "403.93"],
+      ["Tue 10 Nov", "45.00"],
     ]);
     const nov11 = state.days[0]?.rows ?? [];
     expect(nov11.find((r) => r.payee === "Own" && r.amount.amount.lt(D("0")))).toMatchObject({
@@ -191,13 +191,13 @@ describe("Activity over the real synchronous store", () => {
       account: "Synthetic account",
     });
     expect(state.days[1]?.rows.find((r) => r.payee === "SYNTHETIC EMPLOYER")?.income).toBe(true);
-    expect(state.days.at(-1)?.label).toBe("Fri, Mar 15, 2024");
+    expect(state.days.at(-1)?.label).toBe("Fri, 15 Mar 2024");
     expect(state.chips.map((c) => [c.key, c.count, c.active])).toEqual([
       ["all", undefined, true],
       ["uncategorized", 2, false],
       ["income", undefined, false],
     ]);
-    expect(screen.getByText("Wed, Nov 11")).toBeOnTheScreen();
+    expect(screen.getByText("Wed 11 Nov")).toBeOnTheScreen();
     await fireEvent.press(screen.getByText("BIEDRONKA"));
     expect(opened).toHaveBeenCalledWith(nov11.find((r) => r.payee === "BIEDRONKA")?.gid);
   });
@@ -227,9 +227,9 @@ describe("Activity over the real synchronous store", () => {
       ["2024", "-1101.85", null],
     ]);
     expect(state.days.map((d) => [d.label, d.spent])).toEqual([
-      ["Sat, Mar 14", null],
-      ["Wed, Mar 12, 2025", null],
-      ["Fri, Mar 15, 2024", null],
+      ["Sat 14 Mar", null],
+      ["Wed, 12 Mar 2025", null],
+      ["Fri, 15 Mar 2024", null],
     ]);
     expect(screen.getByText("all history · searched on this phone")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Clear search" }));

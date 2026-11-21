@@ -263,7 +263,7 @@ describe("net worth tab with the real synchronous store", () => {
     expect(props?.hero.parts.map((p) => p.amount.amount.toString())).toEqual(["100.00"]);
     expect(props?.hero.missingRate).toEqual([]);
     expect(screen.getByText("Net worth, converted to PLN")).toBeOnTheScreen();
-    expect(screen.getByText("converted at the NBP mid rate of Tue, Nov 10")).toBeOnTheScreen();
+    expect(screen.getByText("converted at the NBP mid rate of Tue 10 Nov")).toBeOnTheScreen();
     expect(screen.getAllByText(display("100.00", "EUR")).length).toBeGreaterThan(0);
   });
 

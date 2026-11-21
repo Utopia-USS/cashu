@@ -57,14 +57,21 @@ describe("catalogProblems (detector)", () => {
 describe("guard: PL / EN catalog parity", () => {
   const files = listFiles(["packages", "apps"], /(^|\/)([\w.-]+\.)?strings\.ts$/);
 
-  it(`every catalog entry exists in Polish and English (${files.length} catalog files)`, async () => {
+  // The time is the transform and first evaluation of every catalog module and its imports (the
+  // i18n barrel and its catalogs once, then each app's own): about 0.25 s on an idle Mac, past
+  // vitest's 5 s default on a loaded CI runner. The imports run concurrently; the budget fits a loaded one.
+  it(`every catalog entry exists in Polish and English (${files.length} catalog files)`, {
+    timeout: 60_000,
+  }, async () => {
+    const modules = await Promise.all(
+      files.map(
+        async (file) =>
+          (await import(pathToFileURL(join(REPO_ROOT, file)).href)) as Record<string, unknown>,
+      ),
+    );
     const problems: string[] = [];
-    for (const file of files) {
-      const mod = (await import(pathToFileURL(join(REPO_ROOT, file)).href)) as Record<
-        string,
-        unknown
-      >;
-      for (const [name, value] of Object.entries(mod)) {
+    for (const [index, file] of files.entries()) {
+      for (const [name, value] of Object.entries(modules[index] ?? {})) {
         const raw = catalogEntries(value);
         if (isCatalog(raw)) problems.push(...catalogProblems(`${file}:${name}`, raw));
       }

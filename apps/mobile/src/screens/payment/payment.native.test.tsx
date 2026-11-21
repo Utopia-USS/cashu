@@ -189,7 +189,7 @@ describe("the payment sheet over the real synchronous store", () => {
     expect(ready().rule).toMatchObject({ on: false, fixed: null, count: 2, enabled: false });
     expect(ready().earlier).toEqual({
       rows: [
-        { gid: gidOf(fixture, "quux-1"), dateLabel: "Sep 2, 2026", amount: expect.anything() },
+        { gid: gidOf(fixture, "quux-1"), dateLabel: "2 Sept 2026", amount: expect.anything() },
       ],
     });
     await fireEvent.press(screen.getByRole("button", { name: "More" }));

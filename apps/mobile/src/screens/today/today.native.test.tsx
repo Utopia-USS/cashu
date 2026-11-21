@@ -235,7 +235,7 @@ describe("Today over the real store", () => {
     ]);
     // Pay of 1000 still expected (usual pay day 20), spent 305, nothing more usual to come.
     expect(today.hero.subLine).toBe(
-      "by November 30, if the rest of the month goes like usual · incl. your usual pay on the 20th",
+      "by 30 November, if the rest of the month goes like usual · incl. your usual pay on the 20th",
     );
     // Pay 1000 still expected, minus 305 spent and the bill of 43 still due.
     expect(today.hero.keep.amount.toString()).toBe("652.00");

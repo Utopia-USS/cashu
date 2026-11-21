@@ -13,6 +13,7 @@ import { enabledModules } from "@cashu/store/core/profile";
 import { useQuery } from "@cashu/store-react";
 import { type SwatchColor, useUiEnv } from "@cashu/ui/native";
 import { useDeferredValue, useState, useTransition } from "react";
+import { dateFormat, noon } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import type { TabHeaderProps } from "../../shell/TabHeader";
 import { useTabChrome } from "../../shell/useTabChrome";
@@ -104,19 +105,7 @@ const BUDGET_TYPES: ReadonlySet<string> = new Set(
   core.BUDGET_MODULE.accountTypes.map((type) => type.id),
 );
 
-const formats = new Map<string, Intl.DateTimeFormat>();
-function dateFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-  const key = JSON.stringify([locale, options]);
-  let format = formats.get(key);
-  if (!format) {
-    format = new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" });
-    formats.set(key, format);
-  }
-  return format;
-}
-const noon = (date: IsoDate) => new Date(`${date}T12:00:00Z`);
-
-/** A day header: "Wed, Nov 11" / "śr., 11 lis", with the year outside the current one. */
+/** A day header: "Wed 11 Nov" / "śr., 11 lis", with the year outside the current one. */
 function dayLabel(date: IsoDate, locale: string, thisYear: string): string {
   return dateFormat(locale, {
     weekday: "short",
@@ -126,7 +115,7 @@ function dayLabel(date: IsoDate, locale: string, thisYear: string): string {
   }).format(noon(date));
 }
 
-/** "Mar 14" / "14 mar". */
+/** "14 Mar" / "14 mar". */
 function dayMonth(date: IsoDate, locale: string): string {
   return dateFormat(locale, { day: "numeric", month: "short" }).format(noon(date));
 }

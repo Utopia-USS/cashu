@@ -8,6 +8,7 @@ import { enabledModules } from "@cashu/store/core/profile";
 import { useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
+import { dateFormat, noon } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import { useTabChrome } from "../../shell/useTabChrome";
 import type {
@@ -24,45 +25,22 @@ const INSTITUTIONS = core.builtinRegistry().institutions;
 /** A valuation older than this reads as not updated for a while. */
 const STALE_DAYS = 365;
 
-const monthFormats = new Map<string, Intl.DateTimeFormat>();
-const monthShortFormats = new Map<string, Intl.DateTimeFormat>();
-const rateDayFormats = new Map<string, Intl.DateTimeFormat>();
-
-function cached(
-  map: Map<string, Intl.DateTimeFormat>,
-  locale: string,
-  options: Intl.DateTimeFormatOptions,
-): Intl.DateTimeFormat {
-  let format = map.get(locale);
-  if (!format) {
-    format = new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" });
-    map.set(locale, format);
-  }
-  return format;
-}
-
-const noon = (date: IsoDate) => new Date(`${date}T12:00:00Z`);
-
 /** The month of a date as it follows "since": English "October", Polish genitive "października". */
 function sinceMonth(date: IsoDate, locale: string): string {
-  const parts = cached(monthFormats, locale, { day: "numeric", month: "long" }).formatToParts(
-    noon(date),
-  );
+  const parts = dateFormat(locale, { day: "numeric", month: "long" }).formatToParts(noon(date));
   return parts.find((p) => p.type === "month")?.value ?? date.slice(0, 7);
 }
 
 /** A chart axis month: "Nov 2025" / "lis 2025". */
 function monthShort(date: IsoDate, locale: string): string {
-  return cached(monthShortFormats, locale, { month: "short", year: "numeric" }).format(noon(date));
+  return dateFormat(locale, { month: "short", year: "numeric" }).format(noon(date));
 }
 
-/** The NBP table day: "Tue, Nov 10" / "wt., 10 lis". */
+/** The NBP table day: "Tue 10 Nov" / "wt., 10 lis". */
 function rateDay(date: IsoDate, locale: string): string {
-  return cached(rateDayFormats, locale, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(noon(date));
+  return dateFormat(locale, { weekday: "short", day: "numeric", month: "short" }).format(
+    noon(date),
+  );
 }
 
 function assetKind(type: string, kind: "manual" | "vehicle"): NetWorthAssetRow["kind"] {

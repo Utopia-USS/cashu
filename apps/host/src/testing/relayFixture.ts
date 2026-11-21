@@ -188,6 +188,51 @@ export function relayRequests(fake: FakeFirebase): number {
 }
 
 /**
+ * The fake's fetch (or `inner`) with a log of the relay traffic: requests still in flight and the
+ * virtual time of every member-list read. That read is the member reconciliation (pairing/members.ts)
+ * a successful pass starts a turn after it settles: it runs outside the relay's `pending()` and the
+ * vault queue, so a request count snapshot taken at `pending() === 0` alone can catch the previous
+ * pass's list or miss the current one's. `settledAfter` waits for it.
+ */
+export function relayTraffic(
+  fake: FakeFirebase,
+  timers: ManualRelayTimers,
+  inner: FakeFirebase["fetch"] = fake.fetch,
+) {
+  const traffic = {
+    inFlight: 0,
+    memberListsAt: [] as number[],
+    fetch: (async (url, init) => {
+      if (url.endsWith(":runQuery") && /"collectionId":"members"/.test(init.body ?? ""))
+        traffic.memberListsAt.push(timers.now());
+      traffic.inFlight += 1;
+      try {
+        return await inner(url, init);
+      } finally {
+        traffic.inFlight -= 1;
+      }
+    }) as FakeFirebase["fetch"],
+    /**
+     * Resolves once the relay is idle, the vault queue drained, the member list of the pass that ran
+     * at virtual time `passAt` (or later: a reconciliation that started after it covers it) was read
+     * and no request is in flight. Call it once per successful pass, in order, before the clock moves
+     * on: a pass's reconciliation then never lands in the next pass's window.
+     */
+    async settledAfter(host: LocalHost, vault: string, passAt: number): Promise<void> {
+      await until(
+        () =>
+          host.relay.pending() === 0 &&
+          traffic.memberListsAt.some((at) => at >= passAt) &&
+          traffic.inFlight === 0,
+      );
+      await vaultQueueDrained(host, vault);
+      await until(() => traffic.inFlight === 0);
+    },
+  };
+  return traffic;
+}
+
+/**
  * The fake's fetch with the security rules' membership check in short (the fake runs no rules): once a
  * vault document exists, a Firestore request under it by a uid without a member document there is
  * refused 403, as `member(v)` / `admin(v)` refuse it. The bootstrap commit of a vault that does not

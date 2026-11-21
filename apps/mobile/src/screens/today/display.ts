@@ -52,7 +52,7 @@ export function percentText(
   }).text;
 }
 
-/** "Tue, Nov 10" / "wt., 10 lis". */
+/** "Tue 10 Nov" / "wt., 10 lis". */
 export function shortDay(date: IsoDate, locale: string): string {
   return dateFormat(locale, { weekday: "short", day: "numeric", month: "short" }).format(
     noon(date),

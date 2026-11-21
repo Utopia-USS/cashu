@@ -10,6 +10,7 @@ import { budgetUncategorizedRows } from "@cashu/store/budget/companion";
 import { useCommand, useQuery } from "@cashu/store-react";
 import { type CategoryOption, type SwatchColor, useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
+import { dateFormat } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import { categoryOptionsOf, categorySwatch } from "../categories";
 import { S as Rule } from "../categories.strings";
@@ -85,19 +86,11 @@ export type TriageState =
       onClose(): void;
     };
 
-const dayLabels = new Map<string, Intl.DateTimeFormat>();
+/** "Wed 11 Nov" / "śr., 11 lis". */
 function dayLabel(date: string, locale: string): string {
-  let format = dayLabels.get(locale);
-  if (!format) {
-    format = new Intl.DateTimeFormat(locale, {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      timeZone: "UTC",
-    });
-    dayLabels.set(locale, format);
-  }
-  return format.format(new Date(`${date}T12:00:00Z`));
+  return dateFormat(locale, { weekday: "short", day: "numeric", month: "short" }).format(
+    new Date(`${date}T12:00:00Z`),
+  );
 }
 
 export function useTriageScreen(args: {

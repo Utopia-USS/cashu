@@ -1,6 +1,7 @@
 import { useUiEnv } from "@cashu/ui/native";
 import { Button, Column, Picker, Row } from "@expo/ui";
 import { Text, View } from "react-native";
+import { dateFormat } from "../../format/calendar";
 import { ControlHost } from "./ControlHost";
 import { S } from "./Controls.strings";
 import {
@@ -26,11 +27,7 @@ export function PeriodPicker({
         ? String(period.year)
         : period.kind === "quarter"
           ? S.quarterValue(period.quarter, period.year)
-          : new Intl.DateTimeFormat(locale, {
-              year: "numeric",
-              month: "long",
-              timeZone: "UTC",
-            }).format(
+          : dateFormat(locale, { year: "numeric", month: "long" }).format(
               new Date(
                 `${String(period.year).padStart(4, "0")}-${String(period.month).padStart(2, "0")}-01T12:00:00Z`,
               ),

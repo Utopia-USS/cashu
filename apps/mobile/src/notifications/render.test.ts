@@ -146,7 +146,7 @@ describe("renderNotification: stale_data", () => {
     );
     // 200 hours before is Wednesday 4 November.
     expect(en({ kind: "stale_data", ageHours: 200 }).body).toBe(
-      "Bank data has not been updated since November 4.",
+      "Bank data has not been updated since 4 November.",
     );
     expect(pl({ kind: "stale_data", ageHours: 30 }).body).toBe(
       "Brak nowych danych z banku od wczoraj.",

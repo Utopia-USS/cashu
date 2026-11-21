@@ -6,6 +6,7 @@ import { formatDecimalValue } from "@cashu/i18n/values";
 import { useQuery } from "@cashu/store-react";
 import { useUiEnv } from "@cashu/ui/native";
 import { useState } from "react";
+import { dateFormat } from "../../format/calendar";
 import { useServices } from "../../services/ServicesProvider";
 import { categorySwatch } from "../categories";
 import { choosePeriodKind, stepPeriod } from "../controls/periodSelection";
@@ -21,14 +22,11 @@ import { S } from "./Spending.strings";
 /** A row is over its usual amount above this factor. */
 const OVER_USUAL = D("1.1");
 
-const monthLabels = new Map<string, Intl.DateTimeFormat>();
+/** "November 2026" / "listopad 2026". */
 function monthLabel(year: number, month: number, locale: string): string {
-  let format = monthLabels.get(locale);
-  if (!format) {
-    format = new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", timeZone: "UTC" });
-    monthLabels.set(locale, format);
-  }
-  return format.format(new Date(Date.UTC(year, month - 1, 15, 12)));
+  return dateFormat(locale, { year: "numeric", month: "long" }).format(
+    new Date(Date.UTC(year, month - 1, 15, 12)),
+  );
 }
 
 const monthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, "0")}`;

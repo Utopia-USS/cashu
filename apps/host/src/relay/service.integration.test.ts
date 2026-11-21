@@ -18,6 +18,7 @@ import {
   relayBytes,
   relayHarness,
   relayRequests,
+  relayTraffic,
   renameVault as rename,
   until,
   vaultQueueDrained,
@@ -297,22 +298,18 @@ it("waits out a 1 h back-off when the relay's quota is exhausted", async () => {
 
 it("keeps a pull at least 60 s after the previous pass", async () => {
   const env = await setup();
-  const host = await enabled(env);
+  const traffic = relayTraffic(env.fake, env.timers);
+  const host = await enabled(env, { ...env.relay, fetch: traffic.fetch });
+  await traffic.settledAfter(host, env.vault, env.timers.now());
   // The pull timer ticks every 5 minutes from the start; a push 28 s before a tick.
   const lead = RELAY_MIN_PULL_GAP_MS / 2 - RELAY_PUSH_DEBOUNCE_MS;
   env.timers.advance(RELAY_PULL_INTERVAL_MS - RELAY_MIN_PULL_GAP_MS / 2);
   await vaultQueueDrained(host, env.vault);
   await rename(host, env.vault, "Before the tick");
   env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
-  await until(() => host.relay.pending() === 0);
-  await vaultQueueDrained(host, env.vault);
   // The member reconciliation that follows a pass reaching the relay lists members (a runQuery too):
   // counted only once it is done.
-  let settled = -1;
-  while (settled !== env.fake.counters.runQuery) {
-    settled = env.fake.counters.runQuery;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  await traffic.settledAfter(host, env.vault, env.timers.now());
   const pushed = env.fake.counters.runQuery;
   env.timers.advance(lead);
   await vaultQueueDrained(host, env.vault);
@@ -325,17 +322,24 @@ it("keeps a pull at least 60 s after the previous pass", async () => {
 
 it("pulls every 60 s while another device is a member, every 5 minutes alone, and backs off either way", async () => {
   const env = await setup();
-  const host = await enabled(env);
+  const traffic = relayTraffic(env.fake, env.timers);
+  const host = await enabled(env, { ...env.relay, fetch: traffic.fetch });
+  await traffic.settledAfter(host, env.vault, env.timers.now());
   const passes = enginePasses(host, env.vault);
   const minute = async () => {
     env.timers.advance(60_000);
     await until(() => host.relay.pending() === 0);
     await vaultQueueDrained(host, env.vault);
   };
+  // A minute whose tick pulls: its member reconciliation is done before the clock moves on.
+  const pulledMinute = async () => {
+    await minute();
+    await traffic.settledAfter(host, env.vault, env.timers.now());
+  };
   // Alone (only this Mac's admin binding): the minute ticks pull nothing until the fifth.
   for (let i = 1; i <= 4; i++) await minute();
   expect(passes.count).toBe(0);
-  await minute();
+  await pulledMinute();
   expect(passes.count).toBe(1);
 
   // A phone joins (the binding pairing's addMember records): from the next tick on, every minute.
@@ -350,18 +354,15 @@ it("pulls every 60 s while another device is a member, every 5 minutes alone, an
   });
   if (!written.ok) throw new Error(written.reason);
   for (let i = 1; i <= 3; i++) {
-    await minute();
+    await pulledMinute();
     expect(passes.count).toBe(1 + i);
   }
-  // What one such pull of an unchanged vault costs, the member-list read after the pass included.
-  await until(() => host.relay.pending() === 0);
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  // What one such pull of an unchanged vault costs, the member-list read after the pass included,
+  // counted between two quiescent points.
   const before = relayRequests(env.fake);
-  await minute();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const perPull = relayRequests(env.fake) - before;
-  expect(perPull).toBeGreaterThanOrEqual(2);
-  expect(perPull).toBeLessThanOrEqual(3);
+  await pulledMinute();
+  expect(passes.count).toBe(5);
+  expect(relayRequests(env.fake) - before).toBe(2);
 
   // A push 30 s before a tick: that tick is refused by the 60 s gap, the next one pulls.
   env.timers.advance(28_000);
@@ -750,7 +751,10 @@ it("answers retry for a purge that stopped part way, offline for one that delete
 
 it("pulls every 5 s while a pairing waits for the phone, holds during the quota hour, ends after 3 min or at stop", async () => {
   const env = await setup();
-  const host = await enabled(env);
+  const traffic = relayTraffic(env.fake, env.timers);
+  const host = await enabled(env, { ...env.relay, fetch: traffic.fetch });
+  // The open pass's member reconciliation is done before the clock moves.
+  await traffic.settledAfter(host, env.vault, env.timers.now());
   const passes = enginePasses(host, env.vault);
   const settled = async (count: number) => {
     await until(() => host.relay.pending() === 0 && passes.count === count);
@@ -763,15 +767,14 @@ it("pulls every 5 s while a pairing waits for the phone, holds during the quota 
   expect(passes.count).toBe(0);
   env.timers.advance(1);
   await settled(1);
+  await traffic.settledAfter(host, env.vault, env.timers.now());
   const before = relayRequests(env.fake);
   env.timers.advance(5_000);
   await settled(2);
-  // What one watch pull of an unchanged vault asks the relay (the cost per 5 s).
-  // Two reads per pull; a member-list read that the previous pass started after its pull can land in this
-  // window on a loaded machine, so one more is tolerated (the bound is what the cost claim rests on).
-  const perPull = relayRequests(env.fake) - before;
-  expect(perPull).toBeGreaterThanOrEqual(2);
-  expect(perPull).toBeLessThanOrEqual(3);
+  await traffic.settledAfter(host, env.vault, env.timers.now());
+  // What one watch pull of an unchanged vault asks the relay (the cost per 5 s): the pull's read and
+  // the member list the reconciliation reads after it, counted between two quiescent points.
+  expect(relayRequests(env.fake) - before).toBe(2);
 
   // Over quota: the failing pull arms the 1 h back-off and the watch reaches nothing meanwhile.
   env.fake.faults.quota(1_000);
