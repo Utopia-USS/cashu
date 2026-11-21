@@ -126,6 +126,10 @@ export function serveStoreChannel(session: HostSession, options: StoreChannelOpt
     if (m.target.kind === "vault") {
       const vault = stores.vaults.get(m.target.vault);
       if (vault !== undefined) hookSync(vault);
+      // A sync pass of the vault is running (the session is not `isCurrent` meanwhile): the request
+      // waits for the pass to settle, where `hookSync` subscribes every live query again. A transient
+      // busy state is never answered with an error (the desktop shows an error as a failure screen).
+      if (vault?.native?.isSyncing() === true && queries.has(m.query)) return;
     }
     const query = queries.get(m.query);
     if (query === undefined) {

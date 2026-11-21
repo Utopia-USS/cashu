@@ -10,6 +10,8 @@ const VAULT = "c".repeat(32);
 /** One native-like vault whose sync settles on demand, behind a fake ui session. */
 function channel(vaultOpenedLater = false) {
   let value = "first";
+  // As the native session (nativeVault/guards.ts): not `isCurrent` while a pass runs.
+  let syncing = false;
   const tableListeners = new Set<() => void>();
   const settled = new Set<() => void>();
   const source = {
@@ -25,8 +27,8 @@ function channel(vaultOpenedLater = false) {
     mode: "native",
     store: source,
     native: {
-      isCurrent: () => true,
-      isSyncing: () => false,
+      isCurrent: () => !syncing,
+      isSyncing: () => syncing,
       onSyncSettled(listener: () => void) {
         settled.add(listener);
         return () => settled.delete(listener);
@@ -80,8 +82,13 @@ function channel(vaultOpenedLater = false) {
     },
     settle: (next: string) => {
       value = next;
+      syncing = false;
       for (const listener of [...settled]) listener();
     },
+    startPass: () => {
+      syncing = true;
+    },
+    errors: () => frames.filter((f) => (f as { t: string }).t === "error"),
     hooks: () => settled.size,
     close: () => onClose?.(),
   };
@@ -109,5 +116,19 @@ it("hooks the sync of a vault opened after the session started", () => {
   expect(c.hooks()).toBe(1);
   c.settle("second");
   expect(c.values()).toBe(2);
+  c.close();
+});
+
+it("a query asked for during a sync pass is answered after the pass, never refused (M4.1 F1)", () => {
+  const c = channel();
+  // The pass that follows a snapshot export: the vault is busy, not closed.
+  c.startPass();
+  c.subscribe();
+  expect(c.errors()).toEqual([]);
+  expect(c.values()).toBe(0);
+  c.settle("after the pass");
+  expect(c.errors()).toEqual([]);
+  expect(c.values()).toBe(1);
+  expect(c.frames.at(-1)).toMatchObject({ t: "value", sid: 1 });
   c.close();
 });
