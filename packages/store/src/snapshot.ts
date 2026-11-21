@@ -108,7 +108,13 @@ function storeTables(store: Store): readonly TableDef[] {
   return [...SYSTEM_TABLES, ...store.viewTables()].filter(inSnapshot);
 }
 
+/**
+ * The store as a snapshot. A derivation owed by split applies (`deriveLater`) is paid first, in its
+ * own transaction: the snapshot's view hash is checked on import against a fully derived view, and
+ * paying is what the next apply or open would do anyway (the same view, nothing else changes).
+ */
 export function exportSnapshot(store: Store): StoreSnapshot {
+  store.settleOwed();
   const tables: Record<string, { columns: string[]; rows: SqlValue[][] }> = {};
   for (const t of storeTables(store)) {
     const columns = allColumns(t).map((c) => c.name);

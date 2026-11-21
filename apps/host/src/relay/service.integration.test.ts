@@ -323,6 +323,114 @@ it("keeps a pull at least 60 s after the previous pass", async () => {
   await until(() => env.fake.counters.runQuery > pushed && host.relay.pending() === 0);
 });
 
+it("pulls every 60 s while another device is a member, every 5 minutes alone, and backs off either way", async () => {
+  const env = await setup();
+  const host = await enabled(env);
+  const passes = enginePasses(host, env.vault);
+  const minute = async () => {
+    env.timers.advance(60_000);
+    await until(() => host.relay.pending() === 0);
+    await vaultQueueDrained(host, env.vault);
+  };
+  // Alone (only this Mac's admin binding): the minute ticks pull nothing until the fifth.
+  for (let i = 1; i <= 4; i++) await minute();
+  expect(passes.count).toBe(0);
+  await minute();
+  expect(passes.count).toBe(1);
+
+  // A phone joins (the binding pairing's addMember records): from the next tick on, every minute.
+  const setting = runQuery(host.stores.device.store, relaySetting, { vault: env.vault }).value;
+  if (setting === null) throw new Error("no relay setting");
+  const written = host.stores.device.store.run(setRelaySetting, {
+    vault: env.vault,
+    value: {
+      ...setting,
+      memberUids: { ...setting.memberUids, ["b".repeat(32)]: { uid: "phone-uid", role: "member" } },
+    },
+  });
+  if (!written.ok) throw new Error(written.reason);
+  for (let i = 1; i <= 3; i++) {
+    await minute();
+    expect(passes.count).toBe(1 + i);
+  }
+  // What one such pull of an unchanged vault costs, the member-list read after the pass included.
+  await until(() => host.relay.pending() === 0);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const before = relayRequests(env.fake);
+  await minute();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const perPull = relayRequests(env.fake) - before;
+  expect(perPull).toBeGreaterThanOrEqual(2);
+  expect(perPull).toBeLessThanOrEqual(3);
+
+  // A push 30 s before a tick: that tick is refused by the 60 s gap, the next one pulls.
+  env.timers.advance(28_000);
+  await rename(host, env.vault, "Shared");
+  env.timers.advance(RELAY_PUSH_DEBOUNCE_MS);
+  await until(() => host.relay.pending() === 0);
+  await vaultQueueDrained(host, env.vault);
+  const pushed = passes.count;
+  env.timers.advance(30_000);
+  await until(() => host.relay.pending() === 0);
+  await vaultQueueDrained(host, env.vault);
+  expect(passes.count).toBe(pushed);
+  await minute();
+  expect(passes.count).toBe(pushed + 1);
+
+  // Over quota: the failing pull arms the 1 h back-off; no minute tick reaches the relay meanwhile.
+  env.fake.faults.quota(1_000);
+  await minute();
+  expect(host.relay.transportStatus(env.vault).lastError).toBe("quota");
+  const failed = relayRequests(env.fake);
+  const held = passes.count;
+  for (let i = 0; i < 10; i++) await minute();
+  expect(passes.count).toBe(held);
+  expect(relayRequests(env.fake)).toBe(failed);
+  env.fake.faults.reset();
+});
+
+it("spaces only the timer's own pulls by the timer: a pairing's pull request keeps the 60 s gap", async () => {
+  const env = await setup();
+  const host = await enabled(env);
+  const passes = enginePasses(host, env.vault);
+  const settle = async () => {
+    await until(() => host.relay.pending() === 0);
+    await vaultQueueDrained(host, env.vault);
+  };
+  const setting = runQuery(host.stores.device.store, relaySetting, { vault: env.vault }).value;
+  if (setting === null) throw new Error("no relay setting");
+  const written = host.stores.device.store.run(setRelaySetting, {
+    vault: env.vault,
+    value: {
+      ...setting,
+      memberUids: { ...setting.memberUids, ["b".repeat(32)]: { uid: "phone-uid", role: "member" } },
+    },
+  });
+  if (!written.ok) throw new Error(written.reason);
+  // Past the open pass's gap: the next tick pulls (a shared vault, every minute).
+  env.timers.advance(60_000);
+  await settle();
+  const ticked = passes.count;
+  expect(ticked).toBeGreaterThan(0);
+  // 30 s after that timer pull, a pull request (pairing `inspect`) runs no pass: the gap holds.
+  env.timers.advance(30_000);
+  host.relay.requestPull(env.vault);
+  await settle();
+  expect(passes.count).toBe(ticked);
+  // The timer's next pull, 60 s after its previous one, runs.
+  env.timers.advance(30_000);
+  await settle();
+  expect(passes.count).toBe(ticked + 1);
+  // 59 s after that timer pull a pull request still runs nothing; the next tick pulls.
+  env.timers.advance(59_000);
+  host.relay.requestPull(env.vault);
+  await settle();
+  expect(passes.count).toBe(ticked + 1);
+  env.timers.advance(1_000);
+  await settle();
+  expect(passes.count).toBe(ticked + 2);
+});
+
 it("makes no relay request for a vault that is off, whatever triggers a pass", async () => {
   const env = await setup();
   presetRelaySetting(env.fixture.dataDir, env.vault, {

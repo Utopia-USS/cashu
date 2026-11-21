@@ -3,9 +3,12 @@ import {
   RELAY_BACKOFF_MAX_MS,
   RELAY_BACKOFF_START_MS,
   RELAY_MIN_PULL_GAP_MS,
+  RELAY_PULL_INTERVAL_MS,
   RELAY_QUOTA_BACKOFF_MS,
+  RELAY_SHARED_PULL_INTERVAL_MS,
   RELAY_WATCH_PULL_MS,
   RelayPolicy,
+  relayPullDue,
 } from "./policy.js";
 
 it("keeps pulls at least 60 s apart and lets pushes run at once", () => {
@@ -128,4 +131,34 @@ it("spaces watch pulls 5 s apart and holds them during a back-off or the quota h
   policy.succeeded("read");
   policy.failed("quota", 20_000, "outage", "read");
   expect(policy.nextAt("watch", 25_000)).toBe(20_000 + RELAY_QUOTA_BACKOFF_MS);
+});
+
+it("pulls a shared vault on every minute tick and a vault alone on every fifth (5 minutes)", () => {
+  expect(RELAY_SHARED_PULL_INTERVAL_MS).toBe(60_000);
+  expect(RELAY_PULL_INTERVAL_MS).toBe(5 * 60_000);
+  const ticks = Array.from({ length: 10 }, (_, i) => i + 1);
+  expect(ticks.filter((tick) => relayPullDue(tick, true))).toEqual(ticks);
+  expect(ticks.filter((tick) => relayPullDue(tick, false))).toEqual([5, 10]);
+});
+
+it("spaces two timer pulls by the timer alone, keeps the 60 s gap for every other pull", () => {
+  const policy = new RelayPolicy();
+  // A tick that fires a millisecond early after the previous tick's pull still pulls.
+  policy.started(0, "tick");
+  expect(policy.allows("tick", RELAY_SHARED_PULL_INTERVAL_MS - 1)).toBe(true);
+  // A pull request (pairing) after a timer pull waits the whole gap.
+  expect(policy.allows("pull", RELAY_MIN_PULL_GAP_MS - 1)).toBe(false);
+  expect(policy.allows("pull", RELAY_MIN_PULL_GAP_MS)).toBe(true);
+  // After any pass but a timer pull (push, open, watch, a requested pull) both kinds wait the gap.
+  for (const reason of ["push", "open", "watch", "pull"] as const) {
+    policy.started(100_000, reason);
+    for (const pull of ["tick", "pull"] as const) {
+      expect(policy.allows(pull, 100_000 + RELAY_MIN_PULL_GAP_MS - 1)).toBe(false);
+      expect(policy.allows(pull, 100_000 + RELAY_MIN_PULL_GAP_MS)).toBe(true);
+    }
+  }
+  // The back-off and the quota hour hold timer pulls too.
+  policy.started(200_000, "tick");
+  policy.failed("quota", 200_000, "outage", "read");
+  expect(policy.nextAt("tick", 260_000)).toBe(200_000 + RELAY_QUOTA_BACKOFF_MS);
 });

@@ -1,5 +1,8 @@
 // When the host may run a relay pass for one vault (M4-C section 2). Pure: the clock is a parameter.
-//   - a pull (the 5-minute timer) waits at least 60 s after the previous pass started,
+//   - a pull waits at least 60 s after the previous pass started; the pull timer's own pulls
+//     (`"tick"`: every 60 s while the vault has another member, else every 5 minutes, `relayPullDue`)
+//     keep only the timer's spacing after the timer's previous pull (a tick a millisecond early never
+//     skips a whole minute), so any other pull (`requestPull`, pairing) still waits the full 60 s,
 //   - a watch pull (a pairing waits for the new phone's first sync) at most every 5 s,
 //   - a push (2 s after own writes) and the pass at vault open run at once,
 //   - after a failure those passes wait out a back-off: 60 s doubling to 30 min when the relay is
@@ -15,7 +18,18 @@
 // identity lost) never reads as an outage to the fetch lease (G1).
 import type { TransportUnavailableReason } from "@cashu/sync";
 
+/** The pull spacing of a vault no other device uses (nothing at the relay changes but this Mac's own). */
 export const RELAY_PULL_INTERVAL_MS = 5 * 60_000;
+/**
+ * The pull spacing while the vault has at least one member besides this Mac (a phone): there are no
+ * push notifications, so this bounds how late the Mac sees a change made on the phone (was up to
+ * 5 minutes; measured 250 s in a real run). Cost per shared vault (one Mac + one phone) with the host
+ * running 12 hours a day: 720 pulls of an unchanged vault at 2 to 3 reads each, the member-list read
+ * that follows a pass included (measured in service.integration.test.ts), is about 1,440 to 2,160 reads
+ * a day; 2,880 (4 reads a pull) is the upper bound, under 6% of the free plan's 50,000 reads a day
+ * (about 576 at 5 minutes). A host running 24 hours doubles each figure.
+ */
+export const RELAY_SHARED_PULL_INTERVAL_MS = 60_000;
 export const RELAY_MIN_PULL_GAP_MS = 60_000;
 export const RELAY_PUSH_DEBOUNCE_MS = 2_000;
 /** The pull spacing while a pairing of the vault waits for the new phone's first sync. */
@@ -28,8 +42,8 @@ export const RELAY_QUOTA_BACKOFF_MS = 60 * 60_000;
 /** The final push before the idle exit: one attempt, at most this long (launchd allows 20 s). */
 export const RELAY_FINAL_PUSH_TIMEOUT_MS = 10_000;
 
-/** Why a pass is wanted. */
-export type RelayPassReason = "open" | "push" | "pull" | "watch" | "final";
+/** Why a pass is wanted (`tick`: a pull of the pull timer, `pull`: any other pull request). */
+export type RelayPassReason = "open" | "push" | "pull" | "tick" | "watch" | "final";
 
 /** How a pass that did not reach the relay cleanly failed. */
 export type RelayFailure = "unavailable" | "quota";
@@ -37,8 +51,19 @@ export type RelayFailure = "unavailable" | "quota";
 /** Which side of the relay a call used: `list` / `read`, or `append`. */
 export type RelayDirection = "read" | "write";
 
+/**
+ * Whether the pull timer's `tick`-th tick (it ticks every RELAY_SHARED_PULL_INTERVAL_MS from the host
+ * start, the first tick is 1) pulls a vault: every tick while another device is a member of it, else
+ * every 5th tick (5 minutes, the old schedule exactly).
+ */
+export function relayPullDue(tick: number, shared: boolean): boolean {
+  return shared || tick % (RELAY_PULL_INTERVAL_MS / RELAY_SHARED_PULL_INTERVAL_MS) === 0;
+}
+
 export class RelayPolicy {
   #lastStartAt: number | undefined;
+  /** The previous pass was a pull of the timer: the timer's next pull keeps its spacing, not the gap. */
+  #lastWasTick = false;
   /** Consecutive failures per direction (a success resets only its own). */
   readonly #failures: Record<RelayDirection, number> = { read: 0, write: 0 };
   #blockedUntil = 0;
@@ -50,7 +75,9 @@ export class RelayPolicy {
   nextAt(reason: RelayPassReason, now: number): number {
     if (reason === "final") return now;
     let at = Math.max(now, this.#blockedUntil);
-    if (reason === "pull" && this.#lastStartAt !== undefined)
+    const pull = reason === "pull" || reason === "tick";
+    const timerSpaced = reason === "tick" && this.#lastWasTick;
+    if (pull && this.#lastStartAt !== undefined && !timerSpaced)
       at = Math.max(at, this.#lastStartAt + RELAY_MIN_PULL_GAP_MS);
     if (reason === "watch" && this.#lastStartAt !== undefined)
       at = Math.max(at, this.#lastStartAt + RELAY_WATCH_PULL_MS);
@@ -61,8 +88,9 @@ export class RelayPolicy {
     return this.nextAt(reason, now) <= now;
   }
 
-  started(now: number): void {
+  started(now: number, reason?: RelayPassReason): void {
     this.#lastStartAt = now;
+    this.#lastWasTick = reason === "tick";
   }
 
   /**

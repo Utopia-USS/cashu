@@ -6,7 +6,16 @@
 //   2. causal suppression and FWW losers (events.md 6.6) -> state flips;
 //   3. identity resolution when identity events are involved (events.md 6.4);
 //   4. every materializer folds its share: fast path, partition re-fold or full re-fold;
-//   5. after commit: subscribers whose tables were touched are notified.
+//   5. the derivers over the partitions the folds dirtied, once per transaction (or owed to the next
+//      one: `deriveLater`, below);
+//   6. after commit: subscribers whose tables were touched are notified.
+// `applyWireBatches(batches, { deriveLater: true })` (the phone's sink cutting one large frame group
+// into several transactions) skips steps 5 and 6: the dirty partitions and the touched tables are kept
+// in `store_meta` (META_DERIVE_OWED) in the same transaction, and the next transaction that derives
+// (any apply without it) derives and notifies them too, so the derivers run once over the whole group
+// as they would in one transaction. A crash in between leaves the record: the next open derives it.
+// A record that does not decode (damaged, or written by another build in another shape) is never fatal:
+// every deriver re-derives everything instead (a superset of any owed set), and the record goes.
 // The view is a pure function of the held event set (events.md 6.7); `rebuild()` recomputes it.
 import type {
   ApplyOutcome,
@@ -15,6 +24,7 @@ import type {
   SegmentCursor,
   WireEvent as SyncWireEvent,
 } from "@cashu/sync";
+import { z } from "zod";
 import { canonicalJson, jsonEqual } from "./canonical.js";
 import { assertHmacConformance, type HmacSha256 } from "./crypto/hmac.js";
 import { encodePayload } from "./engine/compact.js";
@@ -120,6 +130,31 @@ const INVALID_GID = "invalid-gid";
 const META_SYSTEM = "system_schema";
 /** Set while a store is open on the database; a database opened with it still set was not closed. */
 const META_SESSION = "open_session";
+/**
+ * Derivation owed by `deriveLater` applies: `{ v: 1, dirty: { input: partitions | "all" }, touched }`.
+ * Read and removed by the next transaction that derives (an apply, the open after a crash, a snapshot
+ * export).
+ */
+const META_DERIVE_OWED = "derive_owed";
+
+const owedDerive = z.object({
+  v: z.literal(1),
+  dirty: z.record(z.string(), z.union([z.array(z.string()), z.literal("all")])),
+  touched: z.array(z.string()),
+});
+type OwedDerive = z.infer<typeof owedDerive>;
+
+/** The owed record, or `undefined` when it does not decode as this build's version 1. */
+function decodeOwed(raw: string): OwedDerive | undefined {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const parsed = owedDerive.safeParse(json);
+  return parsed.success ? parsed.data : undefined;
+}
 
 /**
  * A companion query (month aggregates, recurring payments, search) ran on a store opened without
@@ -321,6 +356,7 @@ export class Store {
       }
       const store = new Store(opts, events, modules);
       setMeta(META_SESSION, "1");
+      store.settleOwed();
       return store;
     }
 
@@ -363,6 +399,7 @@ export class Store {
     });
     if (opened.report !== null) opened.store.#finishRebuild(opened.report);
     setMeta(META_SESSION, "1");
+    opened.store.settleOwed();
     return opened.store;
   }
 
@@ -392,12 +429,20 @@ export class Store {
    * partitions: a deriver is a function of the view its inputs produced (`Deriver`), so this derives
    * what a run after each batch would, without re-deriving a partition once per batch (a first sync
    * of a log written by many commands touched every merchant group in every batch).
+   *
+   * `deriveLater`: the derivation and the notification are owed to the next transaction that derives
+   * (kept in `store_meta` with this one's folds and cursors; see the header). Between the two, the
+   * derived tables lag the folded view; nothing is notified, so live queries keep their last result.
    */
-  applyWireBatches(batches: readonly WireBatch[]): readonly ApplyResult[] {
+  applyWireBatches(
+    batches: readonly WireBatch[],
+    options: { readonly deriveLater?: boolean } = {},
+  ): readonly ApplyResult[] {
     const touched = new TouchedTables(this.#internal);
     const results: Omit<ApplyResult, "touchedTables">[] = [];
     this.driver.transaction(() => {
       const pending = new PendingDerive();
+      this.#takeOwed(pending, touched);
       for (const batch of batches) {
         const view = batch.events.filter((w) => !isSyncStatement(w));
         const raws = view.map((w) => fromWire(w, { vault: this.vault, device: batch.device }));
@@ -405,10 +450,65 @@ export class Store {
         if (batch.cursor) this.#saveCursor(batch.device, batch.cursor);
         results.push({ ...result, statements: batch.events.length - view.length });
       }
-      this.#derive(pending, touched);
+      if (options.deriveLater === true) this.#oweDerive(pending, touched);
+      else this.#derive(pending, touched);
     });
-    this.#hub.notify(touched.set);
+    if (options.deriveLater !== true) this.#hub.notify(touched.set);
     return results.map((r) => ({ ...r, touchedTables: touched.set }));
+  }
+
+  /** Inside a transaction: the owed derivation (if any) joins `pending`, its record goes. */
+  #takeOwed(pending: PendingDerive, touched: TouchedTables): void {
+    const raw = this.#stmts
+      .get("SELECT value FROM store_meta WHERE key = ?")
+      .get<{ value: string }>(META_DERIVE_OWED)?.value;
+    if (raw === undefined) return;
+    const owed = decodeOwed(raw);
+    if (owed === undefined) {
+      // Not this build's record: owe everything every deriver reads, and wake every public table.
+      for (const d of this.modules.derivers) for (const input of d.inputs) pending.dirty.all(input);
+      for (const t of this.#publicTables) touched.add(t.name);
+    } else {
+      for (const [input, partitions] of Object.entries(owed.dirty)) {
+        if (partitions === "all") pending.dirty.all(input);
+        else pending.dirty.add(input, partitions);
+      }
+      for (const table of owed.touched) touched.add(table);
+    }
+    pending.folded = true;
+    this.#stmts.get("DELETE FROM store_meta WHERE key = ?").run(META_DERIVE_OWED);
+  }
+
+  /** Inside a transaction: what `#derive` would run now, recorded for the next transaction instead. */
+  #oweDerive(pending: PendingDerive, touched: TouchedTables): void {
+    if (!pending.folded && touched.set.size === 0) return;
+    markContributions(pending.dirty, touched.set, this.modules.contributions);
+    const dirty: OwedDerive["dirty"] = {};
+    for (const [input, partitions] of pending.dirty.partitions)
+      dirty[input] = partitions === "all" ? "all" : [...partitions];
+    const owed: OwedDerive = { v: 1, dirty, touched: [...touched.set] };
+    this.#stmts
+      .get(
+        "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      )
+      .run(META_DERIVE_OWED, JSON.stringify(owed));
+  }
+
+  /**
+   * Run the derivation `deriveLater` applies left owed, if any (one transaction; nothing when none is
+   * owed). The open calls it (a crash between the parts of a split group); so does `exportSnapshot`,
+   * whose view hash must be the hash of a fully derived view.
+   */
+  settleOwed(): void {
+    const touched = new TouchedTables(this.#internal);
+    let owed = false;
+    this.driver.transaction(() => {
+      const pending = new PendingDerive();
+      this.#takeOwed(pending, touched);
+      owed = pending.folded;
+      if (owed) this.#derive(pending, touched);
+    });
+    if (owed) this.#hub.notify(touched.set);
   }
 
   /** Apply logical-form envelopes (genesis, tests, the in-process writer). */
@@ -417,6 +517,7 @@ export class Store {
     let result: Omit<ApplyResult, "touchedTables" | "statements"> | undefined;
     this.driver.transaction(() => {
       const pending = new PendingDerive();
+      this.#takeOwed(pending, touched);
       result = this.#applyInTransaction(envelopes, null, touched, pending);
       this.#derive(pending, touched);
     });
@@ -744,6 +845,8 @@ export class Store {
   }): RebuildReport {
     const touched = new TouchedTables(this.#internal);
     const done = rebuildView(this.#rebuildContext(touched), options);
+    // Every deriver ran over the whole view: nothing stays owed.
+    this.#stmts.get("DELETE FROM store_meta WHERE key = ?").run(META_DERIVE_OWED);
     return { ...done, touchedTables: touched.set };
   }
 
@@ -888,6 +991,7 @@ export class Store {
         "DELETE FROM event_log; DELETE FROM event_refs; DELETE FROM event_rejects; DELETE FROM unknown_events; DELETE FROM materializer_state; DELETE FROM identity_roots; DELETE FROM identity_accepted; DELETE FROM view_ids; DELETE FROM sync_cursors;",
       );
       this.driver.prepare("DELETE FROM store_meta WHERE key LIKE ?").run(conflictsKey("%"));
+      this.driver.prepare("DELETE FROM store_meta WHERE key = ?").run(META_DERIVE_OWED);
       touched.add("unknown_events");
     });
     this.#ids.reset();
@@ -896,17 +1000,21 @@ export class Store {
     this.#hub.notify(touched.set);
   }
 
-  /** This store as the sync engine's `EventSink`. */
-  sink(): EventSink {
+  /** This store as the sync engine's `EventSink` (`deriveLater`: see `applyWireBatches`). */
+  sink(): ViewSink {
     return {
       cursors: () => this.cursors(),
-      applyBatches: (batches: readonly InboundBatch[]): ApplyOutcome[] =>
+      applyBatches: (
+        batches: readonly InboundBatch[],
+        options?: { readonly deriveLater?: boolean },
+      ): ApplyOutcome[] =>
         this.applyWireBatches(
           batches.map((b) => ({
             device: b.device,
             events: b.events as readonly SyncWireEvent[],
             cursor: b.cursor,
           })),
+          options,
         ).map((r) => ({ applied: r.applied, duplicates: r.duplicates, parked: r.parked })),
       reset: () => this.reset(),
       needsUpgrade: () => this.needsUpgrade(),
@@ -922,6 +1030,17 @@ export class Store {
     this.detach();
     this.driver.close();
   }
+}
+
+/**
+ * The store as an `EventSink`; `applyBatches` also takes `deriveLater` (`Store.applyWireBatches`), for a
+ * caller that cuts one large batch into several transactions.
+ */
+export interface ViewSink extends EventSink {
+  applyBatches(
+    batches: readonly InboundBatch[],
+    options?: { readonly deriveLater?: boolean },
+  ): readonly ApplyOutcome[] | Promise<readonly ApplyOutcome[]>;
 }
 
 /** The derivation one apply transaction owes: the partitions its folds dirtied, if any fold ran. */

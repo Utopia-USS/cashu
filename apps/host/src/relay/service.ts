@@ -3,9 +3,11 @@
 // the vault's engine, and the triggers that run its passes:
 //   - at vault open (a first full push after enabling),
 //   - 2 s after own writes (debounced, coalescing),
-//   - every 5 minutes while the host runs (a pull at most every 60 s),
+//   - the pull timer: a pull every 60 s while the vault has a member besides this Mac (its relay
+//     setting's `memberUids`), else every 5 minutes (policy.ts `relayPullDue`); a pull any other caller
+//     asks for (`requestPull`) waits 60 s after the previous pass,
 //   - every 5 s while a pairing of the vault waits for the new phone's first sync (`watchPairing`, at
-//     most 3 minutes after the admission; then the 5-minute schedule again),
+//     most 3 minutes after the admission; then the pull timer's schedule again),
 //   - a final push before the idle exit,
 // each one a normal session pass in the vault queue (`session.sync()`), throttled by the back-off of
 // relay/policy.ts. The engine reads its remotes once at open, so switching a vault on or off writes the
@@ -68,13 +70,14 @@ import { type RelayFetch, relayIdentity } from "./auth.js";
 import type { RelayEndpoints } from "./config.js";
 import {
   RELAY_FINAL_PUSH_TIMEOUT_MS,
-  RELAY_PULL_INTERVAL_MS,
   RELAY_PUSH_DEBOUNCE_MS,
+  RELAY_SHARED_PULL_INTERVAL_MS,
   RELAY_WATCH_MAX_MS,
   RELAY_WATCH_PULL_MS,
   type RelayDirection,
   type RelayPassReason,
   RelayPolicy,
+  relayPullDue,
 } from "./policy.js";
 
 const DEFAULT_ROOT = "vaults";
@@ -494,6 +497,13 @@ export function createHostRelay(input: {
       return null;
     }
   };
+  /** The vault has a member at the relay besides this Mac (a paired phone): it pulls every 60 s. */
+  const sharedWithOthers = (vault: string): boolean => {
+    const own = context?.stores.vaults.get(vault)?.native?.device;
+    const setting = settingOf(vault);
+    if (own === undefined || setting === null) return false;
+    return Object.keys(setting.memberUids).some((device) => device !== own);
+  };
   const enabledOn = (setting: RelaySetting | null): setting is RelaySetting =>
     setting?.enabled === true && setting.project === endpoints.projectId;
   /** Enabled on this project here at some point (the switch may be off now). */
@@ -575,7 +585,7 @@ export function createHostRelay(input: {
     // The switch is re-read for every pass: one turned off since the open never runs again.
     if (!enabledOn(settingOf(vault))) return;
     if (state.running !== undefined) {
-      if (reason !== "pull" && reason !== "watch") state.again = true;
+      if (reason !== "pull" && reason !== "tick" && reason !== "watch") state.again = true;
       return state.running;
     }
     const at = state.policy.nextAt(reason, now());
@@ -601,7 +611,7 @@ export function createHostRelay(input: {
     if (session === undefined) return;
     if (!session.isCurrent() && !session.isSyncing()) return;
     const startedAt = now();
-    state.policy.started(startedAt);
+    state.policy.started(startedAt, reason);
     const owed = state.dirty;
     state.dirty = false;
     let result: Awaited<ReturnType<NativeVaultSession["sync"]>>;
@@ -752,10 +762,14 @@ export function createHostRelay(input: {
             const check = backfillRecoveryHash(vault).finally(() => backfills.delete(check));
             backfills.add(check);
           });
-      if (vaults.size > 0)
-        cancelPull = timers.every(RELAY_PULL_INTERVAL_MS, () => {
-          for (const vault of vaults.keys()) request(vault, "pull");
+      if (vaults.size > 0) {
+        let tick = 0;
+        cancelPull = timers.every(RELAY_SHARED_PULL_INTERVAL_MS, () => {
+          tick += 1;
+          for (const vault of vaults.keys())
+            if (relayPullDue(tick, sharedWithOthers(vault))) request(vault, "tick");
         });
+      }
     },
 
     pending() {
