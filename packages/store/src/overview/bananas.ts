@@ -53,7 +53,10 @@ export function bananaScaleView(
     return q === null ? null : amount.mul(q.rate);
   };
 
-  const salary = core.salaryAnchor(salaryMonths(read, env.today, toPln), env.today);
+  const salary = core.salaryAnchor(
+    salaryMonths(read, env.today, toPln, sources.companionReads === true),
+    env.today,
+  );
   if (salary !== null) return core.bananaScale("salary", salary, plnRates);
 
   let invested = ZERO;
@@ -81,8 +84,9 @@ function salaryMonths(
   read: Read,
   today: IsoDate,
   toPln: (amount: Decimal, currency: string) => Decimal | null,
+  companionReads: boolean,
 ): core.SalaryMonth[] {
-  const book = budgetBook(read);
+  const book = companionReads ? salaryBook(read) : budgetBook(read);
   const own = core.ownIbans(book.accounts);
   const totals = new Map<string, Decimal>();
   const payees = new Set<string>();
@@ -101,10 +105,13 @@ function salaryMonths(
   }
   let first: string | null = null;
   let last: string | null = null;
-  for (const t of book.transactions) {
-    if (!payees.has(t.account)) continue;
-    if (first === null || t.bookingDate < first) first = t.bookingDate;
-    if (last === null || t.bookingDate > last) last = t.bookingDate;
+  if (companionReads) [first, last] = bookingSpan(read, [...payees]);
+  else {
+    for (const t of book.transactions) {
+      if (!payees.has(t.account)) continue;
+      if (first === null || t.bookingDate < first) first = t.bookingDate;
+      if (last === null || t.bookingDate > last) last = t.bookingDate;
+    }
   }
   if (first === null || last === null) return [];
   const next = (month: string) => {
@@ -118,4 +125,70 @@ function salaryMonths(
     months.push({ month, salary: totals.get(month) ?? D("0"), hasData: true });
   if (months.at(-1)?.salary.isZero() && months.at(-1)?.month === end) months.pop();
   return months;
+}
+
+/**
+ * The part of `budgetBook` the salary reads on a companion store: every account, and of the visible
+ * accounts' rows only those that may count as salary (an inflow categorized `income_salary`, or an
+ * undecided one: no category or the `default` fallback); the loop above applies the same tests.
+ */
+function salaryBook(read: Read): {
+  readonly accounts: readonly { readonly iban: string | null }[];
+  readonly transactions: readonly budget.BudgetTxn[];
+} {
+  const accounts = read<{ iban: string | null }>("SELECT iban FROM accounts");
+  const rows = read<{
+    account: string;
+    bookingDate: IsoDate;
+    amount: string;
+    currency: string;
+    counterpartyName: string | null;
+    counterpartyIban: string | null;
+    description: string | null;
+    reference: string | null;
+    category: string | null;
+    categorySource: string | null;
+    internal: number;
+  }>(
+    `SELECT a.gid AS account, t.booking_date AS bookingDate, t.amount, t.currency,
+       t.counterparty_name AS counterpartyName, t.counterparty_iban AS counterpartyIban,
+       t.description, t.reference, t.category, t.category_source AS categorySource,
+       t.is_internal_transfer AS internal
+     FROM transactions t JOIN accounts a ON a.id = t.account_id
+     WHERE a.removed_at IS NULL AND t.amount NOT LIKE '-%'
+       AND (t.category = 'income_salary' OR t.category IS NULL OR t.category_source = 'default')`,
+  );
+  return {
+    accounts,
+    transactions: rows.map((t) => ({
+      key: "",
+      account: t.account,
+      bookingDate: t.bookingDate,
+      amount: D(t.amount),
+      currency: t.currency,
+      counterpartyName: t.counterpartyName,
+      counterpartyIban: t.counterpartyIban,
+      description: t.description,
+      reference: t.reference,
+      bankTransactionId: null,
+      category: t.category,
+      categorySource: t.categorySource,
+      isInternalTransfer: t.internal === 1,
+      transferGroup: null,
+      cashLegOf: null,
+    })),
+  };
+}
+
+/** The first and last booking day of `accounts` (account gids) from the day groups (`budget.months`). */
+function bookingSpan(read: Read, accounts: readonly string[]): [IsoDate | null, IsoDate | null] {
+  if (accounts.length === 0) return [null, null];
+  const day = "d.month || '-' || substr('0' || d.day, -2)";
+  const span = read<{ first: IsoDate | null; last: IsoDate | null }>(
+    `SELECT min(${day}) AS first, max(${day}) AS last
+     FROM fold_month_day d JOIN accounts a ON a.id = d.account_id
+     WHERE d.n > 0 AND a.gid IN (${accounts.map(() => "?").join(", ")})`,
+    ...accounts,
+  )[0];
+  return [span?.first ?? null, span?.last ?? null];
 }

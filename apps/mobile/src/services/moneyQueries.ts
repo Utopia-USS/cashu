@@ -7,11 +7,12 @@
 // (`investments.ts`); without them every investments read is unavailable.
 import {
   budgetCategoryOptions,
+  budgetCompanionCurrencies,
+  budgetCompanionSpending,
   budgetSearch,
   budgetTransactionDetail,
   budgetTransactions,
 } from "@cashu/store/budget/companion";
-import { budgetScreenCurrencies, budgetScreenSpending } from "@cashu/store/budget/screen";
 import { researchScreenQueries } from "@cashu/store/investments/research-screen";
 import { reviewDueQuery, reviewScreenQueries } from "@cashu/store/investments/review-screen";
 import { investmentDesktopQueries, strategyReaderQuery } from "@cashu/store/investments/screen";
@@ -21,7 +22,11 @@ import { accountsQuery, assetsQuery } from "@cashu/store/overview/accounts";
 import { bananaScaleQuery } from "@cashu/store/overview/bananas";
 import { overviewCashWallet } from "@cashu/store/overview/cash";
 import { companionQueries } from "@cashu/store/overview/companion";
-import { netWorthQueries } from "@cashu/store/overview/networth";
+import {
+  netWorthNowQuery,
+  netWorthQueries,
+  type OverviewSources,
+} from "@cashu/store/overview/networth";
 import type { PhoneInvestmentSources } from "./investments";
 
 export type MoneyQueryContext = Parameters<typeof netWorthQueries>[0];
@@ -32,19 +37,26 @@ export function createMoneyQueries(
 ) {
   const desktop = investmentDesktopQueries(sources);
   const research = researchScreenQueries(sources);
+  // The phone's store runs the companion derivers: the overview reads their aggregates.
+  const phone: OverviewSources = { companionReads: true };
   return {
-    overview: { ...netWorthQueries(context), bananaScale: bananaScaleQuery(context) },
+    overview: {
+      ...netWorthQueries(context, phone),
+      // The net-worth page reads only the net worth per currency of the summary.
+      summary: netWorthNowQuery(context, phone),
+      bananaScale: bananaScaleQuery(context, phone),
+    },
     holdings: {
-      accounts: accountsQuery(context),
-      assets: assetsQuery(context),
+      accounts: accountsQuery(context, phone),
+      assets: assetsQuery(context, phone),
     },
     loans: { screen: loansScreen, schedule: loanSchedule },
     budget: {
-      currencies: budgetScreenCurrencies,
-      spending: budgetScreenSpending,
+      currencies: budgetCompanionCurrencies,
+      spending: budgetCompanionSpending,
     },
     cash: { wallet: overviewCashWallet },
-    companion: companionQueries({}, sources),
+    companion: companionQueries(phone, sources),
     activity: {
       transactions: budgetTransactions,
       search: budgetSearch,

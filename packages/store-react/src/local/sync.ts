@@ -2,11 +2,14 @@
 // SQLite driver, tests on better-sqlite3). A first read returns rows at once, so `useQuery` never
 // suspends; commands apply in-process and their touched tables re-run the affected snapshots. A vault
 // with a durable handle (the phone's engine-backed vaults) runs its commands through that handle.
+// With a `reruns` scheduler (the phone) the re-runs leave the write: a command or a sync part returns
+// once its events are applied and the woken queries re-run after it, coalesced (`reruns.ts`).
 
 import type { Command } from "@cashu/store";
 import { watchQuery } from "@cashu/store/query";
 import { type CacheOptions, QueryCache } from "../client/cache.js";
 import type { Adapter, CommandAttempt, CommandOutcome } from "../client/types.js";
+import type { RerunScheduler } from "./reruns.js";
 import {
   type DurableOutcome,
   type DurableVaultHandle,
@@ -28,10 +31,13 @@ function fromDurable(outcome: DurableOutcome, attempt: CommandAttempt): CommandO
   };
 }
 
-export function createSyncClient(
-  stores: LocalStores,
-  options: Omit<CacheOptions, "async"> = {},
-): QueryCache {
+export interface SyncClientOptions extends Omit<CacheOptions, "async"> {
+  /** Defer live-query re-runs off the write path (default: re-run inside the notifying apply). */
+  readonly reruns?: RerunScheduler;
+}
+
+export function createSyncClient(stores: LocalStores, options: SyncClientOptions = {}): QueryCache {
+  const { reruns, ...cache } = options;
   const adapter: Adapter = {
     vaults: [...stores.vaults.keys()],
     open(target, query, args, sink) {
@@ -42,7 +48,10 @@ export function createSyncClient(
         sink.error(error);
         return () => {};
       }
-      return watchQuery(source, query, args, { onValue: sink.value, onError: sink.error });
+      return watchQuery(reruns === undefined ? source : reruns.wrap(source), query, args, {
+        onValue: sink.value,
+        onError: sink.error,
+      });
     },
     async run(target, command, input, attempt) {
       let durable: DurableVaultHandle | undefined;
@@ -75,5 +84,5 @@ export function createSyncClient(
       return fromDurable(await handle.reconcile(attempt.key), attempt);
     },
   };
-  return new QueryCache(adapter, { ...options, async: false });
+  return new QueryCache(adapter, { ...cache, async: false });
 }

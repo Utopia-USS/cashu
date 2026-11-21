@@ -10,7 +10,7 @@
 // category, `budget.storedRecurringCategory`, else the engine's without the recurring signal) and its
 // display payee. The candidates are the domain's per-group detection (`budget.detectRecurringGroup`),
 // each with its own charges (`budget.groupSeries`) over the candidates the caller counts as active.
-import { budget, D, type Decimal, format2, type IsoDate, ZERO } from "@cashu/domain";
+import { addDays, budget, D, type Decimal, format2, type IsoDate, ONE, ZERO } from "@cashu/domain";
 
 /** One outflow of a group as `fold_recurring_rows` keeps it. */
 export interface GroupEntryRow {
@@ -124,7 +124,7 @@ export function groupRecords(
     bookingDate: row.date,
     amount: D(row.amount),
   }));
-  const series = budget.groupSeries(
+  const series = groupSeries(
     own.map((f) => f.candidate),
     outflows,
   );
@@ -161,4 +161,108 @@ export function groupRecords(
 export function compareRecords(a: RecurringRecord, b: RecurringRecord): number {
   if (a.lastDate !== b.lastDate) return a.lastDate < b.lastDate ? 1 : -1;
   return a.seqAccount - b.seqAccount || a.seqId - b.seqId;
+}
+
+const byDate = (a: { readonly bookingDate: IsoDate }, b: { readonly bookingDate: IsoDate }) =>
+  a.bookingDate < b.bookingDate ? -1 : a.bookingDate > b.bookingDate ? 1 : 0;
+
+/**
+ * `budget.groupSeries` (the charges of each candidate among a group's outflows) with the same result,
+ * in O((rows + candidates) log candidates) instead of rows x candidates: a group whose merchant key is
+ * a bank's generic phrase holds every card payment (tens of thousands of rows, hundreds of candidates).
+ * A charge's band (`amount x (1 + tolerance) >= typical` and `amount <= typical x (1 + tolerance)`)
+ * holds for a run of candidates sorted by typical amount (both bounds grow with it), found by binary
+ * search and scanned down; the nearest typical amount wins, a tie the earlier candidate, as the
+ * domain's scan in candidate order decides. A charge outside every band continues a series at its
+ * next expected date (within the slack days): the first such charge after the series' last one, found
+ * by binary search over the loose charges by date, exactly the one the domain's scan takes. Decimal
+ * products are computed for no pair the domain's scan does not compute.
+ */
+export function groupSeries<T extends { readonly bookingDate: IsoDate; readonly amount: Decimal }>(
+  own: readonly budget.RecurringCandidate[],
+  rows: readonly T[],
+  tolerance: Decimal = budget.RECURRING_AMOUNT_TOLERANCE,
+): T[][] {
+  const members = own.map((): T[] => []);
+  const dated = [...rows].sort(byDate);
+  if (own.length === 0) return members;
+  const factor = ONE.add(tolerance);
+  // Candidate indexes by typical amount (stable: equal amounts keep candidate order).
+  const order = own
+    .map((_, i) => i)
+    .sort(
+      (a, b) =>
+        (own[a] as budget.RecurringCandidate).typicalAmount.compare(
+          (own[b] as budget.RecurringCandidate).typicalAmount,
+        ) || a - b,
+    );
+  const typical = order.map((i) => (own[i] as budget.RecurringCandidate).typicalAmount);
+  const ceilings: (Decimal | undefined)[] = order.map(() => undefined);
+  const ceiling = (k: number): Decimal => {
+    const known = ceilings[k];
+    if (known !== undefined) return known;
+    const c = (typical[k] as Decimal).mul(factor);
+    ceilings[k] = c;
+    return c;
+  };
+  const loose: T[] = [];
+  for (const t of dated) {
+    const amount = t.amount.copyAbs();
+    const scaled = amount.mul(factor);
+    // The last sorted position whose typical amount is at most `scaled`.
+    let lo = 0;
+    let hi = typical.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (scaled.gte(typical[mid] as Decimal)) lo = mid + 1;
+      else hi = mid;
+    }
+    let best = -1;
+    let bestDistance: Decimal | undefined;
+    for (let k = lo - 1; k >= 0; k--) {
+      if (!amount.lte(ceiling(k))) break;
+      const i = order[k] as number;
+      const distance = amount.sub(typical[k] as Decimal).copyAbs();
+      if (
+        best === -1 ||
+        distance.lt(bestDistance as Decimal) ||
+        (distance.eq(bestDistance as Decimal) && i < best)
+      ) {
+        best = i;
+        bestDistance = distance;
+      }
+    }
+    if (best === -1) loose.push(t);
+    else members[best]?.push(t);
+  }
+  const taken = loose.map(() => false);
+  /** The first loose position whose date is after `day` (`inclusive`: at or after). */
+  const firstAfter = (day: IsoDate, inclusive: boolean): number => {
+    let lo = 0;
+    let hi = loose.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      const d = (loose[mid] as T).bookingDate;
+      if (d < day || (!inclusive && d === day)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  for (const [ci, c] of own.entries()) {
+    const series = members[ci] as T[];
+    let last = series.at(-1)?.bookingDate ?? c.lastDate;
+    for (;;) {
+      const next = budget.nextChargeDate(last, c.medianGapDays);
+      const from = addDays(next, -budget.SERIES_DATE_SLACK_DAYS);
+      const to = addDays(next, budget.SERIES_DATE_SLACK_DAYS);
+      let k = Math.max(firstAfter(last, false), firstAfter(from, true));
+      while (k < loose.length && taken[k]) k++;
+      const t = loose[k];
+      if (t === undefined || t.bookingDate > to) break;
+      taken[k] = true;
+      series.push(t);
+      last = t.bookingDate;
+    }
+  }
+  return members;
 }

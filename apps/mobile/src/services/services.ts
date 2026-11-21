@@ -30,7 +30,11 @@ import type { SqlPriceCache } from "@cashu/store/investments/local";
 import type { Store } from "@cashu/store/runtime";
 import { initializeMetaClockGuard, type SqlDriver } from "@cashu/store/sync";
 import type { StoreClient } from "@cashu/store-react";
-import { createSyncClient, type DurableVaultHandle } from "@cashu/store-react/local";
+import {
+  createRerunScheduler,
+  createSyncClient,
+  type DurableVaultHandle,
+} from "@cashu/store-react/local";
 import {
   AnonymousAuth,
   crypto,
@@ -90,6 +94,7 @@ import { SCAFFOLD_DEVICE } from "./device";
 import { phoneInvestmentSources } from "./investments";
 import { bumpEpoch, servicesCloser, showOpening, showWiping } from "./lifecycle";
 import { createMoneyQueries, type MoneyQueries } from "./moneyQueries";
+import { holdRerunsDuringFirstSync } from "./rerunHold";
 import {
   forgetVault,
   type JoinedVault,
@@ -700,7 +705,10 @@ export function bootServices(): Services {
       },
     ]),
   );
-  const client = createSyncClient({ device, vaults: handles });
+  // Live queries re-run after a command or a sync part, coalesced, and once after a first sync.
+  const reruns = createRerunScheduler();
+  const client = createSyncClient({ device, vaults: handles }, { reruns });
+  holdRerunsDuringFirstSync(reruns, list);
   const identities = new Map(
     opened.map((v) => [v.vault, profileIdentity.run(v.store.read.bind(v.store), undefined)]),
   );

@@ -47,6 +47,12 @@ import {
   groupRecords,
   type RecurringRecord,
 } from "./recurring-groups.js";
+import type {
+  BudgetCurrenciesScreen,
+  BudgetScreenDay,
+  BudgetSpendingScreen,
+  BudgetSpendingScreenArgs,
+} from "./screen-queries.js";
 
 // --------------------------------------------------------------------------- rows
 
@@ -347,6 +353,82 @@ const monthCatRow = (r: MonthCatSql): budget.MonthCatRow => ({
 /** "YYYY-MM-DD" of a month group's day. */
 const DAY_DATE = "d.month || '-' || substr('0' || d.day, -2)";
 
+/** The first booking in `currency` of each visible non-cash account (`cashflowCoverageStart`). */
+function firstBookingsOf(read: Read, currency: string): budget.AccountFirstBooking[] {
+  return read<{ account: string; first: IsoDate | null }>(
+    `SELECT a.gid AS account, (SELECT ${DAY_DATE} FROM fold_month_day d
+       WHERE d.account_id = a.id AND d.currency = ? ORDER BY d.month, d.day LIMIT 1) AS first
+     FROM accounts a WHERE ${VISIBLE} AND a.type != ?`,
+    currency,
+    budget.CASH_ACCOUNT_TYPE,
+  ).flatMap((f) => (f.first === null ? [] : [{ account: f.account, currency, first: f.first }]));
+}
+
+/**
+ * `budget.monthlyCashflow(book, currency)` and `budget.cashflowCoverageStart(book, currency)` over the
+ * month aggregates (`budget.monthlyCashflowFromRows`, `budget.coverageStartFromRows`): every month
+ * group of `currency` (the base currency when empty) on the visible accounts. Companion stores only.
+ */
+export function budgetMonthCashflow(
+  read: Read,
+  currency: string,
+): { readonly rows: budget.MonthlyCashflow[]; readonly coverage: IsoDate | null } {
+  const cur = currency || budget.budgetBaseCurrency(profileOf(read)?.baseCurrency);
+  const cat = read<MonthCatSql>(
+    `${MONTH_CAT_SELECT} AND c.currency = ? ORDER BY c.account_id, c.first_outflow`,
+    cur,
+  ).map(monthCatRow);
+  return {
+    rows: budget.monthlyCashflowFromRows(cat, cur),
+    coverage: budget.coverageStartFromRows(firstBookingsOf(read, cur), cur),
+  };
+}
+
+/**
+ * `budget.screenCurrencies` over the day groups (`budget.currenciesFromRows`: rows per currency, first
+ * and last day; the newest day is `referenceDate`) of the visible accounts. Companion stores only.
+ */
+export const budgetCompanionCurrencies = defineQuery({
+  id: "budget.companionScreenCurrencies",
+  run(read, args: BudgetScreenDay): BudgetCurrenciesScreen {
+    const baseCurrency = budget.budgetBaseCurrency(profileOf(read)?.baseCurrency);
+    const counts = read<budget.CurrencyCountRow>(
+      `SELECT d.currency, sum(d.n) AS transactions, min(${DAY_DATE}) AS first,
+         max(${DAY_DATE}) AS last
+       FROM fold_month_day d JOIN accounts a ON a.id = d.account_id
+       WHERE ${VISIBLE} AND d.n > 0 GROUP BY d.currency`,
+    );
+    const currencies = budget.currenciesFromRows(counts, baseCurrency);
+    let referenceDate: IsoDate | null = null;
+    for (const c of counts)
+      if (referenceDate === null || c.last > referenceDate) referenceDate = c.last;
+    return { today: args.today, baseCurrency, currencies, referenceDate };
+  },
+});
+
+/**
+ * `budget.screenSpending` over the month groups (`budget.spendingByCategoryFromRows`, in book order of
+ * first outflows as `spendingByCategory` meets the categories). Companion stores only.
+ */
+export const budgetCompanionSpending = defineQuery({
+  id: "budget.companionScreenSpending",
+  run(read, args: BudgetSpendingScreenArgs): BudgetSpendingScreen {
+    const currency = args.currency || budget.budgetBaseCurrency(profileOf(read)?.baseCurrency);
+    const cat = read<MonthCatSql>(
+      `${MONTH_CAT_SELECT} AND c.currency = ? ORDER BY c.account_id, c.first_outflow`,
+      currency,
+    ).map(monthCatRow);
+    const rows = budget.spendingByCategoryFromRows(cat, currency, args.period, args.lang);
+    return {
+      today: args.today,
+      currency,
+      period: args.period,
+      rows,
+      total: rows.reduce((total, row) => total.add(row.amount), D("0.00")),
+    };
+  },
+});
+
 /**
  * The aggregates the month figures of `label` in `currency` read: the first bookings of the counted
  * accounts (`cashflowCoverageStart`), the norm months chosen in SQL exactly as `normMonths` chooses
@@ -360,13 +442,7 @@ function monthAggregatesOf(
   currency: string,
   label: string,
 ): budget.MonthAggregates & { readonly coverage: IsoDate | null } {
-  const firsts = read<{ account: string; first: IsoDate | null }>(
-    `SELECT a.gid AS account, (SELECT ${DAY_DATE} FROM fold_month_day d
-       WHERE d.account_id = a.id AND d.currency = ? ORDER BY d.month, d.day LIMIT 1) AS first
-     FROM accounts a WHERE ${VISIBLE} AND a.type != ?`,
-    currency,
-    budget.CASH_ACCOUNT_TYPE,
-  ).flatMap((f) => (f.first === null ? [] : [{ account: f.account, currency, first: f.first }]));
+  const firsts = firstBookingsOf(read, currency);
   const coverage = budget.coverageStartFromRows(firsts, currency);
   const norm = read<{ month: string }>(
     `SELECT DISTINCT c.month FROM fold_month_cat c JOIN accounts a ON a.id = c.account_id
@@ -1361,6 +1437,69 @@ const recordOf = (r: RecurringSql): RecurringRecord => ({
   charges: r.charges,
 });
 
+/** A group recomputed by `recurringRecords`: its rows as read, the cutoff and the records. */
+interface Recomputed {
+  readonly rows: readonly GroupEntryRow[];
+  readonly cutoff: IsoDate | null;
+  readonly records: readonly RecurringRecord[];
+}
+
+/** The last groups `recurringRecords` recomputed, by group (at most `RECOMPUTED_MAX`, oldest out). */
+const recomputed = new Map<string, Recomputed>();
+const RECOMPUTED_MAX = 16;
+
+const sameRows = (a: readonly GroupEntryRow[], b: readonly GroupEntryRow[]): boolean => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i] as GroupEntryRow;
+    const y = b[i] as GroupEntryRow;
+    if (
+      x.account !== y.account ||
+      x.id !== y.id ||
+      x.date !== y.date ||
+      x.amount !== y.amount ||
+      x.amountKey !== y.amountKey ||
+      x.category !== y.category ||
+      x.payee !== y.payee
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * `groupRecords` of one group's rows up to today over its active candidates. The records are a
+ * function of exactly the rows (every column the detection and the series read) and the cutoff, so
+ * the answer of an earlier run with the same rows and cutoff is reused: the phone's live queries that
+ * read the recurring payments (the month, the upcoming charges, the attention list) re-run together
+ * after a write and would each recompute a large group (a bank's generic phrase as the merchant key
+ * gathers every card payment) from the same rows.
+ */
+function recomputedGroup(
+  merchantKey: string,
+  currency: string,
+  rows: readonly GroupEntryRow[],
+  cutoff: IsoDate | null,
+  isActive: (lastDate: IsoDate) => boolean,
+): readonly RecurringRecord[] {
+  const key = JSON.stringify([merchantKey, currency]);
+  const seen = recomputed.get(key);
+  if (seen !== undefined && seen.cutoff === cutoff && sameRows(seen.rows, rows)) {
+    recomputed.delete(key);
+    recomputed.set(key, seen);
+    return seen.records;
+  }
+  const records = groupRecords(merchantKey, currency, rows, (c) => isActive(c.lastDate));
+  recomputed.delete(key);
+  recomputed.set(key, { rows, cutoff, records });
+  for (const oldest of recomputed.keys()) {
+    if (recomputed.size <= RECOMPUTED_MAX) break;
+    recomputed.delete(oldest);
+  }
+  return records;
+}
+
 /**
  * The active recurring payments up to `today` (rows booked later are not charges yet), one per
  * recurring candidate with its own charges, in list order (`budget.recurringPayments` +
@@ -1417,7 +1556,7 @@ function recurringRecords(read: Read, today: IsoDate): RecurringRecord[] {
       currency,
       today,
     );
-    out.push(...groupRecords(mk, currency, rows, (c) => isActive(c.lastDate)));
+    out.push(...recomputedGroup(mk, currency, rows, cutoff, isActive));
   }
   return out.filter((r) => isActive(r.lastDate)).sort(compareRecords);
 }

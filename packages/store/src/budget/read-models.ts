@@ -17,14 +17,48 @@ import type { NetWorthSource, SetupSource } from "../registry.js";
  * Open Banking fetch, back to the day it asked from (`budgetContributor`).
  */
 export const budgetNetWorth: NetWorthSource = (read) =>
-  budget.budgetContributor(
-    read<{ account: string; bookingDate: IsoDate; amount: string; currency: string }>(
+  budgetContributorOf(
+    read,
+    read<CashPoolRow>(
       `SELECT a.gid AS account, t.booking_date AS bookingDate, t.amount, t.currency
        FROM transactions t JOIN accounts a ON a.id = t.account_id
        WHERE a.type IN (?, ?, ?, ?) ORDER BY t.id`,
       budget.CASH_ACCOUNT_TYPE,
       ...budget.BANK_BALANCE_TYPES,
-    ).map((t) => ({
+    ),
+  );
+
+/**
+ * `budgetNetWorth` over the day aggregates of the phone's month deriver (`budget.months`:
+ * `fold_month_day.net`, every row of the day signed, an exact decimal sum) instead of every row: one
+ * entry per account, row currency and day. The contributors read the rows only as sums per account,
+ * currency and day (the cash pool's running sum keeps the last value of each date, the bank walk-back
+ * subtracts each day's sum; decimal addition is exact, so a sum of sums is the same value with the same
+ * exponent), so the valuations are the same. Companion stores only (`companionReads`).
+ */
+export const budgetNetWorthFromDays: NetWorthSource = (read) =>
+  budgetContributorOf(
+    read,
+    read<CashPoolRow>(
+      `SELECT a.gid AS account, d.month || '-' || substr('0' || d.day, -2) AS bookingDate,
+         d.net AS amount, d.currency
+       FROM fold_month_day d JOIN accounts a ON a.id = d.account_id
+       WHERE a.type IN (?, ?, ?, ?) AND d.n > 0 ORDER BY d.account_id, d.month, d.day, d.currency`,
+      budget.CASH_ACCOUNT_TYPE,
+      ...budget.BANK_BALANCE_TYPES,
+    ),
+  );
+
+interface CashPoolRow {
+  readonly account: string;
+  readonly bookingDate: IsoDate;
+  readonly amount: string;
+  readonly currency: string;
+}
+
+function budgetContributorOf(read: Read, rows: readonly CashPoolRow[]) {
+  return budget.budgetContributor(
+    rows.map((t) => ({
       account: t.account,
       bookingDate: t.bookingDate,
       amount: D(t.amount),
@@ -41,6 +75,7 @@ export const budgetNetWorth: NetWorthSource = (read) =>
       ),
     ),
   );
+}
 
 interface AccountRow {
   readonly gid: string;

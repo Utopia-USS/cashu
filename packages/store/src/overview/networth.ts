@@ -5,7 +5,8 @@
 // tree-shake, carries these read models without the desktop widgets.
 import { budget, core, type IsoDate } from "@cashu/domain";
 import { InMemoryFxLookup, market, toCurrency } from "@cashu/domain/investments";
-import { budgetBook, budgetEngineContext } from "../budget/read-models.js";
+import { budgetMonthCashflow } from "../budget/companion-queries.js";
+import { budgetBook, budgetEngineContext, budgetNetWorthFromDays } from "../budget/read-models.js";
 import { netWorthBook } from "../core/networth.js";
 import { profileOf } from "../core/queries.js";
 import type { OverviewRequest } from "../investments/views/overview.js";
@@ -30,11 +31,20 @@ export interface OverviewSources {
       readonly prices: market.PriceCache | null;
     },
   ) => OverviewRequest | null;
+  /**
+   * The store runs the companion derivers (the phone, `StoreOptions.companionReads`): the read models
+   * read their aggregates (the budget net worth from `fold_month_day`, the hero's monthly cashflow
+   * from `fold_month_cat`) instead of every transaction. Same results; never set on the desktop.
+   */
+  readonly companionReads?: boolean;
 }
 
 /** @package */
-export const modulesOf = (s: OverviewSources): readonly StoreModule[] =>
-  s.modules ?? builtinModules();
+export const modulesOf = (s: OverviewSources): readonly StoreModule[] => {
+  const modules = s.modules ?? builtinModules();
+  if (s.companionReads !== true) return modules;
+  return modules.map((m) => (m.id === "budget" ? { ...m, netWorth: budgetNetWorthFromDays } : m));
+};
 /** @package */
 export const registryOf = (s: OverviewSources): core.CoreRegistry =>
   s.registry ?? core.builtinRegistry();
@@ -149,13 +159,21 @@ export interface ShellSummarySnapshot extends Omit<ShellSummary, "breakdown"> {
 interface SummaryParts {
   readonly netWorth: core.NetWorthBook;
   readonly core: core.NetWorthSummary;
-  readonly book: budget.BudgetBook;
 }
 
 function summaryParts(read: Read, env: NetWorthEnv, sources: OverviewSources): SummaryParts {
   const netWorth = vaultNetWorthBook(read, env, sources);
   const nw = core.netWorthSummary(netWorth, profileOf(read)?.baseCurrency);
-  return { netWorth, core: nw, book: budgetBook(read) };
+  return { netWorth, core: nw };
+}
+
+/** Net worth per currency now (the phone's net-worth page reads nothing else of the summary). */
+export function netWorthNow(
+  read: Read,
+  env: NetWorthEnv,
+  sources: OverviewSources = {},
+): Pick<ShellSummary, "networth"> {
+  return { networth: summaryParts(read, env, sources).core.networth };
 }
 
 /** `GET /summary`: net worth now, the headline breakdown, the latest month, active subscriptions. */
@@ -165,18 +183,15 @@ export function shellSummary(
   sources: OverviewSources = {},
 ): ShellSummary {
   const parts = summaryParts(read, env, sources);
+  const book = budgetBook(read);
   const registry = registryOf(sources);
   const ctx = budgetEngineContext(read, vaultPaymentPatterns(read, sources), registry);
-  const candidates = budget.recurringPayments(
-    parts.book,
-    ctx,
-    budget.subscriptionExclusions(registry),
-  );
+  const candidates = budget.recurringPayments(book, ctx, budget.subscriptionExclusions(registry));
   return {
     networth: parts.core.networth,
     breakdown: parts.core.breakdown,
-    month: budget.monthSummary(budget.monthlyCashflow(parts.book)),
-    subscriptions: budget.subscriptionsSummary(budget.activeRecurring(candidates, parts.book)),
+    month: budget.monthSummary(budget.monthlyCashflow(book)),
+    subscriptions: budget.subscriptionsSummary(budget.activeRecurring(candidates, book)),
   };
 }
 
@@ -203,16 +218,26 @@ export interface HeroView {
   readonly change: core.NetWorthChange | null;
 }
 
+/** The monthly cashflow of `currency` and its coverage start (from the aggregates on the phone). */
+function monthCashflow(
+  read: Read,
+  currency: string,
+  sources: OverviewSources,
+): { readonly rows: budget.MonthlyCashflow[]; readonly coverage: IsoDate | null } {
+  if (sources.companionReads === true) return budgetMonthCashflow(read, currency);
+  const book = budgetBook(read);
+  return {
+    rows: budget.monthlyCashflow(book, currency),
+    coverage: budget.cashflowCoverageStart(book, currency),
+  };
+}
+
 /** The hero strip of the overview (the SPA's NetHero computed it from three responses). */
 export function heroView(read: Read, env: NetWorthEnv, sources: OverviewSources = {}): HeroView {
   const parts = summaryParts(read, env, sources);
   const facts = core.heroFacts(parts.core);
-  const rows = budget
-    .wholeMonths(
-      budget.monthlyCashflow(parts.book, facts.currency),
-      budget.cashflowCoverageStart(parts.book, facts.currency),
-    )
-    .slice(-HERO_CASHFLOW_MONTHS);
+  const cashflow = monthCashflow(read, facts.currency, sources);
+  const rows = budget.wholeMonths(cashflow.rows, cashflow.coverage).slice(-HERO_CASHFLOW_MONTHS);
   const norm = budget.closedMonthNorm(rows, env.today);
   const rateAt = vaultRateAt(read, env, sources, facts.currency);
   const converted = core.convertedHero(parts.netWorth, parts.core, facts, rateAt, env.today);
@@ -236,6 +261,23 @@ export function heroView(read: Read, env: NetWorthEnv, sources: OverviewSources 
 }
 
 // --------------------------------------------------------------------------- queries
+
+/**
+ * `core.netWorthNow`: the summary's net worth per currency alone (the phone's net-worth page), without
+ * the month and the subscriptions the full `core.summary` derives from every transaction.
+ */
+export function netWorthNowQuery(
+  env: { readonly prices: market.PriceCache | null; readonly changes?: ChangeSource },
+  sources: OverviewSources = {},
+): Query<{ readonly today: IsoDate }, Pick<ShellSummary, "networth">> {
+  const prices = env.prices;
+  return defineQuery({
+    id: "core.netWorthNow",
+    ...(env.changes === undefined ? {} : { changes: env.changes }),
+    run: (read, args: { readonly today: IsoDate }) =>
+      netWorthNow(read, { today: args.today, prices }, sources),
+  });
+}
 
 export interface NetWorthQueries {
   readonly netWorthSeries: Query<SeriesArgs, core.SeriesView>;
