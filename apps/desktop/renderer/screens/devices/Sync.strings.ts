@@ -40,15 +40,15 @@ export const S = catalog({
     pl: "Dzisiejszy limit synchronizacji wyczerpany, kolejna próba po północy",
     en: "Today's sync limit is used up, tries again after midnight",
   },
-  // #25.3, a writer the device list names.
+  // #25.3, a writer the device list names (device names unquoted, designer DV2 item 3).
   stuckWaiting: {
     pl: (device: string) =>
-      `Części zmian z urządzenia „${device}” nie da się jeszcze odczytać. Synchronizacja próbuje dalej.`,
+      `Części zmian z urządzenia ${device} nie da się jeszcze odczytać. Synchronizacja próbuje dalej.`,
     en: (device: string) => `Some changes from ${device} can't be read yet. Sync keeps trying.`,
   },
   stuckFailed: {
     pl: (device: string) =>
-      `Nie da się odczytać zmian z urządzenia „${device}”. Sprawdź listę urządzeń poniżej.`,
+      `Nie da się odczytać zmian z urządzenia ${device}. Sprawdź listę urządzeń poniżej.`,
     en: (device: string) => `Changes from ${device} can't be read. Check the device list below.`,
   },
   // #25.3, a writer the device list cannot name (never an id, never a stand-in inside the quotes).
@@ -63,9 +63,9 @@ export const S = catalog({
   // Designer addendum (2026-11-14): a removed device whose access sync has not withdrawn yet.
   removalFailing: {
     pl: (device: string) =>
-      `Urządzenie „${device}” jest usunięte na tym Macu, ale synchronizacja jeszcze tego nie potwierdziła, więc wciąż może dostawać nowe dane. cashU próbuje dalej.`,
+      `Urządzenie ${device} jest usunięte na tym Macu, ale synchronizacja jeszcze tego nie potwierdziła, więc wciąż może dostawać nowe dane. cashU próbuje dalej.`,
     en: (device: string) =>
-      `“${device}” is removed on this Mac, but sync hasn't confirmed it yet, so it can still receive new data. cashU keeps trying.`,
+      `${device} is removed on this Mac, but sync hasn't confirmed it yet, so it can still receive new data. cashU keeps trying.`,
   },
   removalFailingUnnamed: {
     pl: "Usunięte urządzenie jest usunięte na tym Macu, ale synchronizacja jeszcze tego nie potwierdziła, więc wciąż może dostawać nowe dane. cashU próbuje dalej.",
@@ -127,17 +127,6 @@ export const S = catalog({
   openDevices: { pl: "Otwórz Urządzenia", en: "Open Devices" },
   // W3-7 item 2 (spec copy verbatim): the owner's override while this Mac is the one that fetches.
   keepFetching: { pl: "Pobieraj dalej na tym Macu", en: "Keep fetching on this Mac" },
-  keepFetchingConfirm: {
-    pl: (name: string) =>
-      `Pobierać dalej na tym Macu? Upewnij się, że Twój drugi Mac „${name}” nie pobiera danych. cashU zapyta ponownie za 7 dni.`,
-    en: (name: string) =>
-      `Keep fetching on this Mac? Make sure your other Mac “${name}” doesn't fetch too. cashU asks again in 7 days.`,
-  },
-  // Proposed: the same question when the device list cannot name the other Mac.
-  keepFetchingConfirmUnnamed: {
-    pl: "Pobierać dalej na tym Macu? Upewnij się, że Twój drugi Mac nie pobiera danych. cashU zapyta ponownie za 7 dni.",
-    en: "Keep fetching on this Mac? Make sure your other Mac doesn't fetch too. cashU asks again in 7 days.",
-  },
   keepFetchingYes: { pl: "Pobieraj dalej", en: "Keep fetching" },
   keepFetchingCancel: { pl: "Anuluj", en: "Cancel" },
 });

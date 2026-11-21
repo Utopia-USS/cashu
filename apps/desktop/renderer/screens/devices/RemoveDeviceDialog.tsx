@@ -1,6 +1,8 @@
 import { Button, Dialog, FieldNote, Spinner } from "@cashu/ui";
+import { useRef } from "react";
 import { T } from "./Devices.strings.js";
 import type { DevicesScreenState } from "./useDevicesScreen.js";
+import { useFocusWhenShown } from "./useFocusWhenShown.js";
 
 const control =
   "w-full rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent";
@@ -31,11 +33,26 @@ export function RemoveDeviceDialog({ state }: { state: DevicesScreenState }) {
                 ? T.capacity
                 : T.failed
               : null;
+  /** "Try again" re-runs the dialog's step (the preview); the commit needs a fresh one anyway. */
+  const retry =
+    status === "failed" &&
+    blocked === null &&
+    state.refusal !== "recertify_capacity" &&
+    targetName !== null;
   const name = targetName ?? "";
+  const form = preview !== null && status !== "unknown";
+  const words = useRef<HTMLInputElement>(null);
+  useFocusWhenShown(words, form && !busy);
   return (
-    <Dialog size="narrow" title={title} label={title} onClose={() => void state.closeRemoval()}>
+    <Dialog
+      size="narrow"
+      title={title}
+      label={title}
+      onClose={() => void state.closeRemoval()}
+      focus="panel"
+    >
       {targetName !== null && <p className="text-fg-secondary">{T.removeBody}</p>}
-      {preview && status !== "unknown" && (
+      {form && (
         <>
           <label className={`${check} bg-warning-bg text-warning`}>
             <input
@@ -79,6 +96,7 @@ export function RemoveDeviceDialog({ state }: { state: DevicesScreenState }) {
           <label className="grid gap-1.5">
             <span className="text-fg-secondary">{T.recovery}</span>
             <input
+              ref={words}
               className={control}
               disabled={busy}
               type="password"
@@ -102,29 +120,40 @@ export function RemoveDeviceDialog({ state }: { state: DevicesScreenState }) {
           {T.working}
         </p>
       )}
-      {stop !== null && (
-        <p role="alert" className="rounded-control bg-chip px-3 py-2.5">
-          {stop}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" disabled={busy} onPress={state.closeRemoval}>
-          {T.cancel}
-        </Button>
-        {status === "unknown" && state.operationId ? (
-          <Button onPress={state.inspect}>{T.inspect}</Button>
-        ) : (
-          stop === null && (
-            <Button
-              variant="danger"
-              disabled={busy || !preview || state.selectionDirty || !state.ack || !state.phrase}
-              onPress={state.commit}
-            >
-              {T.remove}
+      {stop !== null ? (
+        // An error or pause note replaces the button row: only "Close", plus the step's own way on.
+        <>
+          <p role="alert" className="rounded-control bg-chip px-3 py-2.5">
+            {stop}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={busy} onPress={state.closeRemoval}>
+              {T.close}
             </Button>
-          )
-        )}
-      </div>
+            {status === "unknown" && state.operationId && (
+              <Button onPress={state.inspect}>{T.inspect}</Button>
+            )}
+            {retry && (
+              <Button variant="primary" onPress={state.review}>
+                {T.tryAgain}
+              </Button>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" disabled={busy} onPress={state.closeRemoval}>
+            {T.cancel}
+          </Button>
+          <Button
+            variant="danger"
+            disabled={busy || !preview || state.selectionDirty || !state.ack || !state.phrase}
+            onPress={state.commit}
+          >
+            {T.remove}
+          </Button>
+        </div>
+      )}
     </Dialog>
   );
 }

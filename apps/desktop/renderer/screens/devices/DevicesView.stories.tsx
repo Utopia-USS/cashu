@@ -3,8 +3,10 @@
 // dialog, F the "fetch on this Mac" dialog, A pair a phone; plus the dialogs' error states. Synthetic
 // data only: profile "Anna", devices "Demo Mac", "Studio Mac", "iPhone 16 Pro", "Old iPhone".
 import type { DeviceListResult, RevokePreviewResult } from "@cashu/host-protocol";
-import type { ReactNode } from "react";
+import { ToastProvider, useToast } from "@cashu/ui";
+import { type ReactNode, useEffect, useRef } from "react";
 import type { PairingViewState } from "../pairing/PairingView.js";
+import { T } from "./Devices.strings.js";
 import { DevicesView } from "./DevicesView.js";
 import { deviceRows } from "./deviceRows.js";
 import { type SyncRowState, SyncRowView } from "./SyncRowView.js";
@@ -265,7 +267,7 @@ export const FetchPausedSyncOff = {
       keep: keepFetching,
     }),
 };
-/** P: the banner's "Fetch bank data on this Mac" opens dialog F with the override's wording. */
+/** P: the banner's "Keep fetching on this Mac" opens dialog F with the override's wording. */
 export const KeepFetchingConfirm = {
   render: () =>
     page({
@@ -341,7 +343,7 @@ export const RemoveSelectionChanged = {
       }),
     }),
 };
-/** R: cashU cannot keep every ticked device. */
+/** R: cashU cannot keep every ticked device (the iPhone is ticked). */
 export const RemoveCapacity = {
   render: () =>
     page({
@@ -349,8 +351,10 @@ export const RemoveCapacity = {
         target: STUDIO,
         targetName: "Studio Mac",
         preview: prepared({
-          affected: [{ device: PHONE, name: "iPhone 16 Pro", selected: false }],
+          targets: [{ device: STUDIO, cut: { seg: 1, offset: 4 }, head: "trusted" }],
+          affected: [{ device: PHONE, name: "iPhone 16 Pro", selected: true }],
         }),
+        recertify: [PHONE],
         refusal: "recertify_capacity",
       }),
     }),
@@ -457,6 +461,50 @@ export const FetchUnknown = {
     page({
       leaderAction: leader({ dialogOpen: true, status: "unknown", operationId: "2".repeat(26) }),
     }),
+};
+/** Studio Mac fetched recently: this Mac's row menu shows the fetch item disabled until 36 hours. */
+export const FetchItemWaiting = {
+  render: () => {
+    const studioFetches: Ready = { ...list, leader: { ...list.leader, device: STUDIO } };
+    return page({
+      state: screen({ list: studioFetches }),
+      leaderAction: leader({ list: studioFetches }),
+    });
+  },
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    canvasElement
+      .querySelector<HTMLButtonElement>(`li[data-device="${DEMO}"] button[aria-expanded]`)
+      ?.click();
+  },
+};
+
+/** Shows `text` once as a toast over the page, the way a finished action does. */
+function WithToast({ text, children }: { text: string; children: ReactNode }) {
+  const toast = useToast();
+  // Once: the provider hands out a new `toast` on each of its renders.
+  const shown = useRef(false);
+  useEffect(() => {
+    if (shown.current) return;
+    shown.current = true;
+    toast(text, 60_000);
+  }, [toast, text]);
+  return children;
+}
+/** The removal finished: the dialog closed and the toast says so. */
+export const RemovedToast = {
+  render: () => (
+    <ToastProvider>
+      <WithToast text={T.removed("iPhone 16 Pro")}>{page({})}</WithToast>
+    </ToastProvider>
+  ),
+};
+/** The fetching device changed: the toast names this Mac. */
+export const FetchDoneToast = {
+  render: () => (
+    <ToastProvider>
+      <WithToast text={T.fetchDone("Demo Mac")}>{page({})}</WithToast>
+    </ToastProvider>
+  ),
 };
 /** A: pair a phone (the dialog opens from the header button; this story shows the invitation). */
 export const PairPhone = {

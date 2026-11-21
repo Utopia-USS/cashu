@@ -1,4 +1,5 @@
 import { useProfile } from "@cashu/store-react";
+import { useState } from "react";
 import { useCalendarDay } from "../../shell/useCalendarDay.js";
 import { usePairingScreen } from "../pairing/usePairingScreen.js";
 import { DevicesView } from "./DevicesView.js";
@@ -15,11 +16,11 @@ export function DevicesScreen() {
   return <ScopedDevicesScreen key={vault} />;
 }
 
-/** Scrolls a section of this screen into view and moves focus to its first control. */
-function reveal(id: string): void {
-  const section = document.getElementById(id);
+/** Scrolls the Sync card into view and moves focus to its switch. */
+function revealSync(): void {
+  const section = document.getElementById("sync");
   section?.scrollIntoView({ block: "start" });
-  section?.querySelector<HTMLElement>("button, select, input, summary")?.focus();
+  section?.querySelector<HTMLElement>('[role="switch"]')?.focus();
 }
 
 function ScopedDevicesScreen() {
@@ -40,7 +41,13 @@ function ScopedDevicesScreen() {
     ready === null
       ? []
       : deviceRows(ready, today, ready.leader.warn && !fetchPaused && leaderAction.available);
-  const goToSync = sync.state.kind === "ready" ? { onGoToSync: () => reveal("sync") } : {};
+  // Without a sync config there is no Sync card, and pairing a phone cannot work: no "Pair a phone".
+  // Once the card was seen it stays offered, so a host handover during a pairing (the card hides while
+  // the connection is down) never closes the pairing dialog.
+  const withSync = sync.state.kind === "ready";
+  const [syncSeen, setSyncSeen] = useState(false);
+  if (withSync && !syncSeen) setSyncSeen(true);
+  const goToSync = withSync ? { onGoToSync: revealSync } : {};
   return (
     <DevicesView
       state={devices}
@@ -49,7 +56,7 @@ function ScopedDevicesScreen() {
       fetchPaused={fetchPaused}
       keepFetching={keepFetching}
       syncRow={<SyncRowView state={sync.state} />}
-      pairing={pairing}
+      {...(syncSeen || withSync ? { pairing } : {})}
       {...goToSync}
     />
   );

@@ -3,11 +3,14 @@ import { useEffect, useRef, useState } from "react";
 import { T } from "./Devices.strings.js";
 import type { DeviceRow } from "./deviceRows.js";
 
-const note = "col-span-2 col-start-2 flex items-center gap-2.5 rounded-control px-3 py-2 text-sm";
+const note = "col-span-2 col-start-1 flex items-center gap-2.5 rounded-control px-3 py-2 text-sm";
 const item =
   "grid w-full cursor-pointer gap-0.5 rounded-sm border-none bg-transparent px-2.5 py-2 text-left text-md hover:bg-chip focus-visible:bg-chip focus-visible:outline-none disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent";
 
-/** One device of the profile: name and tags, its facts on one line, the row menu and its notes. */
+/**
+ * One device of the profile: name and tags, its facts on one line, the row menu and its notes. No
+ * device glyph until the list knows a device's kind (designer DV2 item 1).
+ */
 export function DeviceRowItem({
   row,
   disabled,
@@ -51,40 +54,35 @@ export function DeviceRowItem({
   const hasMenu = row.fetchItem !== null || row.removable;
   return (
     <li
-      className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-border border-t px-4.5 py-3.5 first:border-t-0"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-border border-t px-4.5 py-3.5 first:border-t-0"
       data-device={row.id}
     >
-      <span
-        aria-hidden
-        className={`grid size-8 place-items-center rounded-control bg-chip text-fg-secondary ${row.removedCopyOn === null ? "" : "opacity-50"}`}
-      >
-        <DeviceIcon />
-      </span>
       <div className={`grid gap-0.5 ${row.removedCopyOn === null ? "" : "text-fg-muted"}`}>
         <div className="flex flex-wrap items-center gap-2 font-strong">
           <span>{row.name}</span>
           {row.thisMac && <Tag>{T.thisMac}</Tag>}
           {row.fetches && <Tag tone="info">{T.fetches}</Tag>}
+          {row.fetchPaused && <Tag tone="warning">{T.fetchPausedTag}</Tag>}
         </div>
         <p className="text-sm text-fg-muted">{facts.join(" · ")}</p>
       </div>
       {hasMenu ? (
         <div ref={box} className="relative">
           <Button
-            variant="ghost"
-            size="sm"
+            variant="glyph"
             label={T.rowMenu(row.name)}
+            title={T.rowMenu(row.name)}
             expanded={menu}
             disabled={disabled}
             onPress={() => setMenu(!menu)}
           >
-            …
+            <MoreGlyph />
           </Button>
           {menu && (
             <div
               role="menu"
               aria-label={T.rowMenu(row.name)}
-              className="absolute top-full right-0 z-10 mt-1 grid min-w-60 rounded-control border border-border bg-surface-overlay p-1 shadow-lg"
+              className="absolute top-full right-0 z-10 mt-1 grid w-max min-w-60 rounded-control border border-border bg-surface-overlay p-1 shadow-lg"
             >
               {row.fetchItem !== null && (
                 <button
@@ -97,7 +95,7 @@ export function DeviceRowItem({
                     onFetch(row.id);
                   }}
                 >
-                  <span>{T.fetchHere}</span>
+                  <span className="whitespace-nowrap">{T.fetchHere}</span>
                   {!row.fetchItem.enabled && (
                     <span className="text-xs text-fg-muted">{T.menuFetchLater}</span>
                   )}
@@ -144,21 +142,13 @@ export function DeviceRowItem({
   );
 }
 
-/** The one generic device glyph of every row (the list cannot tell a phone from a Mac). */
-function DeviceIcon() {
+/** The row menu's glyph: three dots in the text colour, so it reads in both themes. */
+function MoreGlyph() {
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="4" y="3" width="16" height="13" rx="2" />
-      <path d="M9 20h6M12 16v4" />
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4" fill="currentColor">
+      <circle cx="3" cy="8" r="1.5" />
+      <circle cx="8" cy="8" r="1.5" />
+      <circle cx="13" cy="8" r="1.5" />
     </svg>
   );
 }

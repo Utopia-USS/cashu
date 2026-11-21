@@ -156,6 +156,17 @@ async function menu(name: string) {
 const phrase = () =>
   document.body.querySelector('input[type="password"]') as HTMLInputElement | null;
 const dialog = () => document.body.querySelector('[role="dialog"]');
+/** The dialog's buttons by their exact text, in order. */
+const dialogButtons = () =>
+  [...(dialog()?.querySelectorAll("button") ?? [])]
+    .map((node) => node.textContent ?? "")
+    .filter((text) => text !== "✕");
+const clickInDialog = (label: string) =>
+  act(async () =>
+    [...(dialog()?.querySelectorAll("button") ?? [])]
+      .find((node) => node.textContent === label)
+      ?.click(),
+  );
 async function type(input: HTMLInputElement, text: string) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, text);
@@ -205,8 +216,11 @@ it("states each device's facts on its row, this Mac first, never a log position"
   expect(mac).toContain("Fetches bank data");
   // The host cannot tell a fetch from the pin: the tag carries no time.
   expect(mac).not.toMatch(/last bank fetch|\d\d:\d\d/);
-  // One generic device glyph on every row.
-  expect(container.querySelectorAll("li[data-device] svg")).toHaveLength(3);
+  // No device glyph until the list knows a device's kind: a row starts with its name.
+  for (const row of container.querySelectorAll("li[data-device]")) {
+    expect(row.firstElementChild?.textContent).toMatch(/^(Demo Mac|Phone|Studio Mac)/);
+    expect([...row.querySelectorAll("svg")].filter((svg) => !svg.closest("button"))).toEqual([]);
+  }
   expect(rowOf("Studio Mac")?.textContent).toContain("Added yesterday by Demo Mac");
   expect(rowOf("Studio Mac")?.textContent).toContain("doesn't match this Mac's");
   // A date outside the current year carries the year; added with the recovery words.
@@ -215,14 +229,17 @@ it("states each device's facts on its row, this Mac first, never a log position"
     "Some changes from Phone haven't reached this Mac yet. Open cashU on Phone to send them.",
   );
   expect(container.textContent).not.toMatch(/segment|position|765|700/);
-  // The section counts its rows; the security details name the key's origin.
-  expect(container.querySelector("#devices-list-title + span")?.textContent).toBe("3");
+  // The list header counts the rows (the card already says "Devices"); the security details name
+  // the key's origin.
+  expect(container.querySelector("#devices-list-title")?.textContent).toBe("3 devices");
   expect(container.querySelector("details")?.textContent).toContain("Created on this Mac");
   setLanguageForTests("pl");
   await render();
   expect(rowOf("Studio Mac")?.textContent).toContain("Dodane wczoraj przez Demo Mac");
   expect(rowOf("Phone")?.textContent).toContain("Dodane 5 mar 2024 za pomocą słów odzyskiwania");
-  expect(container.textContent).toContain("Urządzenia, które mogą otworzyć profil Anna.");
+  expect(container.querySelector("#devices-list-title")?.textContent).toBe("3 urządzenia");
+  // A Polish profile name stands in quotes (it is not inflected); a device name never does.
+  expect(container.textContent).toContain("Urządzenia, które mogą otworzyć profil „Anna”.");
 });
 
 it("shows a device that removed its copy greyed in its place, its note opening the removal", async () => {
@@ -241,6 +258,8 @@ it("shows a device that removed its copy greyed in its place, its note opening t
   expect(left?.querySelector(".text-fg-muted")?.textContent).toContain("iPhone");
   expect(left?.textContent).toMatch(/removed its copy on 15 Nov( 2026)?/);
   expect(rowOf("iPad")?.textContent).not.toContain("removed its copy");
+  // The note's button is the action: no row menu on that row.
+  expect(left?.querySelector("button[aria-expanded]")).toBeNull();
   await act(async () =>
     [...(left?.querySelectorAll("button") ?? [])]
       .find((node) => node.textContent === "Remove from profile")
@@ -255,7 +274,9 @@ it("shows a device that removed its copy greyed in its place, its note opening t
   await click("Cancel");
   setLanguageForTests("pl");
   await render();
-  expect(rowOf("iPhone")?.textContent).toMatch(/usunęło swoją kopię 15 lis( 2026)?/);
+  expect(rowOf("iPhone")?.textContent).toMatch(
+    /Urządzenie iPhone usunęło swoją kopię 15 lis( 2026)?/,
+  );
 });
 
 it("offers row actions by role: no removal on this Mac, the fetch change only after 36 hours", async () => {
@@ -362,7 +383,9 @@ it("removes a device: the added ones start kept, one checkbox and the words gate
   expect(bridge.revokeCancel).toHaveBeenCalledWith({ vault: bindings.vault, token });
   const kept = dialog()?.querySelector<HTMLInputElement>("fieldset input");
   expect(kept?.checked).toBe(true);
-  expect(dialog()?.textContent).toContain("Target added these devices. Keep them in the profile:");
+  expect(dialog()?.textContent).toContain("Devices added by Target. Keep them in the profile:");
+  // The recovery words take the focus, never the close glyph.
+  expect(document.activeElement).toBe(phrase());
   expect(ackBox()?.parentElement?.textContent).toBe(
     "Changes from Target that haven't reached this Mac will be lost. Remove it anyway.",
   );
@@ -449,7 +472,9 @@ it("shows why a removal cannot start inside the dialog, never asking the host", 
     expect(phrase()).toBeNull();
     expect(bridge.revokePreview).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain(text);
-    await click("Cancel");
+    // The note replaces the button row: only "Close".
+    expect(dialogButtons()).toEqual(["Close"]);
+    await clickInDialog("Close");
   }
 });
 
@@ -527,17 +552,20 @@ it("drops the words before a vault change reaches the View and cancels a late pr
   expect(bridge.revokeCommit).not.toHaveBeenCalled();
 });
 
-it("while this Mac's fetch is paused, the banner's action opens dialog F for the override", async () => {
+/** The host's relay status for a profile with sync on (`overrides` on top). */
+const relayOn = (overrides: Record<string, unknown> = {}) => ({
+  configured: true,
+  enabled: true,
+  devices: 2,
+  identityLost: false,
+  canReconnect: false,
+  ...overrides,
+});
+
+it("while this Mac's fetch is paused, tags it, explains the bound and asks before keeping on", async () => {
   const keepFetching = vi.fn(async () => ({ kind: "done" as const }));
   vi.stubGlobal("cashuRelay", {
-    status: vi.fn(async () => ({
-      configured: true,
-      enabled: true,
-      devices: 2,
-      identityLost: false,
-      canReconnect: false,
-      pausedSince: Date.now() - 8 * DAY,
-    })),
+    status: vi.fn(async () => relayOn({ pausedSince: Date.now() - 8 * DAY })),
     keepFetching,
   });
   bindings.list = deviceList({
@@ -546,15 +574,100 @@ it("while this Mac's fetch is paused, the banner's action opens dialog F for the
   });
   bindings.bridge = {};
   await render();
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Bank fetch paused");
-  await click("Fetch bank data on this Mac");
-  expect(dialog()?.textContent).toContain("Fetch bank data on this Mac?");
-  expect(dialog()?.textContent).toContain("Make sure your other Mac “Mac mini” doesn't fetch too.");
-  await click("Cancel");
+  const mine = rowOf("Demo Mac")?.textContent ?? "";
+  expect(mine).toContain("Fetch paused");
+  expect(mine).not.toContain("Fetches bank data");
+  expect(container.querySelector('[role="alert"] > p')?.textContent).toBe(
+    "Bank fetch paused: this Mac hasn't heard from your other Mac for 7 days, so it can't be sure only one Mac fetches. Reconnect sync, or keep fetching on this Mac.",
+  );
+  expect(button("Fetch bank data on this Mac")).toBeUndefined();
+  await click("Keep fetching on this Mac");
+  expect(dialog()?.getAttribute("aria-label")).toBe("Keep fetching on this Mac?");
+  // The body does not ask the title's question again; the other Mac's name stands without quotes.
+  const body = dialog()?.querySelector("p")?.textContent;
+  expect(body).toBe(
+    "Make sure your other Mac Mac mini doesn't fetch too. cashU asks again in 7 days.",
+  );
+  expect(dialogButtons()).toEqual(["Cancel", "Keep fetching"]);
+  // The primary button takes the focus.
+  expect(document.activeElement?.textContent).toBe("Keep fetching");
+  await clickInDialog("Cancel");
   expect(keepFetching).not.toHaveBeenCalled();
-  await click("Fetch bank data on this Mac");
-  await click("Fetch on this Mac");
+  await click("Keep fetching on this Mac");
+  await clickInDialog("Keep fetching");
   expect(keepFetching).toHaveBeenCalledWith({ vault: bindings.vault });
+  setLanguageForTests("pl");
+  await render();
+  expect(rowOf("Demo Mac")?.textContent).toContain("Pobieranie wstrzymane");
+});
+
+it("offers 'Pair a phone' only with a sync config, and 'Go to sync' focuses the Sync switch", async () => {
+  bindings.list = deviceList();
+  await render();
+  // No sync config on this host: no Sync card, so pairing would be a dead end.
+  expect(button("Pair a phone")).toBeUndefined();
+  vi.stubGlobal("cashuRelay", { status: vi.fn(async () => relayOn()) });
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render();
+  expect(button("Pair a phone")).toBeDefined();
+  // The paused banner's "Go to sync" (the same move as the pairing dialog's) lands on the switch.
+  bindings.list = deviceList({
+    leader: { ...leaderOk, paused: "offline_too_long", pausedPeer: target },
+  });
+  await render();
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  try {
+    await click("Go to sync");
+  } finally {
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  }
+  expect(scrolled).toHaveBeenCalled();
+  expect(document.activeElement?.getAttribute("role")).toBe("switch");
+});
+
+it("replaces the button row of a failed step with Close and 'Try again', which re-runs that step", async () => {
+  // Dialog R: the preview fails once, then succeeds.
+  const revokePreview = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("host away"))
+    .mockImplementation(async () => prepared(false, { affected: [] }));
+  bindings.bridge = revokeBridge({ revokePreview });
+  bindings.list = deviceList();
+  await openRemoval();
+  expect(dialog()?.textContent).toContain("That didn't finish. Try again.");
+  expect(dialogButtons()).toEqual(["Close", "Try again"]);
+  expect(phrase()).toBeNull();
+  await clickInDialog("Try again");
+  expect(revokePreview).toHaveBeenCalledTimes(2);
+  expect(revokePreview.mock.calls[1]?.[0]).toEqual(revokePreview.mock.calls[0]?.[0]);
+  expect(phrase()).not.toBeNull();
+  expect(dialogButtons()).toEqual(["Cancel", "Remove and change the key"]);
+  await clickInDialog("Cancel");
+  // Dialog F: the host refuses the change once, then prepares it.
+  const leaderPreview = vi
+    .fn()
+    .mockResolvedValueOnce({ kind: "refused", code: "busy" })
+    .mockImplementation(async () => leaderPrepared("4".repeat(26)));
+  const leaderCommit = vi.fn(async () => ({
+    kind: "completed" as const,
+    operationId: "4".repeat(26),
+  }));
+  bindings.bridge = { leaderPreview, leaderCommit };
+  bindings.list = silentList();
+  await render();
+  await act(async () => (await menu("Demo Mac"))[0]?.click());
+  // Its primary button has the focus on open.
+  expect(document.activeElement?.textContent).toBe("Fetch on this Mac");
+  await clickInDialog("Fetch on this Mac");
+  expect(dialog()?.textContent).toContain("That didn't finish. Try again.");
+  expect(dialogButtons()).toEqual(["Close", "Try again"]);
+  await clickInDialog("Try again");
+  expect(leaderPreview).toHaveBeenCalledTimes(2);
+  expect(leaderPreview.mock.calls[1]?.[0]).toEqual(leaderPreview.mock.calls[0]?.[0]);
+  expect(leaderCommit).toHaveBeenCalledTimes(1);
+  expect(dialog()).toBeNull();
 });
 
 it("keeps the last list through a host handover and reveals 'unavailable' only after 3 s, without a timer", async () => {

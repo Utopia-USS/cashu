@@ -19,6 +19,7 @@ const invited: PairingViewState = {
 
 export default { title: "Desktop/Settings/Pairing", component: PairingView };
 export const Idle = { render: () => <PairingView state={{ kind: "idle", onCreate: noop }} /> };
+/** A phone connected: only the six-digit field, "Confirm code" and "Cancel invitation". */
 export const Invitation = { render: () => <PairingView state={invited} /> };
 /** No phone has connected yet: no six-digit field, no "Confirm code". */
 export const InvitationWaitingForScan = {
@@ -29,7 +30,7 @@ export const InvitationPhoneUnknown = {
   render: () => <PairingView state={{ ...invited, phone: "unknown" }} />,
 };
 export const InvitationCopied = {
-  render: () => <PairingView state={{ ...invited, copied: true }} />,
+  render: () => <PairingView state={{ ...invited, phone: "waiting", copied: true }} />,
 };
 export const Checking = {
   render: () => <PairingView state={{ kind: "checking", onCancel: noop }} />,

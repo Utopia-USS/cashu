@@ -319,7 +319,16 @@ function readyBridge(extra: Record<string, unknown>) {
 it("shows a long code as one start…end line, copies the whole code and writes a 24 h expiry", async () => {
   const writeText = vi.fn(async () => {});
   vi.stubGlobal("navigator", { clipboard: { writeText } });
-  const view = await created(readyBridge({}));
+  // The code step: no phone has connected yet.
+  const view = await created(
+    readyBridge({
+      inspect: vi.fn(async () => ({
+        kind: "pending" as const,
+        operationId: OP,
+        phoneConnected: false,
+      })),
+    }),
+  );
   try {
     const shown = view.container.querySelector("code")?.textContent ?? "";
     expect(shown).toBe("cashu-pair:eyJlcGg…Y2RjZCJ9");
@@ -333,7 +342,7 @@ it("shows a long code as one start…end line, copies the whole code and writes 
   }
 });
 
-it("hides the six digits until the host says a phone connected, then offers them", async () => {
+it("shows the code step until a phone connected, then only the six digits and the two buttons", async () => {
   const inspect = vi
     .fn()
     .mockResolvedValueOnce({ kind: "pending", operationId: OP, phoneConnected: false })
@@ -341,13 +350,25 @@ it("hides the six digits until the host says a phone connected, then offers them
   const view = await created(readyBridge({ inspect }));
   try {
     expect(view.container.textContent).toContain("Scan it with the phone.");
+    expect(view.container.textContent).toContain("Open cashU on your phone and scan this code.");
+    expect(view.container.querySelector('[role="img"]')).not.toBeNull();
     expect(view.container.querySelector('input[inputmode="numeric"]')).toBeNull();
     expect(view.button("Confirm code")).toBeUndefined();
     expect(view.button("Cancel invitation")).toBeDefined();
     await view.push();
-    expect(view.container.textContent).not.toContain("Scan it with the phone");
-    expect(view.container.querySelector('input[inputmode="numeric"]')).not.toBeNull();
-    expect(view.button("Confirm code")).toBeDefined();
+    // A phone connected: no QR, code, "Copy code", expiry or lead line; the field's label instructs.
+    for (const gone of ["Scan it with the phone", "Expires at", "scan this code", "Code to paste"])
+      expect(view.container.textContent).not.toContain(gone);
+    expect(view.container.querySelector('[role="img"]')).toBeNull();
+    expect(view.container.querySelector("code")).toBeNull();
+    expect(view.button("Copy code")).toBeUndefined();
+    expect(
+      view.container.querySelector('input[inputmode="numeric"]')?.closest("label")?.textContent,
+    ).toBe("Six digits shown on the phone");
+    expect([...view.container.querySelectorAll("button")].map((node) => node.textContent)).toEqual([
+      "Confirm code",
+      "Cancel invitation",
+    ]);
   } finally {
     await view.close();
   }
@@ -450,13 +471,13 @@ it("returns to Create invitation with a line when the host says the phone cancel
     .mockResolvedValueOnce({ kind: "phone_cancelled", operationId: OP });
   const view = await created(readyBridge({ inspect }));
   try {
-    expect(view.container.textContent).toContain("Type the six digits shown on your phone.");
+    expect(view.container.textContent).toContain("Six digits shown on the phone");
     // The host ended the invitation on the phone's abort and pushed a new pairing revision.
     await view.push();
     expect(view.container.textContent).toContain(
       "The phone cancelled pairing. Create a new invitation to try again.",
     );
-    expect(view.container.textContent).not.toContain("Type the six digits");
+    expect(view.container.textContent).not.toContain("Six digits shown on the phone");
     expect(view.container.querySelector('input[inputmode="numeric"]')).toBeNull();
     expect(view.button("Create invitation")).toBeDefined();
   } finally {

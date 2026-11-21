@@ -6,6 +6,12 @@ import { addDays } from "@cashu/ui-logic/core/time";
 
 type Ready = Extract<DeviceListResult, { kind: "ready" }>;
 
+/**
+ * The fetch lease's offline bound in days (sync lease.ts OFFLINE_LEAD_MAX_MS, 7 days): the device list
+ * does not carry it, so the paused-fetch texts take it from here.
+ */
+export const OFFLINE_BOUND_DAYS = 7;
+
 /** The all-zero issuer: a device added with the 24 recovery words, not by another device. */
 const RECOVERY_ISSUER = "0".repeat(32);
 
@@ -56,6 +62,8 @@ export interface DeviceRow {
    * `lastActivityAt` cannot tell a fetch from the pin (designer, 2026-11-21).
    */
   readonly fetches: boolean;
+  /** This Mac fetches and its bank fetch is paused by the offline bound: "Fetch paused" instead. */
+  readonly fetchPaused: boolean;
   readonly origin: DeviceOrigin;
   readonly addedOn: DayWord | null;
   /** The day the device said it removed its own copy (still a device of the profile). */
@@ -68,7 +76,10 @@ export interface DeviceRow {
    * mode auto, this Mac already fetches).
    */
   readonly fetchItem: { readonly enabled: boolean } | null;
-  /** "Remove from profile…": every trusted device but this Mac. */
+  /**
+   * "Remove from profile…" in the row menu: every trusted device but this Mac and a device that removed
+   * its copy (its note's button removes it; no row menu then).
+   */
   readonly removable: boolean;
 }
 
@@ -109,7 +120,8 @@ export function deviceRows(
         id: device.id,
         name: device.name,
         thisMac,
-        fetches: device.id === fetching,
+        fetches: device.id === fetching && list.leader.paused === undefined,
+        fetchPaused: device.id === fetching && list.leader.paused !== undefined,
         origin:
           device.pairedBy === device.id
             ? { kind: "first" }
@@ -123,7 +135,7 @@ export function deviceRows(
         behind: device.behind && !device.forked,
         forked: device.forked,
         fetchItem: pinnable ? { enabled: fetchChangeAllowed } : null,
-        removable: !thisMac && device.trusted,
+        removable: !thisMac && device.trusted && !left,
       };
     })
     .sort(

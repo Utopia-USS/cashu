@@ -29,11 +29,8 @@ export const T = catalog({
     pl: (at: number) => `Ważny do ${clockTime(at, "pl")}. Zeskanuj go telefonem.`,
     en: (at: number) => `Expires at ${clockTime(at, "en")}. Scan it with the phone.`,
   },
-  sasInstruction: {
-    pl: "Wpisz sześć cyfr wyświetlonych na telefonie.",
-    en: "Type the six digits shown on your phone.",
-  },
-  sasLabel: { pl: "Sześć cyfr z telefonu", en: "Six digits from phone" },
+  // Designer (DV2 item 7): the field's label is the only instruction once a phone connected.
+  sasLabel: { pl: "Sześć cyfr z telefonu", en: "Six digits shown on the phone" },
   confirm: { pl: "Potwierdź kod", en: "Confirm code" },
   cancel: { pl: "Anuluj zaproszenie", en: "Cancel invitation" },
   checking: { pl: "Sprawdzanie stanu...", en: "Checking this operation..." },

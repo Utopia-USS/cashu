@@ -15,7 +15,10 @@ const removedPl = (day: DayWord) =>
   day.kind === "date"
     ? `usunęło swoją kopię ${dateText(day, "pl")}`
     : `${dayPl(day)} usunęło swoją kopię`;
+/** "od 1 dnia", "od 7 dni". */
 const daysPl = (n: number) => `${n} ${plForm(n, "dnia", "dni", "dni")}`;
+/** "za 1 dzień", "za 7 dni". */
+const inDaysPl = (n: number) => `${n} ${plForm(n, "dzień", "dni", "dni")}`;
 const daysEn = (n: number) => `${n} ${enForm(n, "day", "days")}`;
 
 export const T = catalog({
@@ -26,7 +29,7 @@ export const T = catalog({
   // §1 page.
   lead: {
     pl: (profile: string) =>
-      `Urządzenia, które mogą otworzyć profil ${profile}. Każde ma własną zaszyfrowaną kopię.`,
+      `Urządzenia, które mogą otworzyć profil „${profile}”. Każde ma własną zaszyfrowaną kopię.`,
     en: (profile: string) =>
       `Devices that can open ${profile}'s profile. Each one keeps an encrypted copy.`,
   },
@@ -36,8 +39,22 @@ export const T = catalog({
     en: "Devices that can open this profile. Each one keeps an encrypted copy.",
   },
   section: { pl: "Urządzenia", en: "Devices" },
-  // §1.3 the paused bank fetch: its primary action (the override, dialog F).
+  // Designer (DV2 item 2): the list header counts the devices beside "Pair a phone".
+  count: {
+    pl: (n: number) => `${n} ${plForm(n, "urządzenie", "urządzenia", "urządzeń")}`,
+    en: (n: number) => `${n} ${enForm(n, "device", "devices")}`,
+  },
+  // The row menu's item on this Mac (dialog F).
   fetchHere: { pl: "Pobieraj dane z banku na tym Macu", en: "Fetch bank data on this Mac" },
+  // Designer (DV2 item 4): state P, this Mac fetches and its fetch is paused by the offline bound.
+  fetchPausedTag: { pl: "Pobieranie wstrzymane", en: "Fetch paused" },
+  fetchPausedBanner: {
+    pl: (days: number) =>
+      `Pobieranie z banku wstrzymane: ten Mac od ${daysPl(days)} nie ma kontaktu z Twoim drugim Makiem, więc nie ma pewności, że pobiera tylko jeden. Połącz ponownie synchronizację albo pobieraj dalej na tym Macu.`,
+    en: (days: number) =>
+      `Bank fetch paused: this Mac hasn't heard from your other Mac for ${daysEn(days)}, so it can't be sure only one Mac fetches. Reconnect sync, or keep fetching on this Mac.`,
+  },
+  keepFetching: { pl: "Pobieraj dalej na tym Macu", en: "Keep fetching on this Mac" },
   // §2 device row.
   thisMac: { pl: "Ten Mac", en: "This Mac" },
   fetches: { pl: "Pobiera dane z banku", en: "Fetches bank data" },
@@ -68,12 +85,12 @@ export const T = catalog({
   // Designer copy (dev-feedback, real run 2), the day now in words.
   removedCopy: {
     pl: (device: string, day: DayWord) =>
-      `Urządzenie „${device}” ${removedPl(day)}. Usunąć je z tego profilu?`,
+      `Urządzenie ${device} ${removedPl(day)}. Usunąć je z tego profilu?`,
     en: (device: string, day: DayWord) =>
       `${device} removed its copy ${onDayEn(day)}. Remove it from this profile?`,
   },
   removeLeft: { pl: "Usuń z profilu", en: "Remove from profile" },
-  // Proposed: the accessible name of a row's "…" button.
+  // Proposed: the accessible name of a row's menu button.
   rowMenu: {
     pl: (device: string) => `Opcje urządzenia ${device}`,
     en: (device: string) => `Options for ${device}`,
@@ -116,7 +133,7 @@ export const T = catalog({
   },
   // §4 dialog R.
   removeTitle: {
-    pl: (device: string, profile: string) => `Usunąć ${device} z profilu ${profile}?`,
+    pl: (device: string, profile: string) => `Usunąć ${device} z profilu „${profile}”?`,
     en: (device: string, profile: string) => `Remove ${device} from ${profile}'s profile?`,
   },
   // Proposed: the same while the profile's name is not known.
@@ -149,9 +166,10 @@ export const T = catalog({
     en: (device: string) =>
       `Changes from ${device} that haven't reached this Mac will be lost. Remove it anyway.`,
   },
+  // Designer (DV2 item 12): no gendered verb in Polish.
   keepTitle: {
-    pl: (device: string) => `${device} dodał te urządzenia. Zostaw je w profilu:`,
-    en: (device: string) => `${device} added these devices. Keep them in the profile:`,
+    pl: (device: string) => `Urządzenia dodane przez ${device}. Zostaw je w profilu:`,
+    en: (device: string) => `Devices added by ${device}. Keep them in the profile:`,
   },
   refreshSelection: { pl: "Sprawdź wybrane urządzenia", en: "Review selected devices" },
   recovery: { pl: "Twoje 24 słowa odzyskiwania", en: "Your 24 recovery words" },
@@ -161,6 +179,9 @@ export const T = catalog({
   },
   remove: { pl: "Usuń i zmień klucz", en: "Remove and change the key" },
   cancel: { pl: "Anuluj", en: "Cancel" },
+  // Dialogs R and F in an error or pause state: the note replaces the button row (DV2 item 9).
+  close: { pl: "Zamknij", en: "Close" },
+  tryAgain: { pl: "Spróbuj ponownie", en: "Try again" },
   evidencePending: {
     pl: "cashU wciąż sprawdza historię urządzeń tego profilu. Spróbuj usunąć za kilka minut.",
     en: "cashU is still checking this profile's device history. Try removing again in a few minutes.",
@@ -186,9 +207,10 @@ export const T = catalog({
   },
   inspect: { pl: "Sprawdź wynik", en: "Check outcome" },
   working: { pl: "Trwa operacja…", en: "Working…" },
+  // Designer (DV2 item 9), with "Try again" re-running the dialog's step.
   failed: {
-    pl: "Nie udało się dokończyć operacji. Sprawdź stan i spróbuj ponownie.",
-    en: "The operation could not finish. Check its status and try again.",
+    pl: "Nie udało się dokończyć. Spróbuj ponownie.",
+    en: "That didn't finish. Try again.",
   },
   removed: {
     pl: (device: string) => `Usunięto ${device}. Klucz profilu został zmieniony.`,
@@ -229,6 +251,22 @@ export const T = catalog({
         : `Switch now without waiting for ${current}. If it is still running, both Macs may fetch once; duplicate transactions are filtered out.`,
   },
   fetchConfirmHere: { pl: "Pobieraj na tym Macu", en: "Fetch on this Mac" },
+  // Dialog F for the paused fetch (DV2 items 4 and 13): the title asks, the body does not repeat it,
+  // the other Mac's name without quotes.
+  keepFetchingTitle: { pl: "Pobierać dalej na tym Macu?", en: "Keep fetching on this Mac?" },
+  keepFetchingBody: {
+    pl: (name: string, days: number) =>
+      `Upewnij się, że Twój drugi Mac ${name} nie pobiera danych. cashU zapyta ponownie za ${inDaysPl(days)}.`,
+    en: (name: string, days: number) =>
+      `Make sure your other Mac ${name} doesn't fetch too. cashU asks again in ${daysEn(days)}.`,
+  },
+  keepFetchingBodyUnnamed: {
+    pl: (days: number) =>
+      `Upewnij się, że Twój drugi Mac nie pobiera danych. cashU zapyta ponownie za ${inDaysPl(days)}.`,
+    en: (days: number) =>
+      `Make sure your other Mac doesn't fetch too. cashU asks again in ${daysEn(days)}.`,
+  },
+  keepFetchingConfirm: { pl: "Pobieraj dalej", en: "Keep fetching" },
   fetchDone: {
     pl: (device: string) => `Teraz dane z banku pobiera ${device}.`,
     en: (device: string) => `${device} fetches bank data now.`,

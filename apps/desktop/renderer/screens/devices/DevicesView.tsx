@@ -4,7 +4,7 @@ import { T as P } from "../pairing/Pairing.strings.js";
 import { PairingView, type PairingViewState } from "../pairing/PairingView.js";
 import { DeviceRowItem } from "./DeviceRowItem.js";
 import { T } from "./Devices.strings.js";
-import type { DeviceRow } from "./deviceRows.js";
+import { type DeviceRow, OFFLINE_BOUND_DAYS } from "./deviceRows.js";
 import { FetchDialog, KeepFetchingDialog } from "./FetchDialog.js";
 import { RemoveDeviceDialog } from "./RemoveDeviceDialog.js";
 import { S } from "./Sync.strings.js";
@@ -48,7 +48,7 @@ export function DevicesView({
   onGoToSync?: () => void;
   /** The Sync card, between the lead line and the device list. */
   syncRow?: ReactNode;
-  /** The phone pairing flow behind "Pair a phone" (absent: no pairing on this screen). */
+  /** The phone pairing flow behind "Pair a phone" (absent: no pairing on this screen, e.g. no sync config). */
   pairing?: PairingViewState;
 }) {
   const [pairOpen, setPairOpen] = useState(false);
@@ -92,19 +92,14 @@ export function DevicesView({
       />
     </Dialog>
   );
-  // Without a list, pairing still works: the section keeps its header and button.
+  // Without a list, pairing still works: the section keeps its button (no count to show).
   if (state.list?.kind !== "ready")
     return (
       <div className="grid gap-6">
         {header}
         {syncRow}
-        <section className="grid gap-2.5" aria-labelledby="devices-list-title">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h3 id="devices-list-title" className="font-strong">
-              {T.section}
-            </h3>
-            {pairButton}
-          </div>
+        <section className="grid gap-2.5" aria-label={T.section}>
+          {pairButton && <div className="flex flex-wrap items-center gap-2.5">{pairButton}</div>}
           {unavailable}
         </section>
         {pairDialog}
@@ -134,20 +129,24 @@ export function DevicesView({
       {stale && unavailable}
       <section className="grid gap-2.5" aria-labelledby="devices-list-title">
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* The card already says "Devices": the header counts them (designer DV2 item 2). */}
           <h3 id="devices-list-title" className="font-strong">
-            {T.section}
+            {T.count(rows.length)}
           </h3>
-          <span className="text-fg-muted">{rows.length}</span>
           {pairButton}
         </div>
         {fetchPaused && (
           <div role="alert" className="grid gap-2.5 rounded-lg bg-warning-bg p-4 text-warning">
-            <p>{fetchPaused === "outage" ? S.fetchPaused : S.fetchPausedSyncOff}</p>
+            <p>
+              {fetchPaused === "outage"
+                ? T.fetchPausedBanner(OFFLINE_BOUND_DAYS)
+                : S.fetchPausedSyncOff}
+            </p>
             <div className="flex flex-wrap gap-2">
               {onGoToSync && <Button onPress={onGoToSync}>{S.goToSync}</Button>}
               {keepFetching && (
                 <Button variant="primary" disabled={keepFetching.busy} onPress={keepFetching.onAsk}>
-                  {T.fetchHere}
+                  {T.keepFetching}
                 </Button>
               )}
             </div>

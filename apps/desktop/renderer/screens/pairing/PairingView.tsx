@@ -41,6 +41,26 @@ export type PairingViewState =
   | { kind: "phone_cancelled"; onCreate(): Promise<void> }
   | { kind: "refused" | "expired" | "sync_off"; onCreate(): Promise<void> };
 
+/** The six-digit field; its label is the only instruction. */
+function DigitsStep({ state }: { state: Extract<PairingViewState, { kind: "invited" }> }) {
+  return (
+    <label className="grid gap-2">
+      <span>{T.sasLabel}</span>
+      <input
+        className="rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent"
+        value={state.code}
+        onChange={(event) => state.onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))}
+        inputMode="numeric"
+        pattern="[0-9]{6}"
+        maxLength={6}
+        autoComplete="off"
+        spellCheck={false}
+        disabled={state.submitting}
+      />
+    </label>
+  );
+}
+
 export function PairingView({
   state,
   onGoToSync,
@@ -52,6 +72,9 @@ export function PairingView({
   /** Inside the "Pair a phone" dialog, which carries the title. */
   bare?: boolean;
 }) {
+  // Once a phone connected, the dialog shows only the six digits (designer DV2 item 7); "unknown" (a
+  // host that does not say) keeps the code step with the field.
+  const codeStep = state.kind === "invited" && state.phone !== "connected";
   return (
     <section
       className="grid gap-4"
@@ -62,7 +85,7 @@ export function PairingView({
           {T.title}
         </h2>
       )}
-      <p>{T.intro}</p>
+      {codeStep && <p>{T.intro}</p>}
       {state.kind === "unavailable" && <p role="status">{T.unavailable}</p>}
       {state.kind === "creating" && (
         <p role="status" className="flex items-center gap-1.5">
@@ -72,51 +95,38 @@ export function PairingView({
       )}
       {state.kind === "invited" && (
         <div className="grid gap-4">
-          <div role="img" aria-label={T.qrLabel}>
-            <QRCodeSVG value={state.qr} size={232} level="M" title={T.qrLabel} />
-          </div>
-          <p>{T.pasteHint}</p>
-          <div className="grid gap-1">
-            <span className="text-sm text-fg-muted">{T.codeLabel}</span>
-            <code className="truncate whitespace-nowrap rounded-control border border-border bg-chip px-3 py-1.5 font-mono text-xs-plus">
-              {state.codePreview}
-            </code>
-          </div>
-          <div aria-live="polite">
-            <Button disabled={!state.canCopy} onPress={state.onCopy}>
-              {state.copied ? T.copied : T.copy}
-            </Button>
-          </div>
-          {state.phone === "waiting" ? (
-            <p role="status" className="flex items-center gap-1.5">
-              <Spinner />
-              {T.expiryScan(state.expiresAt)}
-            </p>
-          ) : (
+          {codeStep && (
             <>
-              <p>{T.expiry(state.expiresAt)}</p>
-              <p>{T.sasInstruction}</p>
-              <label className="grid gap-2">
-                <span>{T.sasLabel}</span>
-                <input
-                  className="rounded-sm border border-border bg-surface px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent"
-                  value={state.code}
-                  onChange={(event) =>
-                    state.onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={state.submitting}
-                />
-              </label>
+              <div role="img" aria-label={T.qrLabel}>
+                <QRCodeSVG value={state.qr} size={232} level="M" title={T.qrLabel} />
+              </div>
+              <p>{T.pasteHint}</p>
+              <div className="grid gap-1">
+                <span className="text-sm text-fg-muted">{T.codeLabel}</span>
+                <code className="truncate whitespace-nowrap rounded-control border border-border bg-chip px-3 py-1.5 font-mono text-xs-plus">
+                  {state.codePreview}
+                </code>
+              </div>
+              <div aria-live="polite">
+                <Button disabled={!state.canCopy} onPress={state.onCopy}>
+                  {state.copied ? T.copied : T.copy}
+                </Button>
+              </div>
+              {state.phone === "waiting" ? (
+                <p role="status" className="flex items-center gap-1.5">
+                  <Spinner />
+                  {T.expiryScan(state.expiresAt)}
+                </p>
+              ) : (
+                <p>{T.expiry(state.expiresAt)}</p>
+              )}
             </>
           )}
+          {state.phone !== "waiting" && <DigitsStep state={state} />}
           <div className="flex gap-2">
             {state.phone !== "waiting" && (
               <Button
+                variant="primary"
                 disabled={state.code.length !== 6 || state.submitting}
                 onPress={state.onConfirm}
               >
@@ -143,7 +153,9 @@ export function PairingView({
       {state.kind === "unknown" && (
         <div className="grid gap-2">
           <p role="alert">{T.unknown}</p>
-          <Button onPress={state.onInspect}>{T.inspect}</Button>
+          <div>
+            <Button onPress={state.onInspect}>{T.inspect}</Button>
+          </div>
         </div>
       )}
       {state.kind === "waiting" && (
@@ -169,9 +181,7 @@ export function PairingView({
           <p role="alert">{T.syncOff}</p>
           {onGoToSync && (
             <div>
-              <Button variant="link" onPress={onGoToSync}>
-                {T.goToSync}
-              </Button>
+              <Button onPress={onGoToSync}>{T.goToSync}</Button>
             </div>
           )}
         </div>
@@ -180,7 +190,11 @@ export function PairingView({
         state.kind === "completed" ||
         state.kind === "refused" ||
         state.kind === "already_added" ||
-        state.kind === "phone_cancelled") && <Button onPress={state.onCreate}>{T.create}</Button>}
+        state.kind === "phone_cancelled") && (
+        <div>
+          <Button onPress={state.onCreate}>{T.create}</Button>
+        </div>
+      )}
     </section>
   );
 }
