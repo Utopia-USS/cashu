@@ -546,6 +546,7 @@ async function rule(ctx: Context, args: ToolArgs): Promise<L.LabelledTree> {
 }
 const HANDLERS: Readonly<Record<string, ToolSpec<NativeToolStore>["handler"]>> = {
   propose_import: proposeInvestmentImport,
+  propose_transactions: proposeInvestmentImport,
   search_instruments: searchInstruments,
   set_recommendation: recommend,
   set_recommendations: recommendations,

@@ -2,9 +2,9 @@
 name: import-builder
 description: >
   Use when the user has an export cashU cannot read yet (xlsx, csv, json from a broker such as XTB, DIF, Revolut, Binance, Zonda, or from a bank) or wants to pull broker, exchange or bank data from an API.
-  Applicability - POSITIVE: broker / exchange / crypto history or bank statements turned into a reusable file or fetch connector (preferred), a one-off converter or a generic CSV mapping; the old (Python) cashU app's data brought over blind through the same import paths.
+  Applicability - POSITIVE: broker / exchange / crypto history or bank statements turned into a reusable file or fetch connector (preferred), a one-off converter or a generic CSV mapping; chat-entered trades proposed without an export; the old (Python) cashU app's data brought over blind through the same import paths.
   Applicability - NEGATIVE: NOT bank CSV or Open Banking imports the app supports and categories (budget-setup), the strategy and check-ins (investments-setup) or custom rules (extension-builder).
-  Triggers: /import-builder, "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy", "przenieś dane ze starej aplikacji", "python_data_present".
+  Triggers: /import-builder, "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy", "przenieś dane ze starej aplikacji", "dopisz transakcje bez eksportu", "python_data_present".
 ---
 
 # import-builder: a connector (or converter) for an unsupported export
@@ -86,6 +86,8 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
 | `validate_import(path, mapping?)` | converter route: validation report of the converted file |
 | `validate_budget_import(path)` | budget: validation report of a `cashu-budget-import` file (your connector's fixture output or a converter's), by kind / row / field, no values |
 | `propose_import(path, account, mapping?)` | converter / mapping route: pending import for the owner |
+| `validate_transactions(rows, account?)` | chat entry: the typed-in rows checked with the import rules; with `account` also new vs duplicate rows |
+| `propose_transactions(account, rows, source?)` | chat entry: the rows as a pending import for the owner, no file |
 | `positions`, `portfolio_overview` | after the commit: new instruments, weights, freshness |
 
 ## Flow
@@ -176,6 +178,31 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
 Converter route (one-off script for investments, or a `cashu-budget-import` file for statements) and
 the converter contract (standard library only, value-free errors, exact decimals, deterministic rows):
 `references/converter-workflow.md`.
+
+## Trades typed in from chat (no export)
+
+When the owner tells you trades in chat ("kupiłem 10 NVDA po 120 USD na XTB USD") instead of exporting a
+file, enter them without a file:
+
+1. Pick the brokerage account (`portfolio_overview` `accounts[].account_id`); ask when the owner's words
+   fit several. One call = one account.
+2. Build one row per trade in the import format's `txn` fields (`references/import-format.md` 3-4):
+   `date` (and `time` when known), `type`, `symbol` + `exchange` and the `isin` whenever you know it
+   (`search_instruments`), `quantity`, `price`, `currency`, `fee`; `cash_amount` / `cash_currency` /
+   `fx_rate` for a trade settled in another currency. Decimals as strings with a dot. Never invent an
+   `external_ref` (the tools refuse it).
+3. `validate_transactions(rows, account)`: fix errors by kind and row; check `new` vs `duplicates`.
+4. Read the rows back to the owner in one short list (date, type, instrument, quantity, price) and ask
+   for a yes; then `propose_transactions(account, rows, reason)`. The owner commits the pending import
+   in the app; nothing is booked before that.
+5. Re-proposing the same rows stores nothing new (duplicates) or points at the pending proposal. A wrong
+   pending import: the owner rejects it in the app and you propose the corrected rows. Committed rows
+   cannot be removed from chat; say so and point the owner to the app.
+
+Caveat, say it once: typed-in rows have no broker id, so a broker export of the same account and dates
+imported later would not recognise them and would book those trades twice. Use one route per account
+and period: chat entries for the gap since the last export, and the next export starting after them
+(or skip the overlap).
 
 ## Old cashU (Python) data
 
@@ -309,6 +336,8 @@ Before telling the user it is done:
    Konektory, and `connectors()` showed it approved before the import.
 5. Converter or mapping route: `validate_import` / `validate_budget_import` clean before
    `propose_import`; the converted file was deleted after the commit.
+   Chat entry: `validate_transactions` clean and the rows confirmed by the owner before
+   `propose_transactions`; the one-route-per-period caveat said.
 6. After the commit: `positions` checked and unclassified instruments named for the owner.
 7. Old cashU data: only the schema and enum labels were read, never values; the copy and the converted
    files were deleted after the commit; the owner was told what did not come over.

@@ -201,6 +201,10 @@ Rules for converter authors:
 - Do not reuse one `external_ref` for unrelated events.
 - Keep the conversion deterministic: the same export must always produce the same rows.
 
+Rows an agent types in from chat (MCP `propose_transactions`) are such a file without `external_ref`, so
+they use the second key. A broker export of the same account and dates imported later carries
+`external_ref` and does not match them: use one route per account and period.
+
 ## 6. Order of rows
 
 Rows may be in any order. The portfolio is computed in chronological order: by `date`; rows of the same

@@ -81,7 +81,10 @@ export type { NativeToolStore, ToolInventoryEntry } from "./runtime/types.js";
 export { budgetTools } from "./tools/budget.js";
 export { connectorTools } from "./tools/connectors.js";
 export { coreTools } from "./tools/core.js";
-export { investmentImportAdapter } from "./tools/investmentImportProposal.js";
+export {
+  investmentImportAdapter,
+  investmentTransactionsAdapter,
+} from "./tools/investmentImportProposal.js";
 export { investmentSearchAdapter } from "./tools/investmentSearch.js";
 export { investmentTools } from "./tools/investments.js";
 export { investmentWatchAdapter } from "./tools/investmentWatch.js";

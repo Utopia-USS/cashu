@@ -12,6 +12,7 @@ import {
   investmentImportAdapter,
   investmentSearchAdapter,
   investmentTools,
+  investmentTransactionsAdapter,
   investmentWatchAdapter,
   investmentWriteTools,
   loansTools,
@@ -62,6 +63,7 @@ const NATIVE_MCP_STORE_TOOLS = new Set([
   "propose_account_removal",
   "inspect_export",
   "validate_import",
+  "validate_transactions",
 ]);
 /** Native tools that need the investment read authority. */
 const NATIVE_MCP_INVESTMENT_READS = new Set([
@@ -221,6 +223,9 @@ function startMcpBackend(
         : []),
       ...(tools.some((tool) => tool.name === "add_to_watchlist") ? [investmentWatchAdapter] : []),
       ...(tools.some((tool) => tool.name === "propose_import") ? [investmentImportAdapter] : []),
+      ...(tools.some((tool) => tool.name === "propose_transactions")
+        ? [investmentTransactionsAdapter]
+        : []),
     ],
   );
   return nativeBackend({
@@ -253,7 +258,9 @@ function selectTools(input: {
   tools.push(...loansTools());
   tools.push(
     ...investmentTools().filter((tool) =>
-      tool.name === "inspect_export" || tool.name === "validate_import"
+      tool.name === "inspect_export" ||
+      tool.name === "validate_import" ||
+      tool.name === "validate_transactions"
         ? true
         : tool.name === "signals" ||
           tool.name === "theses" ||
@@ -305,7 +312,8 @@ function nativeToolEnabled(
     if (NATIVE_MCP_INVESTMENT_READS.has(name)) return market.investmentReads !== undefined;
     if (name === "history_metrics") return market.investmentHistory !== undefined;
     if (NATIVE_MCP_RESEARCH.has(name)) return market.research !== undefined;
-    if (name === "propose_import") return asyncCurrent(investmentAsync?.imports);
+    if (name === "propose_import" || name === "propose_transactions")
+      return asyncCurrent(investmentAsync?.imports);
     if (NATIVE_MCP_INVESTMENT_WRITES.has(name)) {
       if (market.investmentWrites === undefined) return false;
       if (name === "add_to_watchlist") return fetchCurrent(investmentAsync?.watch);

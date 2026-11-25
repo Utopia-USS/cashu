@@ -100,6 +100,7 @@ it("offers exactly the implemented read bodies with original descriptors and ref
     "theses",
     "inspect_export",
     "validate_import",
+    "validate_transactions",
   ]);
   expect(investmentTools().every((t) => !t.write)).toBe(true);
   const spec = investmentTools().find((t) => t.name === "validate_import");

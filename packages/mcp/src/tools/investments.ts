@@ -7,6 +7,7 @@ import { historyMetrics } from "./investmentsHistory.js";
 import { validateInvestmentImport } from "./investmentsImport.js";
 import { signals, theses } from "./investmentsJournal.js";
 import { portfolioOverview, positions, reviewContext, strategyStatus } from "./investmentsRead.js";
+import { validateInvestmentTransactions } from "./investmentTransactions.js";
 
 const HANDLERS: Readonly<Record<string, ToolSpec<NativeToolStore>["handler"]>> = {
   portfolio_overview: portfolioOverview,
@@ -16,6 +17,7 @@ const HANDLERS: Readonly<Record<string, ToolSpec<NativeToolStore>["handler"]>> =
   strategy_status: strategyStatus,
   theses,
   validate_import: validateInvestmentImport,
+  validate_transactions: validateInvestmentTransactions,
   inspect_export: inspectExport,
   history_metrics: historyMetrics,
 };

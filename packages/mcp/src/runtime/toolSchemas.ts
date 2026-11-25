@@ -1,6 +1,7 @@
 // The MCP tool schemas, hand-maintained (their source of truth). First captured from the retired
 // Python tool registry.
 import type { ToolMetadata } from "../registry.js";
+import { ROWS_PROPERTY, SOURCE_PROPERTY } from "../tools/investmentTransactionRows.js";
 
 type Defaulted = "refused" | "refusedValues" | "nullable" | "also";
 
@@ -31,6 +32,7 @@ export const TOOL_ORDER: readonly string[] = [
   "theses",
   "inspect_export",
   "validate_import",
+  "validate_transactions",
   "set_recommendation",
   "set_recommendations",
   "record_decision",
@@ -38,6 +40,7 @@ export const TOOL_ORDER: readonly string[] = [
   "propose_strategy",
   "propose_custom_rule",
   "propose_import",
+  "propose_transactions",
   "alerts",
   "add_alert",
   "mute_alert",
@@ -279,6 +282,26 @@ export const NATIVE_TOOL_SCHEMAS: readonly ToolMetadata[] = [
       converter:
         "MCP calls never make the app run code: run a one-off converter yourself (python3 <script> <export> <output.csv>) and pass the cashu-format output file as path, or write a connector (propose_connector), which the app runs only after the owner approves it in Ustawienia > Konektory",
     },
+  }),
+  tool({
+    name: "propose_transactions",
+    module: "investments",
+    description:
+      "Propose brokerage transactions the owner told you in chat (buys, sells, dividends, fees, cash moves) for one brokerage account, without an export file (account: accounts[].account_id from portfolio_overview; an unmasked generated label is also accepted). The rows become a cashU import document that runs the same preview as propose_import and is stored as a pending import the owner commits in the app; nothing is booked before that. Check the rows with validate_transactions first; give the ISIN when known (search_instruments). Rows without a broker id are matched as duplicates by date, type, instrument, quantity, price and amounts, so re-proposing the same rows stores nothing new. Use one route per account and period: a later broker export of the same dates would not recognise these rows. A wrong pending import is rejected by the owner in the app; then propose the corrected rows.",
+    properties: {
+      account: {
+        type: "string",
+        maxLength: 80,
+      },
+      rows: ROWS_PROPERTY,
+      source: SOURCE_PROPERTY,
+      reason: {
+        type: "string",
+        maxLength: 4000,
+      },
+    },
+    required: ["account", "rows"],
+    write: true,
   }),
   tool({
     name: "alerts",
@@ -1004,5 +1027,21 @@ export const INVESTMENT_READ_TOOLS: readonly ToolMetadata[] = [
       converter:
         "MCP calls never make the app run code: run a one-off converter yourself (python3 <script> <export> <output.csv>) and pass the cashu-format output file as path, or write a connector (propose_connector), which the app runs only after the owner approves it in Ustawienia > Konektory",
     },
+  }),
+  tool({
+    name: "validate_transactions",
+    module: "investments",
+    description:
+      "Check transaction rows typed in from chat before propose_transactions: the same strict cashU import rules, counts and errors by kind with row numbers, no values. With account (accounts[].account_id from portfolio_overview) also the preview against that account: new vs duplicate rows, new instruments, can_commit. Stores nothing.",
+    properties: {
+      rows: ROWS_PROPERTY,
+      account: {
+        type: "string",
+        maxLength: 80,
+      },
+      source: SOURCE_PROPERTY,
+    },
+    required: ["rows"],
+    write: false,
   }),
 ];

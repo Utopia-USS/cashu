@@ -45,7 +45,11 @@ interface NativeAsyncFinish {
   readonly afterCommit?: { readonly data: NativeAsyncValue; readonly io: NativeAsyncIo };
 }
 export interface NativeAsyncAdapter {
-  readonly name: "search_instruments" | "add_to_watchlist" | "propose_import";
+  readonly name:
+    | "search_instruments"
+    | "add_to_watchlist"
+    | "propose_import"
+    | "propose_transactions";
   readonly maxIoPhases: number;
   current(context: ToolContext<NativePreparationStore>, io: NativeAsyncIo): boolean;
   advance(
