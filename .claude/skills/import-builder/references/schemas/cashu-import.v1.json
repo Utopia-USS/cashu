@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "cashu-import.v1.json",
   "title": "cashU investments import document (cashu-import), format_version 1",
-  "description": "Built from cashu.modules.investments.importing.canonical by scripts/gen_connector_schemas.py; see import-format.md (also the CSV variant). The app also enforces what a schema cannot express: real calendar dates, the instrument and quantity rules per transaction type, cash sign rules, gross / fee / tax / cash consistency.",
+  "description": "Built from the importer's field tables (packages/domain/src/investments/importing/canonical) by apps/host/scripts/genConnectorSchemas.ts; see import-format.md (also the CSV variant). The app also enforces what a schema cannot express: real calendar dates, the instrument and quantity rules per transaction type, cash sign rules, gross / fee / tax / cash consistency.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -201,6 +201,10 @@ Rules for converter authors:
 - Do not reuse one `external_ref` for unrelated events.
 - Keep the conversion deterministic: the same export must always produce the same rows.
 
+Rows an agent types in from chat (MCP `propose_transactions`) are such a file without `external_ref`, so
+they use the second key. A broker export of the same account and dates imported later carries
+`external_ref` and does not match them: use one route per account and period.
+
 ## 6. Order of rows
 
 Rows may be in any order. The portfolio is computed in chronological order: by `date`; rows of the same
@@ -315,20 +319,16 @@ Notes:
 
 Validate before importing; validation needs no database and changes nothing:
 
-```python
-from cashu.modules.investments.importing import validate_import_file
+- Agent (MCP): `validate_import(path)` on the converted file: counts and errors by kind with row numbers.
+- Terminal: `cashu invest validate converted.csv` (or `.json`; `--mapping <file.yaml>` for a CSV
+  with a column mapping) prints counts, then every error and warning with row and field, and exits 0
+  when the file can be imported.
 
-report = validate_import_file("converted.csv")   # or .json
-print(report.summary())       # counts, then every error and warning with row and field
-assert report.ok               # True when the file can be imported
-```
-
-`report.errors` lists blocking problems (the import is refused), `report.warnings` lists suspicious but
-importable rows. Each entry has `row` (0-based record index, `None` for file-level problems), a message
+The report lists errors (blocking problems: the import is refused) and warnings (suspicious but
+importable rows). Each entry has a row (0-based record index, none for file-level problems), a message
 that starts with the field name (`quantity: must be greater than 0`) and a stable `kind` for grouping
 (`invalid_value`, `missing_value`, `unknown_field`, `unmapped_type`, `fx_missing`, `cash_sign`,
-`amount_mismatch`, `missing_instrument`, `missing_quantity`, `unknown_split_ratio`, `file_format`, ...). A CLI command (`cashu
-investments validate <file>`) comes with the persistence layer.
+`amount_mismatch`, `missing_instrument`, `missing_quantity`, `unknown_split_ratio`, `file_format`, ...).
 
 Checklist for converter authors:
 

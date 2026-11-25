@@ -1,0 +1,61 @@
+// Debug screen of the scaffold (S41): store, fixture, sync and crypto status. PL + EN.
+import { catalog } from "@cashu/i18n";
+
+export const S = catalog({
+  title: { pl: "Diagnostyka", en: "Diagnostics" },
+  synthetic: {
+    pl: "Dane syntetyczne (demo), nigdy prawdziwe",
+    en: "Synthetic demo data, never real",
+  },
+  store: { pl: "Magazyn danych", en: "Store" },
+  vault: { pl: "Sejf", en: "Vault" },
+  openMs: { pl: "Otwarcie bazy", en: "Database open" },
+  storage: { pl: "Pliki bazy", en: "Storage" },
+  sqlcipher: {
+    pl: (version: string) => `SQLCipher ${version}`,
+    en: (version: string) => `SQLCipher ${version}`,
+  },
+  notEncrypted: { pl: "NIEZASZYFROWANE", en: "NOT encrypted" },
+  fixture: { pl: "Dziennik zdarzeń demo", en: "Demo event log" },
+  firstLaunch: { pl: "Załadowany przy tym uruchomieniu", en: "Loaded on this launch" },
+  reopened: {
+    pl: "Otwarty z dysku (załadowany wcześniej)",
+    en: "Opened from disk (loaded earlier)",
+  },
+  events: { pl: "Zdarzenia", en: "Events" },
+  applyMs: { pl: "Zastosowanie", en: "Apply" },
+  rebuildMs: { pl: "Przebudowa widoku", en: "View rebuild" },
+  rebuildMatch: { pl: "Przebudowa równa zastosowaniu", en: "Rebuild equals apply" },
+  rebuildMismatch: { pl: "Przebudowa różni się od zastosowania", en: "Rebuild differs from apply" },
+  viewHash: { pl: "Skrót widoku", en: "View hash" },
+  rebuild: { pl: "Przebuduj z dziennika", en: "Rebuild from the log" },
+  charts: { pl: "Wykresy (packages/ui)", en: "Charts (packages/ui)" },
+  balanceTrend: {
+    pl: "Saldo konta osobistego na koniec miesiąca",
+    en: "Personal account balance at month end",
+  },
+  balance: { pl: "Saldo", en: "Balance" },
+  spendingByAccount: { pl: "Wydatki według konta (PLN)", en: "Spending by account (PLN)" },
+  tables: { pl: "Tabele (wiersze)", en: "Tables (rows)" },
+  sync: { pl: "Synchronizacja", en: "Sync" },
+  carrierNone: {
+    pl: "Brak nośnika (parowanie przyjdzie z S29)",
+    en: "No carrier (pairing comes with S29)",
+  },
+  cursors: { pl: "Kursory urządzeń", en: "Device cursors" },
+  needsUpgrade: { pl: "Wymaga aktualizacji aplikacji", en: "Needs an app upgrade" },
+  upToDate: { pl: "Czytnik aktualny", en: "Reader up to date" },
+  unfolded: { pl: "Typy zdarzeń bez materializatora", en: "Event types without a materializer" },
+  crypto: { pl: "Kryptografia (autotest)", en: "Crypto (self-test)" },
+  cryptoOk: { pl: "Wszystkie testy zaliczone", en: "All checks passed" },
+  cryptoFailed: { pl: "Autotest nie przeszedł", en: "Self-test failed" },
+  nativeAead: { pl: "Natywne AEAD biblioteki", en: "Library's native AEAD" },
+  webCryptoRandom: {
+    pl: "crypto.getRandomValues w silniku",
+    en: "crypto.getRandomValues in the engine",
+  },
+  pass: { pl: "OK", en: "OK" },
+  fail: { pl: "BŁĄD", en: "FAIL" },
+  bench: { pl: "Pomiar listy", en: "List benchmark" },
+  ms: { pl: (n: string) => `${n} ms`, en: (n: string) => `${n} ms` },
+});

@@ -1,0 +1,25 @@
+{
+  "name": "@cashu/host-protocol",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "The local host protocol: frames, the mutual handshake, roles, versioning and the store channel v2, shared by the host and its clients.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./startup-failure": "./src/startupFailure/index.ts",
+    "./store": "./src/store/index.ts",
+    "./update-bridge": "./src/updateBridge.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@cashu/domain": "workspace:*",
+    "@noble/hashes": "2.4.0",
+    "zod": "^4.6.7"
+  }
+}

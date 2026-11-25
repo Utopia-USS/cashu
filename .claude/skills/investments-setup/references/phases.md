@@ -169,7 +169,7 @@ separately, review it at the annual review).
 
 ## Phase 7 - Writing the strategy (~15 min)
 
-`strategy.md` (Polish), sections: cel, horyzont, benchmark, przekonania i przewaga, tryby (primary and
+`strategy.md` (in the owner's language), sections: cel, horyzont, benchmark, przekonania i przewaga, tryby (primary and
 fallback with triggers), alokacja, wejście, przegląd i wyjście, limity, gotówka (poduszka, rezerwa,
 plan wejścia), wpłaty, konta i podatki, krypto, czego unikam, tryby awarii (tabela: tryb -> dowód ->
 zabezpieczenie), rytm, zasady zmian, minimum na czas braku zainteresowania, kontrole ręczne w

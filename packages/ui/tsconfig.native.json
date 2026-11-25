@@ -1,0 +1,13 @@
+{
+  // The React Native side of the platform pairs: `./platform.js` resolves to platform.native.tsx here (as
+  // Metro and jest-expo do), so the shared components are checked against the native frame too. Web-only
+  // files (the DOM defaults of the pairs and the vitest DOM tests) are left out.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "moduleSuffixes": [".native", ""],
+    "types": ["jest", "uniwind/types"]
+  },
+  "include": ["src"],
+  "exclude": ["src/charts/platform.tsx", "src/**/*.dom.test.tsx"]
+}

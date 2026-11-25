@@ -55,7 +55,8 @@ condition, exit plan, size plan. Then go down this list and take the first answe
    happened** (the entry reason played out: the awaited event of a `special_situation` completed, the
    business facts a `sentiment_correction` waited for are confirmed) or that the target written in the
    **exit plan** is met (the awaited catalyst happened). It is not a price prediction and not a sell
-   call: it says the thesis has done its job; what to do is expressed separately as a recommendation. It always rests on a
+   call: it says the thesis has done its job (the position strength saved afterwards is then `weak`
+   with basis `fulfilled`; what to do is only ever an optional, separate recommendation). It always rests on a
    verified fact about the thesis' expected outcome or the written exit-plan target, never on a price
    move alone (a rebound is not the outcome). One exception: when the owner's exit plan itself names a
    price level (`sprzedaję przy 120 zł`), the price reaching that level is a fact about his own written

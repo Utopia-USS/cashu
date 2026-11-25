@@ -19,14 +19,14 @@ Per topic, ask what changed since its newest brief (`briefs[0]`, `last_note_at`,
 official sources and hard data first (`references/sources.md` 4). Write a **brief note** when the
 topic's state or its main drivers changed, or on the first run for a topic without any brief;
 otherwise nothing (no "bez zmian" note). A brief note is a segment note (`references/notes.md`,
-Segments and Briefs): `segment` = the key, no instrument, kind `macro`, `trend` or `news`, Polish,
+Segments and Briefs): `segment` = the key, no instrument, kind `macro`, `trend` or `news`, in the owner's language,
 summary at most 400 characters with the dated facts and how it shows in the attribution (the 1-week
 figures from `research_context`: `GDXJ -4,4 % w tygodniu, segment -0,8 pp portfela.`; no exposure: the
 topic trend, `temat +3,2 % w tygodniu`, or nothing when `trend_1w` is null). Add
 `details.brief`
 `{headline, why}`: `headline` 8-80 characters, one plain sentence; `why` at most 280 characters, what
 is going on and why, in plain words. `expires_in_days: 60`. Never your own forecast or a call in a
-brief (the tool refuses `wzrośnie`, `urośnie`, `spadnie`, `będzie`, `podrożeje`, `stanieje`, `odbije`,
+brief (the wording check flags `wzrośnie`, `urośnie`, `spadnie`, `będzie`, `podrożeje`, `stanieje`, `odbije`,
 `prognoz*`, `kupuj`, `sprzedaj`, `cel cenowy`), except in a sentence that cites an institution's
 published trend forecast as an estimate, naming who, how much and the horizon (`IEA szacuje, że popyt
 centrów danych na prąd wzrośnie do ok. 945 TWh w 2030`; the institution list and rules:
@@ -55,7 +55,7 @@ not a draft (`draft` false), a topic note may carry `thesis_relation` `supports`
 instrument thesis (`references/rubrics.md`); without a thesis, or while it is still your unconfirmed
 draft, the relation is `none` (the tool refuses otherwise). For a held topic without a thesis
 (`thesis` null) propose one draft, once, through `upsert_topic_thesis(segment, thesis,
-invalidation?)`: two or three plain Polish sentences on what has to stay true for the topic and what
+invalidation?)`: two or three plain sentences in the owner's language on what has to stay true for the topic and what
 would break it, no forecast, no price; the owner sees it as `[do potwierdzenia]` and confirms or edits
 it. Never overwrite the owner's thesis (the tool refuses). A draft the owner deleted is a rejection:
 the topic is listed in `research_context.topic_thesis_cooldown` and the tool refuses a new draft for it
@@ -68,7 +68,7 @@ directly under its thesis, not in the notes: `Ocena teraz` and `Perspektywa`
 (`segments[].thesis.assessment`, `.outlook`, `.view_updated_at`, `.view_sources`). After researching a
 topic that has a thesis (the owner's or your draft), call `set_topic_market_view(segment, assessment,
 outlook, sources)` when the topic has no view yet, or when this run's facts change it; otherwise leave
-it. `assessment` (20-400 Polish characters): the topic's market now, interpreting the facts (adoption,
+it. `assessment` (20-400 characters in the owner's language): the topic's market now, interpreting the facts (adoption,
 demand, investment, cycle, valuations of the topic as a whole), not a repeat of a note. `outlook`
 (20-400): where the topic's market, adoption or demand is heading, and it must rest on at least one
 quantitative estimate of market or demand growth from an industry source, cited with who, how much
@@ -91,7 +91,7 @@ the stored ones and the owner sees them as small links under the view. Example:
 (The figures in the example only show the shape: always take the numbers, edition and date from the
 source you opened.) Never a price, valuation or quote move of a security, of shares or of an index
 (`kurs ... wzrośnie`, `akcje ... spadną`, `S&P 500 wzrośnie do`), never a price target, analyst
-forecast or consensus, never buy / sell / hold wording: the tool refuses them. The write replaces the
+forecast or consensus, never buy / sell / hold wording: the tool lists them under warnings, so rewrite the view. The write replaces the
 previous view, the owner's edit included, so read the current one first and keep what still holds.
 A topic without a thesis gets no view: propose the draft thesis first (held topics) or leave it.
 Count views in the final summary.

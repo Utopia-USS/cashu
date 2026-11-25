@@ -1,0 +1,20 @@
+mBank S.A. Bankowoœæ Detaliczna;
+
+#Klient;
+JAN TESTOWY;
+
+Elektroniczne zestawienie operacji za okres od 2026-09-01 do 2026-09-30;
+
+#Rodzaj rachunku;
+eKonto walutowe EUR;
+
+#Waluta;
+EUR;
+
+#Numer rachunku;
+99114000000000000000000003;
+
+#Data ksiêgowania;#Data operacji;#Opis operacji;#Tytu³;#Nadawca/Odbiorca;#Numer konta;#Kwota;#Saldo po operacji;
+2026-09-04;2026-09-04;PRZELEW W£ASNY;"ZASILENIE EUR";"JAN TESTOWY";'99114000000000000000000001';200,00;450,00;
+2026-09-12;2026-09-11;ZAKUP PRZY U¯YCIU KARTY;"SERWIS TEST/DUBLIN   DATA TRANSAKCJI: 2026-09-11";"";'';-9,99;440,01;
+2026-09-20;2026-09-20;PRZELEW ZAGRANICZNY;"FAKTURA 2026/09/17";"FIRMA TEST GMBH";'DE99500000000000000001';-120,00;320,01;

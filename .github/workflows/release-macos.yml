@@ -1,0 +1,464 @@
+# Release the native cashU.app (macOS) and the cashU installer for Windows to GitHub Releases after every version
+# bump on main. The macOS side runs the same way as the owner's local fallback
+# (apps/desktop/scripts/release-macos.mjs): build arm64 + x64, sign with the Developer ID, notarize, staple,
+# verify, write latest-mac.yml + the two Sparkle appcasts. The Windows side (the `windows` job, windows-latest)
+# builds the x64 NSIS installer with apps/desktop/scripts/package-windows.mjs, checks its Authenticode state and
+# hands it over as a workflow artifact; the release job adds it as the 8th asset (--windows-assets), then
+# draft -> check (8 assets) -> publish. The name stays "Release macOS" (the docs and the owner's habits use it).
+#
+# Trigger: "Bump version" (bump-version.yml) completing successfully for a push to main of this repository.
+# The bump commit itself starts no workflow (it is pushed with GITHUB_TOKEN), so this workflow follows the bump
+# run instead of `push`. The run's head_sha is the merged commit BEFORE the bump; the release commit is the bump
+# commit right after it on main's first-parent line (its parent must be head_sha, author github-actions[bot],
+# subject "Bump version to X.Y.Z [skip ci]"). When the bump was skipped ("[skip bump]" or a hand-made version) the
+# release commit is head_sha itself. Either way it must be an ancestor of main's tip; main may already have moved
+# on (the next merge), which is why the tip itself is never taken: it may carry changes of a later, not yet bumped
+# merge under this version. A version whose tag exists already ends the run with a notice (nothing new).
+# workflow_dispatch (from main only) re-runs a release of main's tip; `dry_run` builds, signs, notarizes and
+# verifies without publishing (the first proof of the signed CI path).
+#
+# Every release job waits for an approval in the `release` environment (required reviewer: the owner), and
+# only that environment holds the signing secrets: MACOS_CERT_P12_BASE64, MACOS_CERT_PASSWORD,
+# ASC_API_KEY_P8_BASE64, ASC_API_KEY_ID, ASC_API_ISSUER_ID (macOS, all required), and for Windows (Azure Artifact
+# Signing, formerly Trusted Signing) AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_SIGNING_ENDPOINT,
+# AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_CERT_PROFILE, AZURE_SIGNING_PUBLISHER: all seven set -> a signed installer;
+# none set -> an unsigned one with a warning (Windows SmartScreen warns every user); only some set -> the run
+# fails naming the missing ones. The two jobs enter the environment one after the other (the release job needs
+# the installer), so a release asks for the approval twice: Windows first, then macOS.
+#
+# A Windows failure blocks the release: the release job needs the `windows` job, so nothing is drafted or
+# published unless the installer was built and checked.
+#
+# One macOS runner builds both arches (x64 cross-built on Apple silicon, as on the owner's Mac; package-macos.mjs
+# and the per-arch keyring package support it): one keychain import, one API key, and all 7 macOS assets in one
+# place; the Windows installer is the only hand-over between jobs (actions/upload-artifact, digest-checked by
+# actions/download-artifact, kept 3 days). Dependencies are installed before the keychain, the key file or any
+# Azure secret exist in a step, so no install script runs next to them; no dependency cache (a release builds
+# from the lockfile alone). The temporary keychain, the search list and the key file are cleaned up in an
+# always() step; the Azure secrets live only in the environment of the Windows build step.
+name: Release macOS
+
+on:
+  workflow_run:
+    workflows: ["Bump version"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build, sign, notarize and verify, but publish nothing"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: release-macos
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  resolve:
+    name: Pick the release commit
+    if: >-
+      github.repository == 'Utopia-USS/cashu' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == 'Utopia-USS/cashu'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.pick.outputs.commit }}
+      version: ${{ steps.pick.outputs.version }}
+      release: ${{ steps.pick.outputs.release }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Pick the release commit
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          DISPATCH_REF: ${{ github.ref }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          main="$(git rev-parse HEAD)"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ "$DISPATCH_REF" != "refs/heads/main" ]; then
+              echo "::error::Run this workflow from main (got $DISPATCH_REF)."
+              exit 1
+            fi
+            commit="$main"
+          else
+            if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$HEAD_SHA" "$main"; then
+              echo "::error::The bumped commit $HEAD_SHA is not on main."
+              exit 1
+            fi
+            commit="$HEAD_SHA"
+            after="$(git rev-list --reverse --first-parent "$HEAD_SHA..$main")"
+            first="${after%%$'\n'*}"
+            if [ -n "$first" ] \
+              && [ "$(git rev-parse "$first^")" = "$HEAD_SHA" ] \
+              && [ "$(git log -1 --format=%an "$first")" = "github-actions[bot]" ] \
+              && [[ "$(git log -1 --format=%s "$first")" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+\ \[skip\ ci\]$ ]]; then
+              commit="$first"
+            else
+              echo "::notice::No bump commit right after ${HEAD_SHA:0:12}: releasing that commit's own version."
+            fi
+          fi
+          version="$(git show "$commit:apps/desktop/package.json" | jq -r .version)"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::apps/desktop/package.json at $commit has no X.Y.Z version."
+            exit 1
+          fi
+          release=true
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              echo "::error::Tag v$version exists: nothing new to release."
+              exit 1
+            fi
+            echo "::notice::Tag v$version exists (bump skipped?): nothing to release."
+            release=false
+          fi
+          echo "Release commit $commit, version $version, release $release"
+          {
+            echo "commit=$commit"
+            echo "version=$version"
+            echo "release=$release"
+          } >> "$GITHUB_OUTPUT"
+
+  # The Windows installer, built on Windows (package-windows.mjs refuses other hosts) from the same commit.
+  windows:
+    name: Windows installer
+    needs: resolve
+    if: needs.resolve.outputs.release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+    env:
+      COMMIT: ${{ needs.resolve.outputs.commit }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+      # All seven Azure Artifact Signing secrets, or none (unsigned, with a warning), never some.
+      - name: Check the signing secrets
+        id: signing
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_CERT_PROFILE: ${{ secrets.AZURE_SIGNING_CERT_PROFILE }}
+          AZURE_SIGNING_PUBLISHER: ${{ secrets.AZURE_SIGNING_PUBLISHER }}
+        run: |
+          names=(AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_SIGNING_ENDPOINT AZURE_SIGNING_ACCOUNT AZURE_SIGNING_CERT_PROFILE AZURE_SIGNING_PUBLISHER)
+          missing=()
+          for name in "${names[@]}"; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -eq "${#names[@]}" ]; then
+            echo "::warning::No Azure Artifact Signing secrets in the release environment: the Windows installer ships UNSIGNED and Windows SmartScreen warns everyone who runs it (docs/releasing.md \"Windows\")."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Some Azure Artifact Signing secrets are missing in the release environment: ${missing[*]}. Set all seven or none. Nothing was built."
+            exit 1
+          fi
+          # Shapes only (the values stay masked): a wrong one fails here, not after a 20-minute build.
+          uuid='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          problems=()
+          [[ "$AZURE_TENANT_ID" =~ $uuid ]] || problems+=("AZURE_TENANT_ID is not a GUID")
+          [[ "$AZURE_CLIENT_ID" =~ $uuid ]] || problems+=("AZURE_CLIENT_ID is not a GUID")
+          [[ "$AZURE_SIGNING_ENDPOINT" =~ ^https://[a-z0-9]+\.codesigning\.azure\.net/?$ ]] \
+            || problems+=("AZURE_SIGNING_ENDPOINT is not https://<region>.codesigning.azure.net")
+          if [ "${#problems[@]}" -gt 0 ]; then
+            printf '::error::%s\n' "${problems[@]}"
+            exit 1
+          fi
+          echo "All 7 Azure Artifact Signing secrets are set: the installer will be signed."
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      # Byte-identical files: the skills and the connector catalog ship in the package and are hashed into its
+      # manifest, so git must not turn LF into CRLF on checkout (the runner image's default).
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          persist-credentials: false
+
+      # No dependency cache in a release (see the header); setup-node v5 would turn one on by itself.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Check the checkout
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$COMMIT" ]; then
+            echo "::error::Checked out $(git rev-parse HEAD), expected $COMMIT."
+            exit 1
+          fi
+          version="$(node -p 'require("./apps/desktop/package.json").version')"
+          if [ "$version" != "$VERSION" ]; then
+            echo "::error::apps/desktop/package.json is version $version, not $VERSION."
+            exit 1
+          fi
+
+      # pnpm at the exact version of "packageManager" in package.json (Corepack ships with Node 24). The install
+      # runs before any signing secret is in a step's environment.
+      - name: Install
+        run: |
+          corepack enable pnpm
+          pnpm --version
+          pnpm install --frozen-lockfile
+
+      # Built into a scratch directory; exactly the installer moves on to the hand-over directory (electron-builder
+      # leaves more next to it: the unpacked app, blockmaps, its own feed file).
+      - name: Build the installer
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          CASHU_AZURE_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          CASHU_AZURE_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          CASHU_AZURE_CERT_PROFILE: ${{ secrets.AZURE_SIGNING_CERT_PROFILE }}
+          CASHU_AZURE_PUBLISHER: ${{ secrets.AZURE_SIGNING_PUBLISHER }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          build="$RUNNER_TEMP/windows-build"
+          assets="$RUNNER_TEMP/windows-assets"
+          rm -rf "$build" "$assets"
+          mkdir -p "$assets"
+          args=(x64 --out "$build")
+          if [ "$SIGNED" = "true" ]; then
+            args+=(--sign azure)
+          else
+            unset CASHU_AZURE_ENDPOINT CASHU_AZURE_ACCOUNT CASHU_AZURE_CERT_PROFILE CASHU_AZURE_PUBLISHER \
+              AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET
+          fi
+          node apps/desktop/scripts/package-windows.mjs "${args[@]}"
+          name="cashU-$VERSION-win-x64.exe"
+          if [ ! -s "$build/$name" ]; then
+            echo "::error::package-windows.mjs did not write $name."
+            ls -la "$build" || true
+            exit 1
+          fi
+          cp "$build/$name" "$assets/$name"
+
+      # Authenticode on Windows itself: a signed build must carry a valid, timestamped signature of the publisher
+      # (an Artifact Signing certificate lives a few days; only the timestamp keeps the signature valid after
+      # it), an unsigned build no signature at all (never a broken or partial one).
+      - name: Check the installer's signature
+        shell: pwsh
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          PUBLISHER: ${{ secrets.AZURE_SIGNING_PUBLISHER }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'windows-assets'
+          $name = "cashU-$($env:VERSION)-win-x64.exe"
+          $files = @(Get-ChildItem -Force -LiteralPath $dir)
+          if ($files.Count -ne 1 -or $files[0].Name -ne $name) {
+            Write-Output "::error::$dir must hold exactly $name, found: $($files.Name -join ', ')"
+            exit 1
+          }
+          $sig = Get-AuthenticodeSignature -LiteralPath $files[0].FullName
+          if ($env:SIGNED -eq 'true') {
+            if ($sig.Status -ne 'Valid') {
+              Write-Output "::error::$($name): signature status $($sig.Status) ($($sig.StatusMessage))"
+              exit 1
+            }
+            $signer = $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+            if ($signer -ne $env:PUBLISHER) {
+              Write-Output "::error::$($name) is signed by '$signer', not by AZURE_SIGNING_PUBLISHER."
+              exit 1
+            }
+            if ($null -eq $sig.TimeStamperCertificate) {
+              Write-Output "::error::$($name) has no timestamp: the signature would expire with the short-lived certificate."
+              exit 1
+            }
+            Write-Output "$name signed by '$signer', timestamped, status Valid."
+          } else {
+            if ($sig.Status -ne 'NotSigned') {
+              Write-Output "::error::$($name) should be unsigned, but its signature status is $($sig.Status)."
+              exit 1
+            }
+            Write-Output "$name is UNSIGNED (no Azure Artifact Signing secrets)."
+          }
+          Write-Output "sha256 $((Get-FileHash -Algorithm SHA256 -LiteralPath $files[0].FullName).Hash.ToLower())  $name"
+
+      # Kept briefly: the release job downloads it minutes later; the release itself is the durable copy.
+      - name: Hand over the installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-installer
+          path: ${{ runner.temp }}/windows-assets/cashU-${{ needs.resolve.outputs.version }}-win-x64.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  release:
+    name: Build, sign, notarize, publish
+    needs: [resolve, windows]
+    if: needs.resolve.outputs.release == 'true'
+    runs-on: macos-15
+    timeout-minutes: 150
+    environment: release
+    permissions:
+      contents: write
+    env:
+      COMMIT: ${{ needs.resolve.outputs.commit }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      # Before any work: every secret by name, so a missing one fails here with its name, not later.
+      - name: Check secrets
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          missing=()
+          for name in MACOS_CERT_P12_BASE64 MACOS_CERT_PASSWORD ASC_API_KEY_P8_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing secrets in the release environment: ${missing[*]}. Nothing was built."
+            exit 1
+          fi
+          echo "All 5 signing secrets are set."
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the checkout
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$COMMIT" ]; then
+            echo "::error::Checked out $(git rev-parse HEAD), expected $COMMIT."
+            exit 1
+          fi
+          if [ "$(jq -r .version apps/desktop/package.json)" != "$VERSION" ]; then
+            echo "::error::apps/desktop/package.json is not version $VERSION."
+            exit 1
+          fi
+
+      # No dependency cache in a release (see the header); setup-node v5 would turn one on by itself.
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      # pnpm at the exact version of "packageManager" in package.json (Corepack ships with Node 24).
+      - name: Install
+        run: |
+          corepack enable pnpm
+          pnpm --version
+          pnpm install --frozen-lockfile
+
+      # The release script asks Gatekeeper for the notarized Developer ID verdict of every artifact.
+      - name: Gatekeeper assessments on
+        run: |
+          status="$(spctl --status 2>&1 || true)"
+          echo "Gatekeeper: $status"
+          if [ "$status" != "assessments enabled" ]; then
+            sudo spctl --global-enable 2> /dev/null || sudo spctl --master-enable
+            spctl --status
+          fi
+
+      - name: Temporary keychain with the Developer ID
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/cashu-release.keychain-db"
+          KEYCHAIN_LIST="$RUNNER_TEMP/cashu-release-keychains.txt"
+          password="$(openssl rand -base64 32)"
+          echo "::add-mask::$password"
+          security list-keychains -d user | tr -d '"' | sed 's/^ *//' > "$KEYCHAIN_LIST"
+          security create-keychain -p "$password" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$password" "$KEYCHAIN"
+          cert="$RUNNER_TEMP/cashu-release-cert.p12"
+          printf '%s' "$MACOS_CERT_P12_BASE64" | base64 --decode > "$cert"
+          security import "$cert" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign > /dev/null
+          rm -f "$cert"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$KEYCHAIN" > /dev/null
+          keychains=("$KEYCHAIN")
+          while IFS= read -r line; do [ -n "$line" ] && keychains+=("$line"); done < "$KEYCHAIN_LIST"
+          security list-keychains -d user -s "${keychains[@]}"
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -q '"Developer ID Application: Utopia Ultimate Software Solutions Sp. z o.o. (29W838VKU4)"'; then
+            echo "::error::The p12 holds no valid Developer ID Application identity of team 29W838VKU4 (certificate and private key, trusted chain)."
+            exit 1
+          fi
+          echo "Developer ID identity imported into a temporary keychain."
+
+      - name: App Store Connect API key file
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: |
+          umask 077
+          NOTARY_DIR="$RUNNER_TEMP/cashu-notary"
+          mkdir -p "$NOTARY_DIR"
+          printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$NOTARY_DIR/AuthKey.p8"
+          if ! grep -q -- '-----BEGIN PRIVATE KEY-----' "$NOTARY_DIR/AuthKey.p8"; then
+            echo "::error::ASC_API_KEY_P8_BASE64 does not decode to a .p8 private key."
+            exit 1
+          fi
+
+      # Into the runner's temp dir, outside the checkout (the release script refuses a dirty tree); the action
+      # checks the artifact's digest itself.
+      - name: Fetch the Windows installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-installer
+          path: ${{ runner.temp }}/windows-assets
+
+      - name: Release
+        env:
+          CASHU_RELEASE_KEYCHAIN: ${{ runner.temp }}/cashu-release.keychain-db
+          CASHU_NOTARY_KEY_PATH: ${{ runner.temp }}/cashu-notary/AuthKey.p8
+          CASHU_NOTARY_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          CASHU_NOTARY_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          args=(--ci --windows-assets "$RUNNER_TEMP/windows-assets")
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); else args+=(--yes); fi
+          # Hand-written release text, when the merge carried one (required above 50 commits since the last tag).
+          notes="docs/releases/v$VERSION.md"
+          if [ -f "$notes" ]; then args+=(--notes "$notes"); fi
+          node apps/desktop/scripts/release-macos.mjs "${args[@]}"
+
+      - name: Clean up the keychain and the key file
+        if: always()
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/cashu-release.keychain-db"
+          KEYCHAIN_LIST="$RUNNER_TEMP/cashu-release-keychains.txt"
+          if [ -s "$KEYCHAIN_LIST" ]; then
+            keychains=()
+            while IFS= read -r line; do [ -n "$line" ] && keychains+=("$line"); done < "$KEYCHAIN_LIST"
+            security list-keychains -d user -s "${keychains[@]}" || true
+          fi
+          security delete-keychain "$KEYCHAIN" 2> /dev/null || true
+          rm -rf "$RUNNER_TEMP/cashu-notary" "$KEYCHAIN_LIST" "$RUNNER_TEMP/cashu-release-cert.p12"
+          echo "Temporary keychain, search list and key file cleaned up."

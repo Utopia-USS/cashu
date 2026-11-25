@@ -1,0 +1,107 @@
+import type { ProposalDetail } from "@cashu/store/core/desktop-proposals";
+import { UiEnvProvider } from "@cashu/ui";
+import { ProposalDrawerView } from "./ProposalDrawerView.js";
+import { proposalDrawerModel } from "./proposalDrawerModel.js";
+import type { ProposalDrawerState } from "./useProposalDrawer.js";
+
+const detail = (kind: ProposalDetail["kind"]): ProposalDetail => ({
+  gid: "019a48cf-0285-8a09-bf65-a2741b2c9a72",
+  kind,
+  status: "pending",
+  summary: "Synthetic proposal",
+  summaryCode: kind,
+  summaryParams: {},
+  reason: "A synthetic reason for review",
+  source: "synthetic",
+  createdAt: "2026-11-03T08:00:00Z",
+  reviewedAt: null,
+  payload: {},
+  result: {},
+  nextStrategyVersion: kind === "strategy" || kind === "custom_rule" ? 3 : null,
+  display: {
+    diffAvailability: "ready",
+    yamlDiff: "--- strategy.yaml (current)\n+++ strategy.yaml (proposed)\n@@ -1 +1 @@\n-old\n+new",
+    mdDiff:
+      kind === "strategy"
+        ? "--- strategy.md (current)\n+++ strategy.md (proposed)\n@@ -1 +1 @@\n-old\n+new"
+        : null,
+    baseChanged: false,
+    ruleYaml: kind === "custom_rule" ? "- id: synthetic" : null,
+    backtest: kind === "custom_rule" ? { evaluated: 12, points_fired: 2, episodes: 1 } : null,
+    preview:
+      kind === "import" || kind === "budget_import" ? { new: 3, duplicates: 1, warnings: 1 } : null,
+    account: kind === "import" ? "Synthetic account" : null,
+    accountLabel: kind === "budget_import" ? "Synthetic budget" : null,
+    connectorName: kind === "budget_import" ? "Synthetic connector" : null,
+    fileName: "synthetic.csv",
+    since: null,
+    fromConnector: kind === "budget_import",
+    converterUnsupported: false,
+    detailError: null,
+  },
+});
+const raw = (kind: ProposalDetail["kind"], message: ProposalDrawerState["message"] = null) =>
+  ({
+    detail: detail(kind),
+    busy: false,
+    message,
+    failure: "",
+    async onApproved() {},
+    async onRejected() {},
+  }) as ProposalDrawerState;
+const state = (kind: ProposalDetail["kind"], message: ProposalDrawerState["message"] = null) =>
+  proposalDrawerModel(raw(kind, message));
+
+export default {
+  title: "Desktop/Proposals/Drawer",
+  component: ProposalDrawerView,
+  decorators: [
+    (Story: () => React.ReactNode) => (
+      <UiEnvProvider locale="en-US" privacy={false}>
+        <Story />
+      </UiEnvProvider>
+    ),
+  ],
+  args: { m: state("strategy"), onClose() {} },
+};
+export const Strategy = {};
+export const Rule = { args: { m: state("custom_rule") } };
+export const InvestmentImport = { args: { m: state("import") } };
+export const BudgetImport = { args: { m: state("budget_import") } };
+const removal = detail("account_removal");
+export const AccountRemoval = {
+  args: {
+    m: proposalDrawerModel({
+      ...raw("account_removal"),
+      detail: {
+        ...removal,
+        summary: "Remove account Synthetic bank checking 2 from view",
+        display: removal.display && {
+          ...removal.display,
+          yamlDiff: null,
+          mdDiff: null,
+          preview: null,
+          fileName: null,
+          accountLabel: "Synthetic closed account",
+        },
+      },
+    }),
+  },
+};
+export const RecoveryNeeded = { args: { m: state("strategy", "recoveryRestore") } };
+export const UnavailableDiff = {
+  args: {
+    m: proposalDrawerModel({
+      ...raw("strategy"),
+      detail: {
+        ...detail("strategy"),
+        display: {
+          ...detail("strategy").display,
+          diffAvailability: "unavailable",
+          yamlDiff: null,
+          mdDiff: null,
+        },
+      },
+    } as ProposalDrawerState),
+  },
+};

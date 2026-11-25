@@ -14,7 +14,7 @@ same preview and deduplication as a bank export. This document is the complete s
   repeat a value from the file (they name the kind, the row and the field), so they are safe to show to
   an agent.
 - JSON Schema of the JSON variant: [`schemas/cashu-budget-import.v1.json`](schemas/cashu-budget-import.v1.json)
-  (generated from the validator's models by `scripts/gen_connector_schemas.py`).
+  (generated from the validator's models by `apps/host/scripts/genConnectorSchemas.ts`).
 
 The investments module has its own format ([`import-format.md`](import-format.md)); the two are separate.
 
@@ -196,24 +196,15 @@ format_version,booking_date,amount,currency,counterparty_name,counterparty_iban,
 
 ## 7. Validating a file
 
-Validation needs no database and changes nothing:
+Validation needs no database and changes nothing. The agent calls the MCP tool
+`validate_budget_import(path)` on the converted `.json` or `.csv`: counts, then every error and warning
+with row and field, and whether the file can be imported.
 
-```python
-from pathlib import Path
-from cashu.modules.budget.ingestion.canonical import validate_budget_document
-
-data = Path("converted.json").read_bytes()
-report = validate_budget_document(data, "converted.json")   # or a .csv
-print(report.summary())    # counts, then every error and warning with row and field
-assert report.ok           # True when the file can be imported
-```
-
-`report.issues` lists every problem; `blocking` ones refuse the import, the others are warnings. Each
-has `kind`, `row` (1-based transaction number, `None` for file-level problems), `field` and a value-free
+The report lists every problem; `blocking` ones refuse the import, the others are warnings. Each
+has `kind`, `row` (1-based transaction number, none for file-level problems), `field` and a value-free
 `message`. Kinds: `file_format`, `missing_column`, `unknown_field`, `missing_value`, `invalid_value`,
 `inconsistent_file`, `duplicate_id` (errors); `currency_mismatch`, `unknown_institution`, `empty`
-(warnings). `report.as_dict()` is the same as JSON. `cashu connectors test` prints this report for a
-budget connector's output.
+(warnings). `cashu connectors test` prints this report for a budget connector's output.
 
 Checklist for converter authors:
 

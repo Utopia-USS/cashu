@@ -1,0 +1,21 @@
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
+index de76b9762d8f3cdd05a68fca7a01e8f1b0af973f..0546235bfa7f18090dbe2dd69d9a35950bb9d662 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
+@@ -941,9 +941,15 @@ private func withEncodedValue(
+     }
+     // The runtime can't be deallocated during a call on its JavaScript thread, so it's borrowed without
+     // a retain.
++    // TRANSITIONAL(xcode-27): Swift 6.2 (Xcode 26) rejects sending `slot` into the isolated closure
++    // ("risks causing data races") where Swift 6.4 (Xcode 27, the SDK 58 toolchain) accepts it. The
++    // closure runs synchronously on this thread, so passing the same address as a Sendable integer is
++    // equivalent. cashU patch (patches/), remove once every dev machine and CI build with Xcode 27.
++    let slotBits = UInt(bitPattern: slot)
+     try runtime._withUnsafeGuaranteedRef { runtime in
+       try JavaScriptActor.assumeIsolated {
+-        try encode(JavaScriptValue.Slot(slot), runtime)
++        try encode(
++          JavaScriptValue.Slot(UnsafeMutablePointer<facebook.jsi.Value>(bitPattern: slotBits)!), runtime)
+       }
+     }
+     body(slot.pointee)

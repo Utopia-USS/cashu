@@ -1,0 +1,102 @@
+// Texts of the investments home (frontend/src/modules/investments/v2/Home.tsx). See docs/agents/localization.md.
+import { catalog, enForm, plForm } from "../../index.js";
+
+export const S = catalog({
+  weeklyReview: { pl: "Przegląd tygodnia", en: "Weekly review" },
+  strategyFromTemplate: {
+    pl: "Strategia z szablonu · uzupełnij strategy.yaml",
+    en: "Strategy from the template · fill in strategy.yaml",
+  },
+  strategyFailed: {
+    pl: (e: string) => `Nie utworzono strategii: ${e}`,
+    en: (e: string) => `Couldn't create the strategy: ${e}`,
+  },
+  /** The undo subject of a review (undoMessage). */
+  reviewNoun: { pl: "przegląd", en: "review" },
+  reviewSaved: {
+    pl: (next: string) => `Przegląd zapisany · następny ${next}`,
+    en: (next: string) => `Review saved · next ${next}`,
+  },
+  reviewFailed: {
+    pl: (e: string) => `Nie zapisano przeglądu: ${e}`,
+    en: (e: string) => `Couldn't save the review: ${e}`,
+  },
+  error: { pl: (e: string) => `Błąd: ${e}`, en: (e: string) => `Error: ${e}` },
+  investments: { pl: "Inwestycje", en: "Investments" },
+  breadcrumb: { pl: "Ścieżka", en: "Breadcrumb" },
+  assets: { pl: "Aktywa", en: "Assets" },
+  openInPanel: { pl: "otwórz w panelu", en: "open in the panel" },
+  today: { pl: "dziś", en: "today" },
+  undoLower: { pl: "cofnij", en: "undo" },
+  account: { pl: "Rachunek", en: "Account" },
+  all: { pl: "Wszystkie", en: "All" },
+  refreshingPrices: { pl: "odświeżam ceny", en: "refreshing prices" },
+  noQuotes: { pl: "brak notowań", en: "no quotes" },
+  lastQuote: { pl: (d: string) => `ostatnie notowanie ${d}`, en: (d: string) => `last quote ${d}` },
+  staleCount: {
+    pl: (n: number) => `${n} ${plForm(n, "nieaktualna", "nieaktualne", "nieaktualnych")}`,
+    en: (n: number) => `${n} out of date`,
+  },
+  runTitle: { pl: "Ceny, wycena, reguły i alerty", en: "Prices, valuation, rules and alerts" },
+  rulesRunning: { pl: "sprawdzam reguły", en: "rules running" },
+  rulesPartial: { pl: "reguły sprawdzone częściowo", en: "rules partial" },
+  previousRunSignals: {
+    pl: " · sygnały z poprzedniego sprawdzenia",
+    en: " · signals from the previous run",
+  },
+  rulesFailed: { pl: "błąd reguł", en: "rules failed" },
+  rulesNeverRan: { pl: "reguły jeszcze nie działały", en: "rules have not run yet" },
+  addTxn: { pl: "Dodaj transakcję", en: "Add transaction" },
+  portfolioValue: { pl: "Wartość portfela", en: "Portfolio value" },
+  thisWeek: { pl: " w tym tygodniu", en: " this week" },
+  ytd: { pl: "Od początku roku", en: "Year to date" },
+  noHistory: { pl: "brak historii", en: "no history" },
+  unrealized: { pl: "Wynik niezrealizowany", en: "Unrealized return" },
+  vsCost: { pl: (v: string) => `${v} od kosztu`, en: (v: string) => `${v} vs cost` },
+  costUnknown: { pl: "koszt nieznany", en: "cost unknown" },
+  drawdown: { pl: "Obsunięcie", en: "Drawdown" },
+  max: { pl: (v: string) => `maks. ${v}`, en: (v: string) => `max ${v}` },
+  drawdownTitle: { pl: "Od szczytu, 12 mies.", en: "From the high, 12 months" },
+  contributions: { pl: "Wpłaty", en: "Contributions" },
+  thisYear: { pl: "W tym roku", en: "This year" },
+  plan: { pl: (v: string) => `plan ${v}`, en: (v: string) => `plan ${v}` },
+  missedMonths: {
+    pl: (n: number) => ` · ${n} mies. bez wpłaty`,
+    en: (n: number) => ` · ${n} ${enForm(n, "month", "months")} without a contribution`,
+  },
+  noPlan: { pl: "bez planu w strategii", en: "no plan in the strategy" },
+  txnSavedWarn: {
+    pl: (w: string) => `Zapisano transakcję · uwaga: ${w}`,
+    en: (w: string) => `Transaction saved · note: ${w}`,
+  },
+  txnSaved: { pl: "Zapisano transakcję", en: "Transaction saved" },
+  accountAdded: {
+    pl: (name: string) => `Dodano rachunek ${name}`,
+    en: (name: string) => `Account ${name} added`,
+  },
+  thesisSaved: { pl: "Zapisano tezę", en: "Thesis saved" },
+  // first steps
+  brokerageAccount: { pl: "Rachunek maklerski", en: "Brokerage account" },
+  brokerWrapper: {
+    pl: "Broker + opakowanie (zwykłe, IKE, IKZE)",
+    en: "Broker + wrapper (regular, IKE, IKZE)",
+  },
+  addAnother: { pl: "Dodaj kolejny", en: "Add another" },
+  addAccount: { pl: "Dodaj rachunek", en: "Add account" },
+  strategy: { pl: "Strategia", en: "Strategy" },
+  saved: { pl: "zapisana", en: "saved" },
+  recommended: { pl: "zalecana", en: "recommended" },
+  orInterview: { pl: " albo wywiad w Claude Code: ", en: " or an interview in Claude Code: " },
+  fromTemplate: { pl: "Utwórz z szablonu", en: "Create from template" },
+  firstTxn: { pl: "Pierwsza wpłata lub zakup", en: "First contribution or purchase" },
+  firstTxnHint: {
+    pl: "Ręcznie lub z pliku od brokera.",
+    en: "By hand or by importing a broker file.",
+  },
+  firstReview: { pl: "Pierwszy przegląd", en: "First review" },
+  weekly: {
+    pl: (day: string) => `${day} · raz w tygodniu`,
+    en: (day: string) => `${day} · once a week`,
+  },
+  firstSteps: { pl: "Pierwsze kroki", en: "First steps" },
+});

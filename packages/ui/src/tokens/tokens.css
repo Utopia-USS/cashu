@@ -1,0 +1,631 @@
+/* The token source of the cashU UI (cashu-ui skill, references/tokens.md): a Tailwind v4 theme compiled
+   by @tailwindcss/vite for the desktop renderer and Storybook (entry ./theme.css), and by Uniwind (Metro)
+   for apps/mobile (entry ./native.css).
+   Roles only: the default palette and scales are reset, so `bg-red-500` generates nothing. Light values
+   live in @theme and again in `@variant light` (Uniwind's explicit light theme); keep the two identical
+   and every role defined in dark (no guard checks it yet). Light keeps Python-app parity (the old-name ->
+   token table of that port is ~/cashu-lab/checkpoints/investments-ui-poc/tokens-map.md); the dark palette
+   follows the design direction in design/desktop/investments-home/lab.html (V5). */
+
+@theme {
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --font-weight-*: initial;
+
+  /* Light values match the Python app 1:1 (owner chose Python parity over AA contrast); dark follows the
+     design direction (the dark block below). */
+  --color-fg: #1a1d21;
+  --color-fg-secondary: #374151;
+  --color-fg-muted: #6b7280;
+  --color-fg-inverse: #ffffff;
+  --color-surface: #f6f7f9;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #eceef1;
+  --color-surface-overlay: #ffffff;
+  --color-border: #e5e7eb;
+  --color-border-strong: #b8c0ca;
+  --color-accent: #2563eb;
+  --color-accent-muted: #dbe5fb;
+  --color-positive: #16a34a;
+  --color-positive-bg: rgba(22, 163, 74, 0.1);
+  --color-negative: #dc2626;
+  --color-negative-bg: rgba(220, 38, 38, 0.1);
+  --color-warning: #b45309;
+  --color-warning-bg: rgba(180, 83, 9, 0.12);
+  --color-info: #2563eb;
+  --color-info-bg: rgba(37, 99, 235, 0.1);
+  --color-chart-1: #2563eb;
+  --color-chart-2: #db2777;
+  --color-chart-3: #059669;
+  --color-chart-4: #d97706;
+  --color-chart-5: #7c3aed;
+  --color-chart-6: #0891b2;
+  --color-chart-7: #dc2626;
+  --color-chart-8: #4b5563;
+  --color-chart-grid: #eef0f3;
+  /* old recharts axis / tick stroke (#666) and grid rule (ScrollableChart) */
+  --color-chart-axis: #666666;
+  --color-chart-rule: rgba(0, 0, 0, 0.1);
+  --color-focus: #2563eb;
+  /* Python-app roles (old index.css names in tokens-map.md): chips, quiet bands, the benchmark, the
+     scrim, skeleton shimmer, brand ink, the deck flag violet, the ticker tile, text on the accent,
+     allocation buckets and net-worth kinds. */
+  --color-chip: #eef1f5;
+  --color-chip-fg: #374151;
+  --color-subtle: #f9fafb;
+  --color-bench: #9aa4b2;
+  --color-scrim: rgba(15, 18, 22, 0.35);
+  --color-shimmer: rgba(255, 255, 255, 0.55);
+  --color-ink: #111316;
+  --color-net: #7c3aed;
+  --color-av-bg: #000000;
+  --color-av-fg: #e8e8e8;
+  --color-av-coin: #000000;
+  --color-on-accent: #ffffff;
+  --color-paper: #ffffff;
+  --color-inv-global: #2563eb;
+  --color-inv-pl: #d97706;
+  --color-inv-bonds: #0891b2;
+  --color-inv-cash: #7c3aed;
+  --color-inv-other: #6b7280;
+  --color-inv-5: #16a34a;
+  --color-inv-6: #db2777;
+  --color-inv-7: #ca8a04;
+  --color-nw-money: #2563eb;
+  --color-nw-property: #0891b2;
+  --color-nw-vehicle: #16a34a;
+  --color-nw-mortgage: #dc2626;
+  --color-nw-loan: #ea580c;
+  /* old format.ts PALETTE (the spending donut), one value for both themes */
+  --color-palette-1: #2563eb;
+  --color-palette-2: #16a34a;
+  --color-palette-3: #dc2626;
+  --color-palette-4: #7c3aed;
+  --color-palette-5: #ea580c;
+  --color-palette-6: #0891b2;
+  --color-palette-7: #ca8a04;
+  --color-palette-8: #db2777;
+  --color-palette-9: #4f46e5;
+  --color-palette-10: #059669;
+  --color-palette-11: #e11d48;
+  --color-palette-12: #9333ea;
+  --color-palette-13: #f59e0b;
+  --color-palette-14: #0ea5e9;
+  --color-palette-15: #65a30d;
+  --color-palette-16: #c026d3;
+  --color-palette-17: #14b8a6;
+  --color-palette-18: #f43f5e;
+  --color-palette-19: #6366f1;
+  --color-palette-20: #84cc16;
+  --color-palette-21: #a855f7;
+  --color-palette-22: #ef4444;
+
+  /* 4-point spacing: p-1 = 4px. Uniwind's safe-area utilities need the multiplier; SPACING_STEPS in
+     src/layout.ts is the vocabulary of the `layout` prop. */
+  --spacing: 4px;
+  --spacing-row: 64px;
+
+  /* Radii: the scale continues around the original sm / md / lg; `control` is the Python app's 8px of
+     buttons, fields, segments and skeletons. `widget` is the card radius (Widget, SectionCard, ChartCard,
+     Kpi, Hero, Card and their skeletons), 28px per the design direction (was the Python app's 12px). */
+  --radius-5xs: 1px;
+  --radius-4xs: 2px;
+  --radius-3xs: 3px;
+  --radius-2xs: 4px;
+  --radius-xs: 5px;
+  --radius-sm: 6px;
+  --radius-sm-plus: 7px;
+  --radius-control: 8px;
+  --radius-md: 10px;
+  /* The small layered sub-tile inside a layered tile (`tile-sub`: the overview hero's facts). */
+  --radius-tile: 16px;
+  --radius-widget: 28px;
+  /* The big full-width buttons of the review deck: they kept the Python app's 12px when cards grew. */
+  --radius-button-lg: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 20px;
+
+  /* Role sizes (with their own line height) for the native screens. */
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-body: 15px;
+  --text-body--line-height: 20px;
+  --text-title: 17px;
+  --text-title--line-height: 22px;
+  --text-headline: 22px;
+  --text-headline--line-height: 28px;
+  --text-display: 30px;
+  --text-display--line-height: 36px;
+
+  /* Primitive sizes: every font size of the Python app's CSS. No line height of their own, so the line
+     height inherits like the old CSS (page root 15px / 1.5); set `leading-*` where an old rule did.
+     `-plus` = the old size just above that step which has no step name of its own. */
+  --text-5xs: 8px;
+  --text-5xs-plus: 8.5px;
+  --text-4xs: 9px;
+  --text-4xs-plus: 9.5px;
+  --text-3xs: 10px;
+  --text-3xs-plus: 10.5px;
+  --text-2xs: 11px;
+  --text-2xs-plus: 11.5px;
+  --text-xs: 12px;
+  --text-xs-plus: 12.5px;
+  --text-sm: 13px;
+  --text-sm-plus: 13.5px;
+  --text-md: 14px;
+  --text-md-plus: 14.5px;
+  --text-base: 15px;
+  --text-base-plus: 16px;
+  --text-lg: 17px;
+  --text-lg-plus: 18px;
+  --text-xl: 19px;
+  --text-2xl: 20px;
+  --text-3xl: 21px;
+  --text-3xl-plus: 22px;
+  /* The Kredyty KPI value (old `.kpi .value`). */
+  --text-kpi: 23px;
+  /* The Strategie tab's Markdown `.md-h1`. */
+  --text-4xl-minus: 24px;
+  --text-4xl: 26px;
+  --text-4xl-plus: 30px;
+  --text-5xl: 34px;
+  --text-6xl: 40px;
+  /* The investments hero figure (design/desktop/investments-home/lab.html V5, Statement size). */
+  --text-statement: 64px;
+  /* The statement figure inside a layered tile (design/desktop/overview/layered-tiles.html: the net worth). */
+  --text-statement-tile: 56px;
+  /* The UA button size (13.333px) of the old bare buttons that set no font size (deck "Cofnij"). */
+  --text-control: 13.3333px;
+  /* Inline code of rendered Markdown (old `.md code { font-size: .88em }`, relative to its text). */
+  --text-code: 0.88em;
+  --text-code-ui: 0.92em;
+
+  /* The UA button font of the old bare buttons that kept the UA `font` shorthand (Chromium on macOS
+     computes and draws Arial): deck buttons, the review button, icon buttons. */
+  --font-control: Arial;
+  /* The research relation glyph (old `.ri` font: 700 12px/1 -apple-system, BlinkMacSystemFont, sans-serif). */
+  --font-system: -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Line heights besides Tailwind's none 1 / tight 1.25 / snug 1.375 / normal 1.5. */
+  /* `control` = CSS `normal`: the old buttons that kept the UA font shorthand (segments, icon buttons). */
+  --leading-control: normal;
+  --leading-hero: 1.15;
+  --leading-dense: 1.2;
+  --leading-cozy: 1.4;
+  --leading-widget: 1.45;
+  --leading-sheet: 1.55;
+  /* `row` = 1.3: the research strip's topic and note heads (story.css `.st-trow .hl`, `.st-note .h`). */
+  --leading-row: 1.3;
+  /* Strategie tab: `.strat-desc` 1.35, rendered Markdown `.md` 1.65. */
+  --leading-caption: 1.35;
+  --leading-prose: 1.65;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-demi: 550;
+  --font-weight-strong: 600;
+  --font-weight-heavy: 650;
+  --font-weight-bold: 700;
+  --font-weight-black: 750;
+
+  /* Letter spacing besides Tailwind's tight -0.025em / wider 0.05em. */
+  --tracking-section: 0.07em;
+  --tracking-eyebrow: 0.06em;
+  --tracking-label: 0.05em;
+  --tracking-caps: 0.04em;
+  --tracking-column: 0.03em;
+  --tracking-snug: -0.01em;
+  --tracking-heading: -0.02em;
+  --tracking-dense: -0.03em;
+
+  /* Shadows. `card` follows the theme (none in dark: cards there have only their hairline border, per
+     the design direction) through --elevation-card, the rest are the same in both themes. Tailwind
+     inlines theme shadow values into the utility, hence the indirection; dark is a transparent shadow,
+     not `none`, so a ring on the same element still composes. */
+  --shadow-card: var(--elevation-card);
+  --shadow-deck: 0 1px 2px rgba(16, 18, 22, 0.04), 0 12px 32px rgba(16, 18, 22, 0.1);
+  --shadow-tip: 0 6px 20px rgba(0, 0, 0, 0.14);
+  --shadow-toast: 0 10px 34px rgba(0, 0, 0, 0.28);
+  /* The update notice card (old `.upd`). */
+  --shadow-corner: 0 10px 34px rgba(0, 0, 0, 0.18);
+  --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.35);
+  --shadow-panel: -16px 0 48px rgba(0, 0, 0, 0.22);
+
+  /* Breakpoints of the Python app (max-width 1180 / 900 / 860 / 760 / 480): `max-wide:` = width <= 1180px,
+     `max-split:` <= 900px, `max-story:` <= 860px (the research strip, story.css), `max-narrow:` <= 760px,
+     `max-phone:` <= 480px; `min-split:` >= 901px. Settings: `max-settings:` <= 1000px (the section nav goes
+     above the cards), `max-kv:` <= 640px (key-value rows stack). */
+  --breakpoint-phone: 481px;
+  --breakpoint-kv: 641px;
+  /* max-width: 560px (budget.css: the month close figures shrink) */
+  --breakpoint-close: 561px;
+  --breakpoint-narrow: 761px;
+  --breakpoint-story: 861px;
+  --breakpoint-split: 901px;
+  --breakpoint-settings: 1001px;
+  /* Strategie tab `@media (max-width: 1100px)`: the status card goes under the file. */
+  --breakpoint-strat: 1101px;
+  --breakpoint-wide: 1181px;
+
+  /* Container sizes besides Tailwind's 3xs..7xl (`max-w-*` and the `@max-*` / `@min-*` container
+     variants): `measure` = the 64ch reading width of the first-steps hints, `assets` = the assets table
+     that drops its 30-day and result columns below 1000px (`@max-assets:`, old `@container (max-width: 999px)`). */
+  --container-measure: 64ch;
+  /* Rendered Markdown `.md { max-width: 72ch }` (Strategie tab). */
+  --container-doc: 72ch;
+  /* research page: the summary sentence (900px), an opened note (75ch), the routine how-to (86ch) */
+  --container-story: 900px;
+  --container-note: 75ch;
+  --container-sched: 86ch;
+  --container-assets: 1000px;
+
+  /* Motion: the review deck's fly-out curve (with duration-260), skeleton shimmer, toast entry. */
+  --ease-deck: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --animate-shimmer: shimmer 1.3s infinite;
+  --animate-toast-in: toast-in 0.16s ease-out;
+  /* The update notice card (old `.upd` upd-in .2s: the same rise and fade). */
+  --animate-corner-in: toast-in 0.2s ease-out;
+  /* The asset drawer (old `.adrawer` adrawer-in .18s, its `.ascrim` ascrim-in .16s). */
+  --animate-panel-in: panel-in 0.18s ease-out;
+  --animate-scrim-in: scrim-in 0.16s ease-out;
+  /* A signal opened from a notification or a rail row flashes once (old `.sig.flash` sig-flash 2.4s). */
+  --animate-sig-flash: sig-flash 2.4s ease-out;
+  /* Layered tiles rise in (`tile-enter`, staggered by --tile-i; none under reduced motion) and settle on
+     hover (design/desktop/overview/layered-tiles.html). */
+  --ease-tile: cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-tile-in: tile-in 0.56s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  /* A spinner outside a button fades in only after 150ms, so a fast action never flashes it (the busy
+     Button delays its own spinner in code and also holds it). */
+  --animate-spinner-in: scrim-in 0.15s ease-out 0.15s both;
+
+  @keyframes tile-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+  }
+
+  @keyframes panel-in {
+    from {
+      transform: translateX(24px);
+      opacity: 0.6;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  @keyframes sig-flash {
+    0%,
+    30% {
+      background: var(--color-info-bg);
+    }
+    100% {
+      background: transparent;
+    }
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@layer theme {
+  :root {
+    --modal-backdrop-layer: 40;
+    --modal-panel-layer: 50;
+    --modal-layer-step: 20;
+    --elevation-card: 0 1px 2px rgba(16, 18, 22, 0.04);
+    /* The layered tile surface (`tile-layered`, `tile-sub`; design/desktop/overview/layered-tiles.html): the
+       top-lit gradient start, the inset hairline and its hover step, the lit top edge, the cursor spotlight,
+       the soft drop shadow and its hover step, and the sub-tile fill. */
+    --tile-top: #ffffff;
+    --tile-ring: rgba(16, 18, 22, 0.08);
+    --tile-ring-hover: rgba(16, 18, 22, 0.14);
+    --tile-edge: rgba(255, 255, 255, 0.7);
+    --tile-spot: rgba(16, 18, 22, 0.025);
+    --elevation-tile: 0 1px 2px rgba(16, 18, 22, 0.04), 0 14px 34px -18px rgba(16, 18, 22, 0.16);
+    --elevation-tile-hover:
+      0 2px 4px rgba(16, 18, 22, 0.05), 0 20px 44px -20px rgba(16, 18, 22, 0.24);
+    --sub-top: rgba(16, 18, 22, 0.025);
+    --sub-bottom: rgba(16, 18, 22, 0.01);
+    --sub-edge: rgba(255, 255, 255, 0.7);
+    --sub-ring-hover: rgba(16, 18, 22, 0.18);
+    /* Dark follows the design direction in design/desktop/investments-home/lab.html (V5, built on V4):
+       page #0a0a0b, card #0e0e10, surfaces #111113 / #17171a / #1e1e22, popover #161618, ink
+       #ededf0 / #a3a3ab / #6e6e77, accent #8ea4ff, chart c1..c5. No new hues: every role below takes
+       a palette value by its meaning. `border` and `chip` are opaque (the hairline rgba(255,255,255,.065)
+       and #17171a over the page) because components mix them with color-mix(). */
+    @variant dark {
+      --color-fg: #ededf0;
+      --color-fg-secondary: #a3a3ab;
+      --color-fg-muted: #6e6e77;
+      --color-fg-inverse: #0a0a0b;
+      --color-surface: #0a0a0b;
+      --color-surface-raised: #0e0e10;
+      --color-surface-sunken: #070708;
+      --color-surface-overlay: #161618;
+      --color-border: #1a1a1b;
+      --color-border-strong: rgba(255, 255, 255, 0.18);
+      --color-accent: #8ea4ff;
+      --color-accent-muted: rgba(142, 164, 255, 0.13);
+      --color-positive: #4cc38a;
+      --color-positive-bg: rgba(76, 195, 138, 0.12);
+      --color-negative: #ef6f6c;
+      --color-negative-bg: rgba(239, 111, 108, 0.12);
+      --color-warning: #e5a54a;
+      --color-warning-bg: rgba(229, 165, 74, 0.12);
+      --color-info: #8ea4ff;
+      --color-info-bg: rgba(142, 164, 255, 0.13);
+      /* series 1..5 = the lab's c1..c5; 6..8 continue with the tones and the second ink */
+      --color-chart-1: #8ea4ff;
+      --color-chart-2: #5cc0d6;
+      --color-chart-3: #b39cff;
+      --color-chart-4: #e5a54a;
+      --color-chart-5: #5d5d66;
+      --color-chart-6: #4cc38a;
+      --color-chart-7: #ef6f6c;
+      --color-chart-8: #a3a3ab;
+      --color-chart-grid: rgba(255, 255, 255, 0.065);
+      --color-chart-axis: #6e6e77;
+      --color-chart-rule: rgba(255, 255, 255, 0.11);
+      --color-focus: #8ea4ff;
+      --color-chip: #17171a;
+      --color-chip-fg: #a3a3ab;
+      --color-subtle: #111113;
+      --color-bench: #6e6e77;
+      --color-scrim: rgba(0, 0, 0, 0.6);
+      --color-shimmer: rgba(255, 255, 255, 0.09);
+      --color-ink: #0a0a0b;
+      /* violet: the net line and the fulfilled-thesis ring */
+      --color-net: #b39cff;
+      --color-av-bg: #000000;
+      --color-av-fg: #a3a3ab;
+      --color-av-coin: #1e1e22;
+      /* the accent and the tones are light here, so text on them is the page ink */
+      --color-on-accent: #0a0a0b;
+      /* the face of chart dots stays white */
+      --color-paper: #ffffff;
+      --color-inv-global: #8ea4ff;
+      --color-inv-pl: #e5a54a;
+      --color-inv-bonds: #5cc0d6;
+      --color-inv-cash: #b39cff;
+      --color-inv-other: #5d5d66;
+      --color-inv-5: #4cc38a;
+      --color-inv-6: #ef6f6c;
+      --color-inv-7: #a3a3ab;
+      --color-nw-money: #8ea4ff;
+      --color-nw-property: #5cc0d6;
+      --color-nw-vehicle: #4cc38a;
+      --color-nw-mortgage: #ef6f6c;
+      --color-nw-loan: #e5a54a;
+      --elevation-card: 0 0 #0000;
+      --tile-top: #161619;
+      --tile-ring: rgba(255, 255, 255, 0.065);
+      --tile-ring-hover: rgba(255, 255, 255, 0.11);
+      --tile-edge: rgba(255, 255, 255, 0.05);
+      --tile-spot: rgba(255, 255, 255, 0.055);
+      --elevation-tile: 0 1px 2px rgba(0, 0, 0, 0.5), 0 14px 34px -18px rgba(0, 0, 0, 0.85);
+      --elevation-tile-hover: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -20px rgba(0, 0, 0, 0.95);
+      --sub-top: rgba(255, 255, 255, 0.035);
+      --sub-bottom: rgba(255, 255, 255, 0.012);
+      --sub-edge: rgba(255, 255, 255, 0.04);
+      --sub-ring-hover: rgba(255, 255, 255, 0.18);
+    }
+    @variant light {
+      --color-fg: #1a1d21;
+      --color-fg-secondary: #374151;
+      --color-fg-muted: #6b7280;
+      --color-fg-inverse: #ffffff;
+      --color-surface: #f6f7f9;
+      --color-surface-raised: #ffffff;
+      --color-surface-sunken: #eceef1;
+      --color-surface-overlay: #ffffff;
+      --color-border: #e5e7eb;
+      --color-border-strong: #b8c0ca;
+      --color-accent: #2563eb;
+      --color-accent-muted: #dbe5fb;
+      --color-positive: #16a34a;
+      --color-positive-bg: rgba(22, 163, 74, 0.1);
+      --color-negative: #dc2626;
+      --color-negative-bg: rgba(220, 38, 38, 0.1);
+      --color-warning: #b45309;
+      --color-warning-bg: rgba(180, 83, 9, 0.12);
+      --color-info: #2563eb;
+      --color-info-bg: rgba(37, 99, 235, 0.1);
+      --color-chart-1: #2563eb;
+      --color-chart-2: #db2777;
+      --color-chart-3: #059669;
+      --color-chart-4: #d97706;
+      --color-chart-5: #7c3aed;
+      --color-chart-6: #0891b2;
+      --color-chart-7: #dc2626;
+      --color-chart-8: #4b5563;
+      --color-chart-grid: #eef0f3;
+      --color-chart-axis: #666666;
+      --color-chart-rule: rgba(0, 0, 0, 0.1);
+      --color-focus: #2563eb;
+      --color-chip: #eef1f5;
+      --color-chip-fg: #374151;
+      --color-subtle: #f9fafb;
+      --color-bench: #9aa4b2;
+      --color-scrim: rgba(15, 18, 22, 0.35);
+      --color-shimmer: rgba(255, 255, 255, 0.55);
+      --color-ink: #111316;
+      --color-net: #7c3aed;
+      --color-av-bg: #000000;
+      --color-av-fg: #e8e8e8;
+      --color-av-coin: #000000;
+      --color-on-accent: #ffffff;
+      --color-paper: #ffffff;
+      --color-inv-global: #2563eb;
+      --color-inv-pl: #d97706;
+      --color-inv-bonds: #0891b2;
+      --color-inv-cash: #7c3aed;
+      --color-inv-other: #6b7280;
+      --color-inv-5: #16a34a;
+      --color-inv-6: #db2777;
+      --color-inv-7: #ca8a04;
+      --color-nw-money: #2563eb;
+      --color-nw-property: #0891b2;
+      --color-nw-vehicle: #16a34a;
+      --color-nw-mortgage: #dc2626;
+      --color-nw-loan: #ea580c;
+      --elevation-card: 0 1px 2px rgba(16, 18, 22, 0.04);
+      --tile-top: #ffffff;
+      --tile-ring: rgba(16, 18, 22, 0.08);
+      --tile-ring-hover: rgba(16, 18, 22, 0.14);
+      --tile-edge: rgba(255, 255, 255, 0.7);
+      --tile-spot: rgba(16, 18, 22, 0.025);
+      --elevation-tile: 0 1px 2px rgba(16, 18, 22, 0.04), 0 14px 34px -18px rgba(16, 18, 22, 0.16);
+      --elevation-tile-hover:
+        0 2px 4px rgba(16, 18, 22, 0.05), 0 20px 44px -20px rgba(16, 18, 22, 0.24);
+      --sub-top: rgba(16, 18, 22, 0.025);
+      --sub-bottom: rgba(16, 18, 22, 0.01);
+      --sub-edge: rgba(255, 255, 255, 0.7);
+      --sub-ring-hover: rgba(16, 18, 22, 0.18);
+    }
+  }
+}
+
+/* The Python app's global keyboard focus ring (old index.css `:focus-visible`); components that draw their
+   own ring (inset rows, fields) override it with utilities. */
+@layer base {
+  /* Native controls and scrollbars follow the theme (old index.css `color-scheme` on :root). */
+  :root {
+    color-scheme: light;
+    @variant dark {
+      color-scheme: dark;
+    }
+    @variant light {
+      color-scheme: light;
+    }
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+/* Skeleton shimmer (old `.skeleton::after`): a light band sweeping over a chip-coloured block. The host
+   element needs `relative overflow-hidden`. */
+@utility shimmer {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, var(--color-shimmer), transparent);
+    animation: var(--animate-shimmer);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      animation: none;
+    }
+  }
+}
+
+/* The layered tile (Widget `layered`; design/desktop/overview/layered-tiles.html): a top-lit gradient over the
+   card colour, an inset hairline with a lit top edge and a soft drop shadow; hovered, the hairline and the
+   shadow step up and a spotlight follows the cursor (--spot-x / --spot-y, set on pointer move; without them
+   it sits at the top centre). Pair with `rounded-widget`. */
+@utility tile-layered {
+  position: relative;
+  background: linear-gradient(180deg, var(--tile-top), var(--color-surface-raised) 58%);
+  box-shadow:
+    inset 0 0 0 1px var(--tile-ring),
+    inset 0 1px 0 var(--tile-edge),
+    var(--elevation-tile);
+  transition:
+    transform 0.25s var(--ease-tile),
+    box-shadow 0.25s;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    background: radial-gradient(
+      340px circle at var(--spot-x, 50%) var(--spot-y, 30%),
+      var(--tile-spot),
+      transparent 60%
+    );
+  }
+  &:hover {
+    box-shadow:
+      inset 0 0 0 1px var(--tile-ring-hover),
+      inset 0 1px 0 var(--tile-edge),
+      var(--elevation-tile-hover);
+  }
+  &:hover::before {
+    opacity: 1;
+  }
+  /* The content paints over the spotlight. */
+  & > * {
+    position: relative;
+  }
+}
+
+/* A layered tile lifts 2px while hovered (not under reduced motion). */
+@utility tile-lift {
+  @media (prefers-reduced-motion: no-preference) {
+    &:hover {
+      transform: translateY(-2px);
+    }
+  }
+}
+
+/* The small layered sub-tile inside a layered tile (Fact `tile`): a faint top-lit fill, the inset hairline
+   and the lit edge, a 16px radius; hovered, the hairline steps up and it lifts 1px. */
+@utility tile-sub {
+  border-radius: var(--radius-tile);
+  background: linear-gradient(180deg, var(--sub-top), var(--sub-bottom));
+  box-shadow:
+    inset 0 0 0 1px var(--tile-ring),
+    inset 0 1px 0 var(--sub-edge);
+  transition:
+    box-shadow 0.15s,
+    transform 0.2s var(--ease-tile);
+  &:hover {
+    box-shadow:
+      inset 0 0 0 1px var(--sub-ring-hover),
+      inset 0 1px 0 var(--sub-edge);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    &:hover {
+      transform: translateY(-1px);
+    }
+  }
+}
+
+/* The entrance of a layered tile: rises in, staggered 50ms per --tile-i (its place on the page); nothing
+   under reduced motion. The fill mode is `backwards`, so no transform stays on the tile afterwards. */
+@utility tile-enter {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: var(--animate-tile-in);
+    animation-delay: calc(var(--tile-i, 0) * 50ms);
+  }
+}

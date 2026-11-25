@@ -1,0 +1,62 @@
+import { PairingView, type PairingViewState } from "./PairingView.js";
+
+const noop = async () => {};
+const invited: PairingViewState = {
+  kind: "invited",
+  qr: "cashu-pair:synthetic-invitation-0123456789abcdef",
+  codePreview: "cashu-pair:synthet…89abcdef",
+  expiresAt: new Date(2026, 10, 14, 18, 56).getTime(),
+  phone: "connected",
+  code: "",
+  onCodeChange: noop,
+  onConfirm: noop,
+  onCancel: noop,
+  onCopy: noop,
+  canCopy: true,
+  copied: false,
+  submitting: false,
+};
+
+export default { title: "Desktop/Settings/Pairing", component: PairingView };
+export const Idle = { render: () => <PairingView state={{ kind: "idle", onCreate: noop }} /> };
+/** A phone connected: only the six-digit field, "Confirm code" and "Cancel invitation". */
+export const Invitation = { render: () => <PairingView state={invited} /> };
+/** No phone has connected yet: no six-digit field, no "Confirm code". */
+export const InvitationWaitingForScan = {
+  render: () => <PairingView state={{ ...invited, phone: "waiting" }} />,
+};
+/** A host that does not say whether a phone connected: the six-digit field as before. */
+export const InvitationPhoneUnknown = {
+  render: () => <PairingView state={{ ...invited, phone: "unknown" }} />,
+};
+export const InvitationCopied = {
+  render: () => <PairingView state={{ ...invited, phone: "waiting", copied: true }} />,
+};
+export const Checking = {
+  render: () => <PairingView state={{ kind: "checking", onCancel: noop }} />,
+};
+export const Unknown = {
+  render: () => <PairingView state={{ kind: "unknown", onInspect: noop }} />,
+};
+/** The end states close with "Done" (in the dialog) and offer a new invitation. */
+export const Completed = {
+  render: () => <PairingView state={{ kind: "completed", onCreate: noop }} onDone={() => {}} />,
+};
+export const Refused = {
+  render: () => <PairingView state={{ kind: "refused", onCreate: noop }} onDone={() => {}} />,
+};
+/** A cancel that came after the host had written the phone into the vault. */
+export const AlreadyAdded = {
+  render: () => <PairingView state={{ kind: "already_added", onCreate: noop }} />,
+};
+/** The phone closed its six-digit step: the invitation is over, a new one can start. */
+export const PhoneCancelled = {
+  render: () => <PairingView state={{ kind: "phone_cancelled", onCreate: noop }} />,
+};
+export const Unavailable = { render: () => <PairingView state={{ kind: "unavailable" }} /> };
+export const Expired = {
+  render: () => <PairingView state={{ kind: "expired", onCreate: noop }} onDone={() => {}} />,
+};
+export const SyncOff = {
+  render: () => <PairingView state={{ kind: "sync_off", onCreate: noop }} onGoToSync={() => {}} />,
+};
